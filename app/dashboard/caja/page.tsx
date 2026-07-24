@@ -1,11 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Lock, Printer } from 'lucide-react';
+import { Lock, Printer, Wallet, ArrowRightLeft } from 'lucide-react';
 import { arqueoApi } from '@/api/arqueo';
 import type { ArqueoCaja } from '@/api/arqueo';
+import { movimientoCajaApi } from '@/api/movimientoCaja';
+import type { TipoMovimiento, CategoriaMovimiento } from '@/api/movimientoCaja';
 import { useSession } from '@/hooks/useSession';
 import AbrirCajaModal from './components/AbrirCajaModal';
+import RegistrarMovimientoModal from './components/RegistrarMovimientoModal';
 import { generarReporteCajaPdf } from '@/utils/generarReporteCajaPdf';
 
 function formatFecha(fecha: string | null) {
@@ -41,6 +44,7 @@ export default function ArqueoPage() {
 
   const [cajaAbiertaPropia, setCajaAbiertaPropia] = useState<ArqueoCaja | null | undefined>(undefined);
   const [modalAbrirOpen, setModalAbrirOpen] = useState(false);
+  const [modalMovimientoOpen, setModalMovimientoOpen] = useState(false);
   const [error, setError] = useState('');
 
   const cargarDatos = async () => {
@@ -98,10 +102,24 @@ export default function ArqueoPage() {
     }
   };
 
+  const handleRegistrarMovimiento = async (data: {
+    tipo: TipoMovimiento;
+    categoria: CategoriaMovimiento;
+    descripcion: string;
+    monto: number;
+  }) => {
+    if (!cajaAbiertaPropia || !empleadoId) throw new Error('No tienes una caja abierta.');
+    await movimientoCajaApi.registrar({
+      arqueoCajaId: cajaAbiertaPropia.id,
+      empleadoId,
+      ...data,
+    });
+  };
+
   const handleImprimir = (arqueo: ArqueoCaja) => {
     try {
       setError('');
-      
+
       // Extraemos las ventas del arqueo o asignamos un array vacío de respaldo
       const ventas = (arqueo as any).ventas ?? [];
 
@@ -146,19 +164,33 @@ export default function ArqueoPage() {
         <div>
           <h1 className="text-2xl font-bold text-primary tracking-tight">Arqueo de Caja</h1>
         </div>
-        {cajaAbiertaPropia === null && (
-          <button
-            onClick={() => setModalAbrirOpen(true)}
-            className="px-4 py-2 text-sm font-semibold text-white bg-primary hover:bg-primary-dark rounded-lg shadow-xs hover:shadow-md transition-all"
-          >
-            Abrir Caja
-          </button>
-        )}
-        {cajaAbiertaPropia && (
-          <span className="text-sm font-semibold text-primary bg-primary/10 px-3 py-1.5 rounded-lg">
-            Tienes abierta: {cajaAbiertaPropia.numero}
-          </span>
-        )}
+
+        <div className="flex items-center gap-3">
+          {cajaAbiertaPropia === null && (
+            <button
+              onClick={() => setModalAbrirOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-primary hover:bg-primary-dark rounded-lg shadow-xs hover:shadow-md transition-all"
+            >
+              <Wallet size={16} />
+              Abrir Caja
+            </button>
+          )}
+
+          {cajaAbiertaPropia && (
+            <>
+              <span className="text-sm font-semibold text-primary bg-primary/10 px-3 py-1.5 rounded-lg">
+                Tienes abierta: {cajaAbiertaPropia.numero}
+              </span>
+              <button
+                onClick={() => setModalMovimientoOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-primary hover:bg-primary-dark rounded-lg shadow-xs hover:shadow-md transition-all"
+              >
+                <ArrowRightLeft size={16} />
+                Registrar Movimiento
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl shadow-xs border border-zinc-200 p-5 space-y-4">
@@ -294,6 +326,12 @@ export default function ArqueoPage() {
         open={modalAbrirOpen}
         onClose={() => setModalAbrirOpen(false)}
         onConfirm={handleAbrirCaja}
+      />
+
+      <RegistrarMovimientoModal
+        open={modalMovimientoOpen}
+        onClose={() => setModalMovimientoOpen(false)}
+        onConfirm={handleRegistrarMovimiento}
       />
     </div>
   );

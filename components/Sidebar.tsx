@@ -16,8 +16,6 @@ import {
   Tags, 
   Lock, 
   Wallet, 
-  ArrowUpRight, 
-  ArrowDownLeft, 
   CreditCard, 
   Receipt, 
   ShieldCheck, 
@@ -34,8 +32,6 @@ const topLinks = [
 
 const cajaChildren = [
   { href: '/dashboard/caja', label: 'Arqueo de caja', icon: Receipt },
-  { href: '/dashboard/caja/egresos', label: 'Egresos', icon: ArrowUpRight },
-  { href: '/dashboard/caja/ingresos', label: 'Ingresos', icon: ArrowDownLeft },
   { href: '/dashboard/caja/medios-pago', label: 'Medio de pago', icon: CreditCard },
 ];
 
