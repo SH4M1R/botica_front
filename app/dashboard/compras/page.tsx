@@ -108,7 +108,7 @@ export default function ComprasPage() {
           href="/dashboard/compras/generar"
           className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-dark text-white text-sm font-semibold rounded-xl shadow-xs hover:shadow-md transition-all"
         >
-          <Plus size={18} /> Generar Compra
+          <Plus size={18} /> Ingresar Compra
         </Link>
       </div>
 

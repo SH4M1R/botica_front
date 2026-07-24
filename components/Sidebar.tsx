@@ -53,6 +53,10 @@ const bottomLinks = [
   { href: '/dashboard/configuracion', label: 'Configuración', icon: Settings },
 ];
 
+const EVENTO_CAJA_ACTUALIZADA = 'caja:actualizada';
+
+type MenuId = 'caja' | 'ventas' | 'compras' | 'productos' | 'empleados' | null;
+
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -64,11 +68,23 @@ export default function Sidebar() {
   const comprasActivo = pathname.startsWith('/dashboard/compras') || pathname.startsWith('/dashboard/proveedores');
   const empleadosActivo = pathname.startsWith('/dashboard/empleados');
 
-  const [cajaMenuAbierto, setCajaMenuAbierto] = useState(cajaActivo);
-  const [ventasAbierto, setVentasAbierto] = useState(ventasActivo);
-  const [comprasAbierto, setComprasAbierto] = useState(comprasActivo);
-  const [productosAbierto, setProductosAbierto] = useState(productosActivo);
-  const [empleadosAbierto, setEmpleadosAbierto] = useState(empleadosActivo);
+  const menuActivoInicial: MenuId = cajaActivo
+    ? 'caja'
+    : ventasActivo
+    ? 'ventas'
+    : comprasActivo
+    ? 'compras'
+    : productosActivo
+    ? 'productos'
+    : empleadosActivo
+    ? 'empleados'
+    : null;
+
+  const [menuAbierto, setMenuAbierto] = useState<MenuId>(menuActivoInicial);
+
+  const toggleMenu = (id: MenuId) => {
+    setMenuAbierto((prev) => (prev === id ? null : id));
+  };
 
   const [cajaAbierta, setCajaAbierta] = useState<unknown | null | undefined>(undefined);
   const [modalCajaOpen, setModalCajaOpen] = useState(false);
@@ -76,15 +92,27 @@ export default function Sidebar() {
   useEffect(() => {
     if (cargandoSesion || !empleado?.id) return;
     let activo = true;
+
     const revisar = () => {
       arqueoApi.cajaActual(empleado.id)
         .then((actual) => { if (activo) setCajaAbierta(actual ?? null); })
         .catch(() => { if (activo) setCajaAbierta(null); });
     };
+
     revisar();
+
+    window.addEventListener('focus', revisar);
+    window.addEventListener(EVENTO_CAJA_ACTUALIZADA, revisar);
+
     const intervalo = setInterval(revisar, 30000);
-    return () => { activo = false; clearInterval(intervalo); };
-  }, [empleado?.id, cargandoSesion]);
+
+    return () => {
+      activo = false;
+      clearInterval(intervalo);
+      window.removeEventListener('focus', revisar);
+      window.removeEventListener(EVENTO_CAJA_ACTUALIZADA, revisar);
+    };
+  }, [empleado?.id, cargandoSesion, pathname]);
 
   const puedeVender = !!cajaAbierta;
 
@@ -126,15 +154,15 @@ export default function Sidebar() {
 
           {/* Caja */}
           <button
-            onClick={() => setCajaMenuAbierto((prev) => !prev)}
-            className={linkClass(cajaActivo && !cajaMenuAbierto)}
+            onClick={() => toggleMenu('caja')}
+            className={linkClass(cajaActivo && menuAbierto !== 'caja')}
           >
             <Wallet size={18} />
             <span className="flex-1 text-left">Caja</span>
-            <ChevronDown size={16} className={`transition-transform ${cajaMenuAbierto ? 'rotate-180' : ''}`} />
+            <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'caja' ? 'rotate-180' : ''}`} />
           </button>
 
-          {cajaMenuAbierto && (
+          {menuAbierto === 'caja' && (
             <div className="flex flex-col gap-1 pl-4">
               {cajaChildren.map(({ href, label, icon: Icon }) => (
                 <Link key={href} href={href} className={linkClass(pathname === href)}>
@@ -147,15 +175,15 @@ export default function Sidebar() {
 
           {/* Ventas */}
           <button
-            onClick={() => setVentasAbierto((prev) => !prev)}
-            className={linkClass(ventasActivo && !ventasAbierto)}
+            onClick={() => toggleMenu('ventas')}
+            className={linkClass(ventasActivo && menuAbierto !== 'ventas')}
           >
             <ShoppingCart size={18} />
             <span className="flex-1 text-left">Ventas</span>
-            <ChevronDown size={16} className={`transition-transform ${ventasAbierto ? 'rotate-180' : ''}`} />
+            <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'ventas' ? 'rotate-180' : ''}`} />
           </button>
 
-          {ventasAbierto && (
+          {menuAbierto === 'ventas' && (
             <div className="flex flex-col gap-1 pl-4">
               <Link href="/dashboard/ventas" className={linkClass(pathname === '/dashboard/ventas')}>
                 <List size={16} />
@@ -181,15 +209,15 @@ export default function Sidebar() {
 
           {/* Compras */}
           <button
-            onClick={() => setComprasAbierto((prev) => !prev)}
-            className={linkClass(comprasActivo && !comprasAbierto)}
+            onClick={() => toggleMenu('compras')}
+            className={linkClass(comprasActivo && menuAbierto !== 'compras')}
           >
             <ShoppingBag size={18} />
             <span className="flex-1 text-left">Compras</span>
-            <ChevronDown size={16} className={`transition-transform ${comprasAbierto ? 'rotate-180' : ''}`} />
+            <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'compras' ? 'rotate-180' : ''}`} />
           </button>
 
-          {comprasAbierto && (
+          {menuAbierto === 'compras' && (
             <div className="flex flex-col gap-1 pl-4">
               <Link href="/dashboard/compras" className={linkClass(pathname === '/dashboard/compras')}>
                 <List size={16} />
@@ -198,7 +226,7 @@ export default function Sidebar() {
 
               <Link href="/dashboard/compras/generar" className={linkClass(pathname === '/dashboard/compras/generar')}>
                 <Plus size={16} />
-                <span className="text-sm">Generar Compra</span>
+                <span className="text-sm">Ingresar Compra</span>
               </Link>
 
               <Link href="/dashboard/proveedores" className={linkClass(pathname === '/dashboard/proveedores')}>
@@ -210,15 +238,15 @@ export default function Sidebar() {
 
           {/* Productos */}
           <button
-            onClick={() => setProductosAbierto((prev) => !prev)}
-            className={linkClass(productosActivo && !productosAbierto)}
+            onClick={() => toggleMenu('productos')}
+            className={linkClass(productosActivo && menuAbierto !== 'productos')}
           >
             <Package size={18} />
             <span className="flex-1 text-left">Productos</span>
-            <ChevronDown size={16} className={`transition-transform ${productosAbierto ? 'rotate-180' : ''}`} />
+            <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'productos' ? 'rotate-180' : ''}`} />
           </button>
 
-          {productosAbierto && (
+          {menuAbierto === 'productos' && (
             <div className="flex flex-col gap-1 pl-4">
               {productosChildren.map(({ href, label, icon: Icon }) => (
                 <Link key={href} href={href} className={linkClass(pathname === href)}>
@@ -231,15 +259,15 @@ export default function Sidebar() {
 
           {/* Empleados */}
           <button
-            onClick={() => setEmpleadosAbierto((prev) => !prev)}
-            className={linkClass(empleadosActivo && !empleadosAbierto)}
+            onClick={() => toggleMenu('empleados')}
+            className={linkClass(empleadosActivo && menuAbierto !== 'empleados')}
           >
             <Users size={18} />
             <span className="flex-1 text-left">Empleados</span>
-            <ChevronDown size={16} className={`transition-transform ${empleadosAbierto ? 'rotate-180' : ''}`} />
+            <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'empleados' ? 'rotate-180' : ''}`} />
           </button>
 
-          {empleadosAbierto && (
+          {menuAbierto === 'empleados' && (
             <div className="flex flex-col gap-1 pl-4">
               {empleadosChildren.map(({ href, label, icon: Icon }) => (
                 <Link key={href} href={href} className={linkClass(pathname === href)}>

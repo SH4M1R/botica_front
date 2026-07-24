@@ -6,6 +6,7 @@ import { arqueoApi } from '@/api/arqueo';
 import type { ArqueoCaja } from '@/api/arqueo';
 import { useSession } from '@/hooks/useSession';
 import AbrirCajaModal from './components/AbrirCajaModal';
+import { generarReporteCajaPdf } from '@/utils/generarReporteCajaPdf';
 
 function formatFecha(fecha: string | null) {
   if (!fecha) return '';
@@ -49,7 +50,7 @@ export default function ArqueoPage() {
       const data = tab === 'generales'
         ? await arqueoApi.listar(desde, hasta)
         : await arqueoApi.pendientes();
-      setArqueos(data);
+      setArqueos(Array.isArray(data) ? data : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudieron cargar los arqueos.');
       setArqueos([]);
@@ -97,12 +98,31 @@ export default function ArqueoPage() {
     }
   };
 
+  const handleImprimir = (arqueo: ArqueoCaja) => {
+    try {
+      setError('');
+      
+      // Extraemos las ventas del arqueo o asignamos un array vacío de respaldo
+      const ventas = (arqueo as any).ventas ?? [];
+
+      // 1. Generar el Blob pasando ambos parámetros requeridos (arqueo, ventas)
+      const pdfBlob = generarReporteCajaPdf(arqueo, ventas);
+
+      // 2. Crear la URL y abrir el PDF en una nueva pestaña para su impresión
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      window.open(pdfUrl, '_blank');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al generar el reporte en PDF.');
+    }
+  };
+
   const filtrados = useMemo(() => {
-    if (!busqueda.trim()) return arqueos;
+    const lista = Array.isArray(arqueos) ? arqueos : [];
+    if (!busqueda.trim()) return lista;
     const q = busqueda.toLowerCase();
-    return arqueos.filter((a) =>
-      a.numero.toLowerCase().includes(q) ||
-      a.empleadoNombre.toLowerCase().includes(q)
+    return lista.filter((a) =>
+      (a.numero?.toLowerCase() ?? '').includes(q) ||
+      (a.empleadoNombre?.toLowerCase() ?? '').includes(q)
     );
   }, [arqueos, busqueda]);
 
@@ -125,7 +145,7 @@ export default function ArqueoPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary tracking-tight">Arqueo de Caja</h1>
-          </div>
+        </div>
         {cajaAbiertaPropia === null && (
           <button
             onClick={() => setModalAbrirOpen(true)}
@@ -217,9 +237,9 @@ export default function ArqueoPage() {
                   <td className="py-2 px-2 font-semibold text-primary">{a.numero}</td>
                   <td className="py-2 px-2 font-semibold text-primary">{a.empleadoNombre}</td>
                   <td className="py-2 px-2">{formatFecha(a.fechaInicio)}</td>
-                  <td className="py-2 px-2">{a.montoInicial.toFixed(2)}</td>
+                  <td className="py-2 px-2">{a.montoInicial?.toFixed(2) ?? '0.00'}</td>
                   <td className="py-2 px-2">{formatFecha(a.fechaFin)}</td>
-                  <td className="py-2 px-2">{a.montoFinal !== null ? a.montoFinal.toFixed(2) : ''}</td>
+                  <td className="py-2 px-2">{a.montoFinal !== null && a.montoFinal !== undefined ? a.montoFinal.toFixed(2) : ''}</td>
                   <td className="py-2 px-2">
                     {a.estado ? (
                       <button
@@ -231,6 +251,7 @@ export default function ArqueoPage() {
                       </button>
                     ) : (
                       <button
+                        onClick={() => handleImprimir(a)}
                         title="Imprimir"
                         className="w-8 h-8 flex items-center justify-center rounded-full bg-green-500 hover:bg-green-600 text-white transition-colors"
                       >

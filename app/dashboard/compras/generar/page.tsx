@@ -216,12 +216,7 @@ export default function GenerarCompraPage() {
       {/* Header Fijo superior */}
       <div className="flex items-center justify-between shrink-0">
         <div>
-          <Link
-            href="/dashboard/compras"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-500 hover:text-primary transition-colors"
-          >
-            <ArrowLeft size={14} /> <h1 className="text-xl font-bold text-primary tracking-tight">Generar Compra</h1>
-          </Link>
+           <h1 className="text-xl font-bold text-primary tracking-tight">Ingresar Compra</h1>
         </div>
       </div>
 
