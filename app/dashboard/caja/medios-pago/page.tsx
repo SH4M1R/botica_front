@@ -113,7 +113,7 @@ export default function MedioDePagoPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-primary tracking-tight">Ganancias por Método de Pago</h1>
+          <h1 className="text-2xl font-bold text-primary tracking-tight">Método de Pago</h1>
           {cajaAbierta && (
             <p className="text-sm text-zinc-500 mt-1">
               Caja actual: <span className="font-semibold text-primary">{cajaAbierta.numero}</span>

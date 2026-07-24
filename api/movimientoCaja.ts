@@ -11,14 +11,19 @@ export type CategoriaMovimiento =
   | 'DEVOLUCION'
   | 'OTRO';
 
+export type MedioPago = 'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA' | 'YAPE_PLIN';
+
 export interface MovimientoCaja {
   id: number;
   empleadoNombre: string;
   tipo: TipoMovimiento;
   categoria: CategoriaMovimiento;
+  numero: string;
+  fechaEmision: string;
   descripcion: string;
   monto: number;
-  fecha: string;
+  medioPago: MedioPago;
+  fechaRegistro: string;
   anulado: boolean;
 }
 
@@ -27,8 +32,11 @@ export interface RegistrarMovimientoPayload {
   empleadoId: number;
   tipo: TipoMovimiento;
   categoria: CategoriaMovimiento;
+  numero: string;
+  fechaEmision: string;
   descripcion: string;
   monto: number;
+  medioPago: MedioPago;
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -45,6 +53,13 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const movimientoCajaApi = {
+  listar: (desde?: string, hasta?: string) => {
+    const params = new URLSearchParams();
+    if (desde) params.set('desde', desde);
+    if (hasta) params.set('hasta', hasta);
+    const qs = params.toString();
+    return request<MovimientoCaja[]>(`/movimientos${qs ? `?${qs}` : ''}`);
+  },
   listarPorArqueo: (arqueoId: number) =>
     request<MovimientoCaja[]>(`/movimientos/arqueo/${arqueoId}`),
   registrar: (data: RegistrarMovimientoPayload) =>

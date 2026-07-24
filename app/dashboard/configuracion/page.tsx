@@ -245,27 +245,6 @@ export default function ConfiguracionPage() {
             </div>
           </div>
 
-          {/* Bloque 5: QR Yape / Plin */}
-          <div className="bg-white p-6 rounded-2xl border border-zinc-200 shadow-xs space-y-4">
-            <span className="flex items-center gap-2 text-sm font-bold text-zinc-800">
-              <QrCode size={18} className="text-primary" />
-              Código QR de Yape
-            </span>
-
-            <div className="w-full h-32 rounded-xl border border-dashed border-zinc-300 bg-zinc-50 flex items-center justify-center p-2 overflow-hidden">
-              {form.yape ? (
-                <img src={form.yape} alt="QR Yape Preview" className="max-w-full max-h-full object-contain" />
-              ) : (
-                <span className="text-xs text-zinc-400">Sin QR cargado</span>
-              )}
-            </div>
-
-            <div className="space-y-1">
-              <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'yape')} className="block w-full text-xs text-zinc-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-zinc-100 file:text-zinc-700 hover:file:bg-zinc-200 file:cursor-pointer" />
-              <p className="text-[10px] text-zinc-400 leading-tight">Imagen del QR para cobros y pasarela de pago.</p>
-            </div>
-          </div>
-
           {/* Bloque 6: Ícono / Favicon */}
           <div className="bg-white p-6 rounded-2xl border border-zinc-200 shadow-xs space-y-4">
             <span className="flex items-center gap-2 text-sm font-bold text-zinc-800">

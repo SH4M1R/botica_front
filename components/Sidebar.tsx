@@ -18,6 +18,7 @@ import {
   Wallet, 
   CreditCard, 
   Receipt, 
+  ArrowRightLeft,
   ShieldCheck, 
   UserCheck, 
   ShoppingBag 
@@ -32,6 +33,7 @@ const topLinks = [
 
 const cajaChildren = [
   { href: '/dashboard/caja', label: 'Arqueo de caja', icon: Receipt },
+  { href: '/dashboard/caja/movimientos', label: 'Movimientos', icon: ArrowRightLeft },
   { href: '/dashboard/caja/medios-pago', label: 'Medio de pago', icon: CreditCard },
 ];
 
