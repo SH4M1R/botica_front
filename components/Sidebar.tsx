@@ -15,6 +15,9 @@ import {
   Users, 
   Tags, 
   Lock, 
+  Repeat,
+  ArrowDownToLine,
+  ArrowUpFromLine,
   Wallet, 
   CreditCard, 
   Receipt, 
@@ -42,6 +45,11 @@ const productosChildren = [
   { href: '/dashboard/productos/atributos', label: 'Atributos', icon: Tags },
 ];
 
+const trasladosChildren = [
+  { href: '/dashboard/ingresos', label: 'Ingresos', icon: ArrowDownToLine },
+  { href: '/dashboard/egresos', label: 'Egresos', icon: ArrowUpFromLine },
+];
+
 const empleadosChildren = [
   { href: '/dashboard/empleados', label: 'Listado Empleados', icon: UserCheck },
   { href: '/dashboard/empleados/permisos', label: 'Asignar Permisos', icon: ShieldCheck },
@@ -53,7 +61,7 @@ const bottomLinks = [
 
 const EVENTO_CAJA_ACTUALIZADA = 'caja:actualizada';
 
-type MenuId = 'caja' | 'ventas' | 'compras' | 'productos' | 'empleados' | null;
+type MenuId = 'caja' | 'ventas' | 'compras' | 'productos' | 'empleados' | 'traslados' | null;
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -65,8 +73,9 @@ export default function Sidebar() {
   const ventasActivo = pathname.startsWith('/dashboard/ventas');
   const comprasActivo = pathname.startsWith('/dashboard/compras') || pathname.startsWith('/dashboard/proveedores');
   const empleadosActivo = pathname.startsWith('/dashboard/empleados');
+  const trasladosActivo = pathname.startsWith('/dashboard/traslados');
 
-  const menuActivoInicial: MenuId = cajaActivo
+const menuActivoInicial: MenuId = cajaActivo
     ? 'caja'
     : ventasActivo
     ? 'ventas'
@@ -76,6 +85,8 @@ export default function Sidebar() {
     ? 'productos'
     : empleadosActivo
     ? 'empleados'
+    : trasladosActivo
+    ? 'traslados'
     : null;
 
   const [menuAbierto, setMenuAbierto] = useState<MenuId>(menuActivoInicial);
@@ -247,6 +258,28 @@ export default function Sidebar() {
           {menuAbierto === 'productos' && (
             <div className="flex flex-col gap-1 pl-4">
               {productosChildren.map(({ href, label, icon: Icon }) => (
+                <Link key={href} href={href} className={linkClass(pathname === href)}>
+                  <Icon size={16} />
+                  <span className="text-sm">{label}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+
+
+          {/* Traslados */}
+          <button
+            onClick={() => toggleMenu('traslados')}
+            className={linkClass(trasladosActivo && menuAbierto !== 'traslados')}
+          >
+            <Repeat size={18} />
+            <span className="flex-1 text-left">Traslados</span>
+            <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'traslados' ? 'rotate-180' : ''}`} />
+          </button>
+
+          {menuAbierto === 'traslados' && (
+            <div className="flex flex-col gap-1 pl-4">
+              {trasladosChildren.map(({ href, label, icon: Icon }) => (
                 <Link key={href} href={href} className={linkClass(pathname === href)}>
                   <Icon size={16} />
                   <span className="text-sm">{label}</span>
