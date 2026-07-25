@@ -11,8 +11,9 @@ export interface EmpresaForm {
   departamento: string;
   ciudad: string;
   logo: string;
-  yape: string;
   icono: string;
+  horaApertura: string;
+  horaCierre: string;
 }
 
 export async function obtenerEmpresa(): Promise<EmpresaForm> {
@@ -26,8 +27,9 @@ export async function obtenerEmpresa(): Promise<EmpresaForm> {
     departamento: '', 
     ciudad: '', 
     logo: '',
-    yape: '',
-    icono: ''
+    icono: '',
+    horaApertura: '',
+    horaCierre: '',
   };
 
   try {

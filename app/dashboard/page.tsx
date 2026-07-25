@@ -2,23 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Package, Users, TrendingUp, ShoppingBag, ArrowRight } from 'lucide-react';
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-} from 'recharts';
+import { Package, Users, TrendingUp, ShoppingBag, ArrowRight, Clock } from 'lucide-react';
+import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { productosApi, type Producto as ProductoCatalogo } from '@/api/productos';
 import { empleadosCrudApi } from '@/api/empleados';
 import { ventasApi, type Venta } from '@/api/ventas';
 import { comprasApi, type Compra } from '@/api/compra';
+import { obtenerEmpresa } from '@/api/empresa';
 
 interface StatCard {
   title: string;
@@ -44,8 +34,7 @@ function esMismoDia(fechaIso: string, referencia: Date) {
 }
 
 function esMismoMes(fechaIso: string, referencia: Date) {
-  const fecha = new Date(fechaIso);
-  return fecha.getMonth() === referencia.getMonth() && fecha.getFullYear() === referencia.getFullYear();
+  return new Date(fechaIso).getMonth() === referencia.getMonth() && new Date(fechaIso).getFullYear() === referencia.getFullYear();
 }
 
 export default function DashboardPage() {
@@ -62,6 +51,14 @@ export default function DashboardPage() {
   const [productosCatalogo, setProductosCatalogo] = useState<ProductoCatalogo[]>([]);
 
   const [heatmapRangoDias, setHeatmapRangoDias] = useState(30);
+  const [horario, setHorario] = useState<{ apertura: number; cierre: number }>({ apertura: 0, cierre: 23 });
+
+  const [horaActual, setHoraActual] = useState(new Date());
+
+  useEffect(() => {
+    const intervalo = setInterval(() => setHoraActual(new Date()), 1000);
+    return () => clearInterval(intervalo);
+  }, []);
 
   useEffect(() => {
     const cargarDatos = async () => {
@@ -106,6 +103,22 @@ export default function DashboardPage() {
     };
 
     cargarDatos();
+  }, []);
+
+  useEffect(() => {
+    obtenerEmpresa()
+      .then((empresa) => {
+        const parseHora = (valor: string, fallback: number) => {
+          if (!valor) return fallback;
+          const hora = parseInt(valor.split(':')[0], 10);
+          return isNaN(hora) ? fallback : hora;
+        };
+        setHorario({
+          apertura: parseHora(empresa.horaApertura, 0),
+          cierre: parseHora(empresa.horaCierre, 23),
+        });
+      })
+      .catch(() => setHorario({ apertura: 0, cierre: 23 }));
   }, []);
 
   const stats: StatCard[] = [
@@ -180,6 +193,10 @@ export default function DashboardPage() {
     return { matriz, max };
   }, [ventas, heatmapRangoDias]);
 
+  const horasVisibles = useMemo(() => {
+    return HORAS.filter((h) => h >= horario.apertura && h <= horario.cierre);
+  }, [horario]);
+
   const comprasVsVentas = useMemo(() => {
     const meses: { fecha: Date; label: string; ventas: number; compras: number }[] = [];
     const hoy = new Date();
@@ -213,7 +230,7 @@ export default function DashboardPage() {
     }));
   }, [ventas, compras]);
 
-  // Mapa id de producto -> categoría (usando el catálogo, ya que el detalle de venta no trae categoría)
+  // Mapa id de producto -> categoría
   const categoriaPorProductoId = useMemo(() => {
     const mapa = new Map<number, string>();
     productosCatalogo.forEach((p) => mapa.set(p.id, p.categoria?.nombre ?? 'Sin categoría'));
@@ -264,24 +281,27 @@ export default function DashboardPage() {
       .slice(0, 6);
   }, [compras]);
 
+  const horaFormateada = horaActual.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const fechaFormateada = horaActual.toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' });
+
   return (
     <div className="space-y-10">
-      {/* Tarjetas de resumen */}
-      <div className="grid grid-cols-4 gap-6">
+      {/* Tarjetas de resumen + Tarjeta de Hora */}
+      <div className="grid grid-cols-5 gap-6">
         {stats.map((stat, index) => {
           const Icon = stat.icon;
           return (
             <button
               key={index}
               onClick={() => router.push(stat.href)}
-              className="text-left bg-white p-6 rounded-2xl border border-zinc-200 shadow-xs hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex items-start justify-between group"
+              className="w-full text-left bg-white p-6 rounded-2xl border border-zinc-200 shadow-xs hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex items-start justify-between group"
             >
               <div className="space-y-3">
                 <span className="text-sm font-semibold text-zinc-400 block uppercase tracking-wider">{stat.title}</span>
                 {loading ? (
                   <div className="h-9 w-24 bg-zinc-100 rounded-lg animate-pulse" />
                 ) : (
-                  <div className="text-3xl font-extrabold text-zinc-800">{stat.value}</div>
+                  <div className="text-2xl font-extrabold text-zinc-800">{stat.value}</div>
                 )}
                 <span className="flex items-center gap-1 text-xs font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity">
                   Ver más <ArrowRight size={12} />
@@ -293,6 +313,18 @@ export default function DashboardPage() {
             </button>
           );
         })}
+
+        {/* Card independiente para la Hora del Sistema */}
+        <div className="w-full bg-white p-6 rounded-2xl border border-zinc-200 shadow-xs flex items-start justify-between">
+          <div className="space-y-3">
+            <span className="text-sm font-semibold text-zinc-400 block uppercase tracking-wider">Hora del Sistema</span>
+            <div className="text-2xl font-extrabold text-zinc-800 font-mono tabular-nums">{horaFormateada}</div>
+            <span className="text-xs font-medium text-zinc-500 capitalize block truncate max-w-[140px]">{fechaFormateada}</span>
+          </div>
+          <div className="p-3 bg-primary/10 text-primary rounded-xl">
+            <Clock size={24} />
+          </div>
+        </div>
       </div>
 
       {/* Gráficos estadísticos */}
@@ -350,7 +382,7 @@ export default function DashboardPage() {
           <div className="overflow-x-auto">
             <div className="min-w-[760px]">
               <div className="flex ml-12 mb-1">
-                {HORAS.map((h) => (
+                {horasVisibles.map((h) => (
                   <div key={h} className="flex-1 text-center text-[10px] font-medium text-zinc-400">
                     {h % 3 === 0 ? `${h}h` : ''}
                   </div>
@@ -361,7 +393,7 @@ export default function DashboardPage() {
                 <div key={dia} className="flex items-center gap-2 mb-[3px]">
                   <div className="w-10 shrink-0 text-xs font-semibold text-zinc-500">{dia}</div>
                   <div className="flex flex-1 gap-[3px]">
-                    {HORAS.map((hora) => {
+                    {horasVisibles.map((hora) => {
                       const valor = heatmap.matriz[diaIndex][hora];
                       const intensidad = heatmap.max > 0 ? valor / heatmap.max : 0;
                       return (

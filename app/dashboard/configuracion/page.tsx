@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useThemeColor, PALETTES, ThemeColor } from '@/hooks/useThemeColor';
 import { useCompanyName } from '@/hooks/useCompanyName';
-import { Paintbrush, Check, Building2, Save, Upload, Phone, Mail, MapPin, QrCode, Image as ImageIcon } from 'lucide-react';
+import { Paintbrush, Check, Building2, Save, Upload, Phone, Mail, MapPin, Clock, Image as ImageIcon } from 'lucide-react';
 import { obtenerEmpresa, guardarEmpresa, EmpresaForm } from '@/api/empresa';
 
 export default function ConfiguracionPage() {
@@ -21,8 +21,9 @@ export default function ConfiguracionPage() {
     departamento: '',
     ciudad: '',
     logo: '',
-    yape: '',
-    icono: ''
+    icono: '',
+    horaApertura: '',
+    horaCierre: '',
   });
 
   useEffect(() => {
@@ -39,11 +40,12 @@ export default function ConfiguracionPage() {
             departamento: data.departamento ?? '',
             ciudad: data.ciudad ?? '',
             logo: data.logo ?? '',
-            yape: data.yape ?? '',
-            icono: data.icono ?? ''
+            icono: data.icono ?? '',
+            horaApertura: data.horaApertura ?? '',
+            horaCierre: data.horaCierre ?? '',
           };
           setForm(datosLimpios);
-          
+
           if (datosLimpios.nombreComercial) {
             setCompanyName(datosLimpios.nombreComercial);
           }
@@ -63,8 +65,8 @@ export default function ConfiguracionPage() {
     setForm(prev => ({ ...prev, [name]: value }));
   };
 
-  // Carga genérica de imágenes a Base64 según la clave especificada ('logo', 'yape', 'icono')
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, fieldName: 'logo' | 'yape' | 'icono') => {
+  // Carga genérica de imágenes a Base64 según la clave especificada ('logo', 'icono')
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, fieldName: 'logo' | 'icono') => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -79,7 +81,7 @@ export default function ConfiguracionPage() {
     e.preventDefault();
     try {
       const data = await guardarEmpresa(form);
-      
+
       const datosLimpios = {
         ruc: data?.ruc ?? '',
         razonSocial: data?.razonSocial ?? '',
@@ -90,12 +92,13 @@ export default function ConfiguracionPage() {
         departamento: data?.departamento ?? '',
         ciudad: data?.ciudad ?? '',
         logo: data?.logo ?? '',
-        yape: data?.yape ?? '',
-        icono: data?.icono ?? ''
+        icono: data?.icono ?? '',
+        horaApertura: data?.horaApertura ?? '',
+        horaCierre: data?.horaCierre ?? '',
       };
 
       setForm(datosLimpios);
-      
+
       setCompanyName(datosLimpios.nombreComercial);
       setCompanyLogo(datosLimpios.logo);
       setCompanyIcon(datosLimpios.icono);
@@ -112,12 +115,12 @@ export default function ConfiguracionPage() {
       {/* Cabecera */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-zinc-200 pb-5">
         <div>
-          <h1 className="text-2xl font-bold text-primary tracking-tight">Configuración General</h1>
+          <h1 className="text-2xl font-bold text-primary tracking-tight">Configuración de la Empresa</h1>
           <p className="text-sm text-zinc-500 mt-1">
-            Personaliza la apariencia visual, pagos e información legal o comercial de tu botica.
+            Personaliza la apariencia visual, horario e información legal o comercial de tu botica.
           </p>
         </div>
-        <button 
+        <button
           onClick={handleGuardar}
           className="flex items-center justify-center gap-2 px-5 py-2.5 bg-primary hover:brightness-95 text-white text-sm font-semibold rounded-xl shadow-xs hover:shadow-md transition-all shrink-0 self-start sm:self-center cursor-pointer"
         >
@@ -128,10 +131,10 @@ export default function ConfiguracionPage() {
 
       {/* Grid de Distribución */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
+
         {/* COLUMNA IZQUIERDA: Formularios + Color del Tema */}
         <div className="lg:col-span-2 space-y-6">
-          
+
           {/* Bloque 1: Datos de la Empresa */}
           <div className="bg-white p-6 rounded-2xl border border-zinc-200 shadow-xs space-y-4">
             <span className="flex items-center gap-2 text-sm font-bold text-zinc-800">
@@ -186,7 +189,39 @@ export default function ConfiguracionPage() {
             </div>
           </div>
 
-          {/* Bloque 3: Color del Tema (Ubicado debajo de Contacto y Ubicación) */}
+          {/* Bloque 3: Horario de Atención */}
+          <div className="bg-white p-6 rounded-2xl border border-zinc-200 shadow-xs space-y-4">
+            <span className="flex items-center gap-2 text-sm font-bold text-zinc-800">
+              <Clock size={18} className="text-primary" />
+              Horario de Atención
+            </span>
+            <p className="text-xs text-zinc-500">Se usa para reportes y para ajustar las estadísticas del panel al horario real de la botica.</p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-zinc-600">Hora de apertura</label>
+                <input
+                  type="time"
+                  name="horaApertura"
+                  value={form.horaApertura}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-zinc-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-zinc-600">Hora de cierre</label>
+                <input
+                  type="time"
+                  name="horaCierre"
+                  value={form.horaCierre}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-zinc-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Bloque 4: Color del Tema */}
           <div className="bg-white p-6 rounded-2xl border border-zinc-200 shadow-xs space-y-4">
             <span className="flex items-center gap-2 text-sm font-bold text-zinc-800">
               <Paintbrush size={18} className="text-primary" />
@@ -198,16 +233,16 @@ export default function ConfiguracionPage() {
               {(Object.keys(PALETTES) as ThemeColor[]).map((key) => {
                 const isActive = activeTheme === key;
                 return (
-                  <button 
-                    key={key} 
-                    type="button" 
-                    onClick={() => changeTheme(key)} 
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => changeTheme(key)}
                     className="flex flex-col items-center gap-1.5 group cursor-pointer"
                   >
-                    <div 
+                    <div
                       className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${
                         isActive ? 'border-zinc-800 scale-105 shadow-sm' : 'border-transparent group-hover:scale-105'
-                      }`} 
+                      }`}
                       style={{ backgroundColor: PALETTES[key].primary }}
                     >
                       {isActive && <Check size={16} className="text-white drop-shadow-xs" />}
@@ -221,16 +256,16 @@ export default function ConfiguracionPage() {
 
         </div>
 
-        {/* COLUMNA DERECHA: Logo, Yape e Ícono */}
+        {/* COLUMNA DERECHA: Logo e Ícono */}
         <div className="space-y-6">
-          
-          {/* Bloque 4: Logo de la Empresa */}
+
+          {/* Bloque 5: Logo de la Empresa */}
           <div className="bg-white p-6 rounded-2xl border border-zinc-200 shadow-xs space-y-4">
             <span className="flex items-center gap-2 text-sm font-bold text-zinc-800">
               <Upload size={18} className="text-primary" />
               Logo Principal
             </span>
-            
+
             <div className="w-full h-28 rounded-xl border border-dashed border-zinc-300 bg-zinc-50 flex items-center justify-center p-2 overflow-hidden">
               {form.logo ? (
                 <img src={form.logo} alt="Logo Preview" className="max-w-full max-h-full object-contain" />

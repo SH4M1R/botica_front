@@ -24,6 +24,7 @@ import {
   ArrowRightLeft,
   ShieldCheck, 
   UserCheck, 
+  BarChart3,
   ShoppingBag 
 } from 'lucide-react';
 import { useSession } from '@/hooks/useSession';
@@ -32,6 +33,7 @@ import { CajaCerradaModal } from './CajaCerradaModal';
 
 const topLinks = [
   { href: '/dashboard', label: 'Panel', icon: LayoutDashboard },
+  { href: '/dashboard/reportes', label: 'Reportes', icon: BarChart3 },
 ];
 
 const cajaChildren = [
