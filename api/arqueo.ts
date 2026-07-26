@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { delay, nextId } from './_mockUtils';
 
 export interface ArqueoCaja {
   id: number;
@@ -11,37 +11,46 @@ export interface ArqueoCaja {
   estado: boolean;
 }
 
-export interface AbrirCajaPayload {
-  empleadoId: number;
-  montoInicial: number;
-}
+export interface AbrirCajaPayload { empleadoId: number; montoInicial: number; }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `Error ${res.status} en ${path}`);
-  }
-  const text = await res.text();
-  return text ? JSON.parse(text) : (undefined as T);
+let arqueos: (ArqueoCaja & { empleadoId: number })[] = [
+  { id: 1, numero: 'ARQ-0001', empleadoNombre: 'Administrador', empleadoId: 1, fechaInicio: new Date(new Date().setHours(8, 0, 0, 0)).toISOString(), montoInicial: 100, fechaFin: null, montoFinal: null, estado: true },
+  { id: 2, numero: 'ARQ-0000', empleadoNombre: 'Ana Torres', empleadoId: 2, fechaInicio: new Date(Date.now() - 86400000).toISOString(), montoInicial: 150, fechaFin: new Date(Date.now() - 86400000 + 8 * 3600000).toISOString(), montoFinal: 780.5, estado: false },
+];
+
+function sinEmpleadoId(a: ArqueoCaja & { empleadoId: number }): ArqueoCaja {
+  const { empleadoId, ...rest } = a;
+  return rest;
 }
 
 export const arqueoApi = {
-  listar: (desde?: string, hasta?: string) => {
-    const params = new URLSearchParams();
-    if (desde) params.set('desde', desde);
-    if (hasta) params.set('hasta', hasta);
-    const qs = params.toString();
-    return request<ArqueoCaja[]>(`/arqueos${qs ? `?${qs}` : ''}`);
+  listar: async (desde?: string, hasta?: string) => {
+    await delay();
+    let resultado = [...arqueos];
+    if (desde) resultado = resultado.filter((a) => a.fechaInicio >= desde);
+    if (hasta) resultado = resultado.filter((a) => a.fechaInicio <= hasta);
+    return resultado.map(sinEmpleadoId);
   },
-  pendientes: () => request<ArqueoCaja[]>('/arqueos/pendientes'),
-  abrir: (data: AbrirCajaPayload) =>
-    request<ArqueoCaja>('/arqueos/abrir', { method: 'POST', body: JSON.stringify(data) }),
-  cerrar: (id: number) =>
-    request<ArqueoCaja>(`/arqueos/${id}/cerrar`, { method: 'PUT' }),
-  cajaActual: (empleadoId: number) =>
-    request<ArqueoCaja | undefined>(`/arqueos/empleado/${empleadoId}/actual`),
+  pendientes: async () => { await delay(); return arqueos.filter((a) => a.estado).map(sinEmpleadoId); },
+  abrir: async (data: AbrirCajaPayload) => {
+    await delay();
+    const id = nextId(arqueos);
+    const nuevo = { id, numero: `ARQ-${String(id).padStart(4, '0')}`, empleadoNombre: 'Empleado Demo', empleadoId: data.empleadoId, fechaInicio: new Date().toISOString(), montoInicial: data.montoInicial, fechaFin: null, montoFinal: null, estado: true };
+    arqueos.push(nuevo);
+    return sinEmpleadoId(nuevo);
+  },
+  cerrar: async (id: number) => {
+    await delay();
+    const arqueo = arqueos.find((a) => a.id === id);
+    if (!arqueo) throw new Error('Arqueo no encontrado');
+    arqueo.estado = false;
+    arqueo.fechaFin = new Date().toISOString();
+    arqueo.montoFinal = arqueo.montoInicial + 250;
+    return sinEmpleadoId(arqueo);
+  },
+  cajaActual: async (empleadoId: number) => {
+    await delay();
+    const actual = arqueos.find((a) => a.empleadoId === empleadoId && a.estado);
+    return actual ? sinEmpleadoId(actual) : undefined;
+  },
 };

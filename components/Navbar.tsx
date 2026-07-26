@@ -7,7 +7,8 @@ import { useSession } from '@/hooks/useSession';
 
 export default function Navbar() {
   const router = useRouter();
-  const { companyName, companyIcon } = useCompanyName();
+  // Asegúrate de que useCompanyName devuelva `companyLogo` o ajusta según retorne tu hook
+  const { companyName, companyIcon } = useCompanyName(); 
   const { empleado, cerrarSesion } = useSession();
 
   const handleLogout = () => {
@@ -18,15 +19,21 @@ export default function Navbar() {
   return (
     <header className="h-16 w-full bg-white border-b border-zinc-200 flex items-center justify-between px-6 pl-72 gap-4 shadow-sm">
       
-      {/* Sección con Logo y Nombre */}
+      {/* Sección con Logo/Ícono y Nombre */}
       <div className="flex items-center gap-3">
-        {companyIcon && (
+        {companyIcon ? (
           <img 
             src={companyIcon} 
             alt="Logo Empresa" 
-            className="w-14 h-14 rounded-lg object-contain "
+            className="w-9 h-9 object-contain rounded-md"
           />
+        ) : (
+          /* Fallback en caso de que no haya logo cargado */
+          <div className="w-9 h-9 rounded-md bg-zinc-100 flex items-center justify-center text-zinc-400">
+            <UserCircle size={24} />
+          </div>
         )}
+
         <span className="text-primary font-bold tracking-tight text-lg">
           {companyName}
         </span>

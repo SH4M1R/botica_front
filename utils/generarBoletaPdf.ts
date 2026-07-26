@@ -40,13 +40,71 @@ async function cargarImagenBase64(url: string): Promise<{ data: string; ratio: n
     });
     return { data, ratio: dim.h / dim.w };
   } catch {
-    return null; // si falla el logo, seguimos sin él
+    return null;
   }
 }
 
 export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm): Promise<Blob> {
-  const alturaEstimada = 75 + venta.detalles.length * 10 + 25;
-  const doc = new jsPDF({ unit: 'mm', format: [ANCHO, Math.max(alturaEstimada, 90)] });
+  // Pre-cargar la imagen si existe para saber su altura real previa al dibujado
+  let logoImg: { data: string; ratio: number } | null = null;
+  if (empresa.logo) {
+    logoImg = await cargarImagenBase64(empresa.logo);
+  }
+
+  // 1. PRIMERA PASADA: Calcular la altura real requerida (`altoRequerido`)
+  const calcDoc = new jsPDF({ unit: 'mm', format: [ANCHO, 1000] });
+  let altoRequerido = 5; // Padding inicial top
+
+  // Logo
+  if (logoImg) {
+    const altoImg = ANCHO_UTIL * logoImg.ratio;
+    altoRequerido += altoImg + 4;
+  }
+
+  // Encabezado
+  altoRequerido += (10 * 0.42 + 1.2); // Nombre comercial / Razón social
+  if (empresa.razonSocial && empresa.nombreComercial && empresa.razonSocial !== empresa.nombreComercial) {
+    altoRequerido += (8 * 0.42 + 1.2);
+  }
+  if (empresa.ruc) altoRequerido += (8 * 0.42 + 1.2);
+  if (empresa.direccion) altoRequerido += (8 * 0.42 + 1.2);
+  if (empresa.departamento || empresa.ciudad) altoRequerido += (8 * 0.42 + 1.2);
+  if (empresa.telefono) altoRequerido += (8 * 0.42 + 1.2);
+
+  altoRequerido += 3; // Linea
+  altoRequerido += (9 * 0.42 + 1.2); // Nota de venta
+  altoRequerido += 3; // Linea
+
+  // Datos de venta
+  altoRequerido += (8 * 0.42 + 1.2); // Fecha
+  altoRequerido += (8 * 0.42 + 1.2); // Cliente
+  if (venta.cliente?.dni) altoRequerido += (8 * 0.42 + 1.2);
+  altoRequerido += (8 * 0.42 + 1.2); // Atendido por
+
+  altoRequerido += 3; // Linea
+  altoRequerido += 3.5; // Cabecera tabla
+  altoRequerido += 3; // Linea
+
+  // Detalles de los productos
+  calcDoc.setFont('courier', 'normal');
+  calcDoc.setFontSize(7.5);
+  venta.detalles.forEach((d) => {
+    const nombre = d.producto.nombre + (labelTipo[d.tipoVenta] ? ` (${labelTipo[d.tipoVenta]})` : '');
+    const lineasNombre: string[] = calcDoc.splitTextToSize(nombre, COL_PROD);
+    altoRequerido += lineasNombre.length * 3.8;
+  });
+
+  altoRequerido += 3; // Linea
+  altoRequerido += 5; // Total
+  altoRequerido += (7 * 0.42 + 1.2); // Son en letras
+  altoRequerido += 3; // Linea
+  altoRequerido += (8 * 0.42 + 1.2); // Método de pago
+  altoRequerido += 3; // Linea
+  altoRequerido += (8 * 0.42 + 1.2); // Gracias por su compra
+  altoRequerido += 8; // Margen final inferior para impresoras térmicas
+
+  // 2. SEGUNDA PASADA: Generar el PDF con el tamaño dinámico exacto
+  const doc = new jsPDF({ unit: 'mm', format: [ANCHO, Math.max(altoRequerido, 80)] });
 
   let y = 5;
   const centerX = ANCHO / 2;
@@ -70,16 +128,15 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm): Prom
     y += size * 0.42 + 1.2;
   };
 
-  if (empresa.logo) {
-    const img = await cargarImagenBase64(empresa.logo);
-    if (img) {
-      const anchoImg = ANCHO_UTIL;
-      const altoImg = anchoImg * img.ratio;
-      doc.addImage(img.data, MARGEN, y, anchoImg, altoImg);
-      y += altoImg + 4; // espacio extra para que el nombre comercial no se sobreponga
-    }
+  // Dibujar Logo
+  if (logoImg) {
+    const anchoImg = ANCHO_UTIL;
+    const altoImg = anchoImg * logoImg.ratio;
+    doc.addImage(logoImg.data, MARGEN, y, anchoImg, altoImg);
+    y += altoImg + 4;
   }
 
+  // Dibujar Datos Empresa
   texto(empresa.nombreComercial || empresa.razonSocial, { align: 'center', size: 10, bold: true });
   if (empresa.razonSocial && empresa.nombreComercial && empresa.razonSocial !== empresa.nombreComercial) {
     texto(empresa.razonSocial, { align: 'center' });
@@ -105,6 +162,7 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm): Prom
 
   linea();
 
+  // Dibujar Encabezado de Tabla
   doc.setFont('courier', 'bold');
   doc.setFontSize(7.5);
   doc.text('Producto', X_PROD, y);
@@ -115,6 +173,7 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm): Prom
 
   linea();
 
+  // Dibujar Detalles
   venta.detalles.forEach((d) => {
     const nombre = d.producto.nombre + (labelTipo[d.tipoVenta] ? ` (${labelTipo[d.tipoVenta]})` : '');
 
