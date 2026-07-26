@@ -6,12 +6,19 @@ import { ventasApi } from '@/api/ventas';
 import { obtenerEmpresa } from '@/api/empresa';
 import { generarBoletaPdf } from '@/utils/generarBoletaPdf';
 
+// Agrega esto para satisfacer a Next.js durante `output: 'export'`
+export function generateStaticParams() {
+  return [{ id: '1' }];
+}
+
 export default function BoletaImprimiblePage() {
   const params = useParams();
   const idVenta = Number(params.id);
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (!idVenta) return;
+
     (async () => {
       try {
         const [venta, empresa] = await Promise.all([
