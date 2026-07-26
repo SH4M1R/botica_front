@@ -29,6 +29,13 @@ const COMPROBANTES = [
   { value: "OTROS", label: "Otros" },
 ];
 
+// Productos referenciales para la simulación de escaneo local
+const PRODUCTOS_MOCK: Producto[] = [
+  { id: 1, nombre: 'Paracetamol 500mg', codigoBarra: '7751271000019', unidadMedida: 'CAJA', gravada: true, precioUnitario: 2.5, precioMayorista: 2.1, costoUnitario: 1.2, stockActual: 320, unidadesPorPresentacion: 100 },
+  { id: 2, nombre: 'Amoxicilina 500mg', codigoBarra: '7751271000026', unidadMedida: 'CAJA', gravada: true, precioUnitario: 6.0, precioMayorista: 5.2, costoUnitario: 4.5, stockActual: 18, unidadesPorPresentacion: 50 },
+  { id: 3, nombre: 'Ibuprofeno 400mg', codigoBarra: '7751271000033', unidadMedida: 'CAJA', gravada: true, precioUnitario: 2.8, precioMayorista: 2.3, costoUnitario: 1.5, stockActual: 150, unidadesPorPresentacion: 100 },
+];
+
 export default function GenerarCompraPage() {
   const router = useRouter();
   const { empleado, cargando: cargandoSesion } = useSession();
@@ -131,31 +138,32 @@ export default function GenerarCompraPage() {
     setDetalles((prev) => prev.filter((d) => d.key !== key));
   }
 
-  async function handleBuscarPorCodigoBarra(e: React.KeyboardEvent<HTMLInputElement>) {
+  const handleBuscarPorCodigoBarra = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter" || !codigoBarra.trim()) return;
-    try {
-      const producto = await apiFetch<Producto>(
-        `/productos/codigo-barra/${encodeURIComponent(codigoBarra)}`
-      );
+    
+    setError(null);
+    const prod = PRODUCTOS_MOCK.find((p) => p.codigoBarra === codigoBarra.trim());
+
+    if (prod) {
       setDetalles((prev) => [
         ...prev,
         {
           key: crypto.randomUUID(),
-          idProducto: producto.id,
-          nombreProducto: producto.nombre,
+          idProducto: prod.id,
+          nombreProducto: prod.nombre,
           tipoPrecio: "MAYORISTA",
-          afectacionIgv: producto.gravada ? "GRAVADO_ONEROSO" : "INAFECTO",
-          unidadMedida: producto.unidadMedida,
+          afectacionIgv: prod.gravada ? "GRAVADO_ONEROSO" : "INAFECTO",
+          unidadMedida: prod.unidadMedida,
           cantidad: 1,
-          precioUnitario: producto.precioMayorista,
-          importe: producto.precioMayorista,
+          precioUnitario: prod.costoUnitario ?? prod.precioMayorista,
+          importe: prod.costoUnitario ?? prod.precioMayorista,
         },
       ]);
       setCodigoBarra("");
-    } catch {
-      setError("No se encontró producto con ese código de barras");
+    } else {
+      setError("No se encontró producto con ese código de barras.");
     }
-  }
+  };
 
   async function handleGuardar() {
     setError(null);
@@ -210,12 +218,17 @@ export default function GenerarCompraPage() {
   }
 
   return (
-    // PANTALLA COMPLETA: h-full o min-h-[calc(100vh-4rem)] según el layout global
     <div className="flex flex-col h-[calc(100vh-5rem)] gap-3 overflow-hidden">
       {/* Header Fijo superior */}
       <div className="flex items-center justify-between shrink-0">
-        <div>
-           <h1 className="text-xl font-bold text-primary tracking-tight">Ingresar Compra</h1>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/dashboard/compras"
+            className="p-1.5 rounded-xl text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 transition-colors"
+          >
+            <ArrowLeft size={18} />
+          </Link>
+          <h1 className="text-xl font-bold text-primary tracking-tight">Ingresar Compra</h1>
         </div>
       </div>
 
@@ -401,7 +414,6 @@ export default function GenerarCompraPage() {
 
           {/* TABLA CON TAMAÑO FIJO Y SCROLL INTERNO */}
           <div className="rounded-xl border border-zinc-200 overflow-hidden">
-            {/* Altura fija con scroll vertical */}
             <div className="h-56 overflow-y-auto">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-zinc-100 shadow-xs">
@@ -451,9 +463,8 @@ export default function GenerarCompraPage() {
           </div>
         </div>
 
-        {/* FOOTER: Totales y Botón Guardar (Siempre visible al final) */}
+        {/* FOOTER: Totales y Botón Guardar */}
         <div className="pt-3 border-t border-zinc-100 shrink-0 space-y-3">
-          {/* Totales */}
           <div className="flex items-center justify-between bg-zinc-50 p-2.5 rounded-xl border border-zinc-200/80">
             <div className="flex items-center gap-8">
               <div>
@@ -475,7 +486,6 @@ export default function GenerarCompraPage() {
             </div>
           </div>
 
-          {/* Botón Guardar */}
           <div className="flex items-center justify-end">
             <button
               type="button"
@@ -489,14 +499,13 @@ export default function GenerarCompraPage() {
         </div>
       </div>
 
-      {/* Modal para AGREGAR un ítem al detalle de compra */}
+      {/* Modales */}
       <CompraProductoModal
         open={modalCompraProductoAbierto}
         onClose={() => setModalCompraProductoAbierto(false)}
         onAgregar={(item) => setDetalles((prev) => [...prev, item])}
       />
 
-      {/* Modal para CREAR un producto totalmente nuevo en el catálogo */}
       <CrearProductoModal
         open={modalCrearProductoAbierto}
         producto={null}
@@ -506,9 +515,9 @@ export default function GenerarCompraPage() {
         }}
       />
 
-      {/* Modal para CREAR Proveedor */}
       <ProveedorModal
         open={modalProveedorAbierto}
+        proveedor={null}
         onClose={() => setModalProveedorAbierto(false)}
         onSave={async () => {
           await cargarProveedores();
