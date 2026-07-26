@@ -85,7 +85,11 @@ export default function ArqueoPage() {
 
   const handleAbrirCaja = async (montoInicial: number) => {
     if (!empleadoId) throw new Error('No se pudo identificar al empleado actual.');
-    await arqueoApi.abrir({ empleadoId, montoInicial });
+    await arqueoApi.abrir({ 
+      empleadoId, 
+      montoInicial,
+      empleadoNombre: empleado?.nombre 
+    } as any);
     await cargarCajaPropia();
     await cargarDatos();
   };
@@ -109,9 +113,14 @@ export default function ArqueoPage() {
     monto: number;
   }) => {
     if (!cajaAbiertaPropia || !empleadoId) throw new Error('No tienes una caja abierta.');
+    
+    // Se completan los campos requeridos para evitar fallos de TypeScript en Render
     await movimientoCajaApi.registrar({
       arqueoCajaId: cajaAbiertaPropia.id,
       empleadoId,
+      numero: `MOV-${Date.now().toString().slice(-6)}`,
+      fechaEmision: new Date().toISOString(),
+      medioPago: 'Efectivo',
       ...data,
     });
   };
@@ -152,7 +161,7 @@ export default function ArqueoPage() {
   );
 
   const tabClass = (active: boolean) =>
-    `px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+    `px-4 py-2 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
       active ? 'bg-primary text-white' : 'bg-primary/10 text-primary hover:bg-primary/20'
     }`;
 
@@ -169,7 +178,7 @@ export default function ArqueoPage() {
           {cajaAbiertaPropia === null && (
             <button
               onClick={() => setModalAbrirOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-primary hover:bg-primary-dark rounded-lg shadow-xs hover:shadow-md transition-all"
+              className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-primary hover:bg-primary-dark rounded-lg shadow-xs hover:shadow-md transition-all cursor-pointer"
             >
               <Wallet size={16} />
               Abrir Caja
@@ -183,7 +192,7 @@ export default function ArqueoPage() {
               </span>
               <button
                 onClick={() => setModalMovimientoOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-primary hover:bg-primary-dark rounded-lg shadow-xs hover:shadow-md transition-all"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-primary hover:bg-primary-dark rounded-lg shadow-xs hover:shadow-md transition-all cursor-pointer"
               >
                 <ArrowRightLeft size={16} />
                 Registrar Movimiento
@@ -211,7 +220,7 @@ export default function ArqueoPage() {
             </div>
             <button
               onClick={() => { setPaginaActual(1); cargarDatos(); }}
-              className="px-4 py-2 text-sm font-semibold text-white bg-primary hover:bg-primary/80 rounded-lg shadow-xs hover:shadow-md transition-all"
+              className="px-4 py-2 text-sm font-semibold text-white bg-primary hover:bg-primary/80 rounded-lg shadow-xs hover:shadow-md transition-all cursor-pointer"
             >
               Mostrar
             </button>
@@ -277,7 +286,7 @@ export default function ArqueoPage() {
                       <button
                         onClick={() => handleCerrarCaja(a)}
                         title="Cerrar caja"
-                        className="w-8 h-8 flex items-center justify-center rounded-full bg-red-500 hover:bg-red-600 text-white transition-colors"
+                        className="w-8 h-8 flex items-center justify-center rounded-full bg-red-500 hover:bg-red-600 text-white transition-colors cursor-pointer"
                       >
                         <Lock size={14} />
                       </button>
@@ -285,7 +294,7 @@ export default function ArqueoPage() {
                       <button
                         onClick={() => handleImprimir(a)}
                         title="Imprimir"
-                        className="w-8 h-8 flex items-center justify-center rounded-full bg-green-500 hover:bg-green-600 text-white transition-colors"
+                        className="w-8 h-8 flex items-center justify-center rounded-full bg-green-500 hover:bg-green-600 text-white transition-colors cursor-pointer"
                       >
                         <Printer size={14} />
                       </button>
@@ -306,7 +315,7 @@ export default function ArqueoPage() {
             <button
               disabled={paginaSegura <= 1}
               onClick={() => setPaginaActual((p) => Math.max(1, p - 1))}
-              className="px-3 py-1.5 text-xs font-semibold text-zinc-600 hover:bg-zinc-100 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-1.5 text-xs font-semibold text-zinc-600 hover:bg-zinc-100 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
             >
               Anterior
             </button>
@@ -314,7 +323,7 @@ export default function ArqueoPage() {
             <button
               disabled={paginaSegura >= totalPaginas}
               onClick={() => setPaginaActual((p) => Math.min(totalPaginas, p + 1))}
-              className="px-3 py-1.5 text-xs font-semibold text-zinc-600 hover:bg-zinc-100 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-1.5 text-xs font-semibold text-zinc-600 hover:bg-zinc-100 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
             >
               Siguiente
             </button>
