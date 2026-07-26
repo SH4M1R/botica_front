@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, ComponentType } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Plus, Pencil, Trash2 } from 'lucide-react';
 import {
@@ -13,21 +13,35 @@ import AccionTerapeuticaModal from "../components/AccionTerapeuticaModal";
 
 type ItemBase = { id: number; nombre: string };
 
-const TABS = [
-  { key: 'categoria', label: 'Categoría', api: categoriasApi, Modal: CategoriaModal },
-  { key: 'laboratorio', label: 'Laboratorio', api: laboratoriosApi, Modal: LaboratorioModal },
-  { key: 'principio', label: 'Principio Activo', api: principiosActivosApi, Modal: PrincipioActivoModal },
-  { key: 'accion', label: 'Acción Terapéutica', api: accionesTerapeuticasApi, Modal: AccionTerapeuticaModal },
-] as const;
+// 1. Definimos una interfaz común para todos los modales
+export interface ModalProps {
+  open: boolean;
+  item: ItemBase | null;
+  onClose: () => void;
+  onSave: (nombre: string) => Promise<void>;
+}
+
+// 2. Anotamos la propiedad Modal explícitamente como ComponentType<ModalProps>
+const TABS: Array<{
+  key: string;
+  label: string;
+  api: typeof categoriasApi;
+  Modal: ComponentType<ModalProps>;
+}> = [
+  { key: 'categoria', label: 'Categoría', api: categoriasApi, Modal: CategoriaModal as ComponentType<ModalProps> },
+  { key: 'laboratorio', label: 'Laboratorio', api: laboratoriosApi, Modal: LaboratorioModal as ComponentType<ModalProps> },
+  { key: 'principio', label: 'Principio Activo', api: principiosActivosApi, Modal: PrincipioActivoModal as ComponentType<ModalProps> },
+  { key: 'accion', label: 'Acción Terapéutica', api: accionesTerapeuticasApi, Modal: AccionTerapeuticaModal as ComponentType<ModalProps> },
+];
 
 export default function AtributoProductoPage() {
-  const [tabActiva, setTabActiva] = useState<typeof TABS[number]['key']>('categoria');
+  const [tabActiva, setTabActiva] = useState<string>('categoria');
   const [items, setItems] = useState<ItemBase[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [itemActivo, setItemActivo] = useState<ItemBase | null>(null);
 
-  const tab = TABS.find((t) => t.key === tabActiva)!;
+  const tab = TABS.find((t) => t.key === tabActiva) || TABS[0];
 
   const cargar = async () => {
     setLoading(true);
@@ -56,7 +70,7 @@ export default function AtributoProductoPage() {
     }
   };
 
-  const Modal = tab.Modal;
+  const ModalComponent = tab.Modal;
 
   return (
     <div className="space-y-6">
@@ -130,7 +144,7 @@ export default function AtributoProductoPage() {
         )}
       </div>
 
-      <Modal open={modalOpen} item={itemActivo} onClose={() => setModalOpen(false)} onSave={handleGuardar} />
+      <ModalComponent open={modalOpen} item={itemActivo} onClose={() => setModalOpen(false)} onSave={handleGuardar} />
     </div>
   );
 }
