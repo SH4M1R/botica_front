@@ -338,7 +338,7 @@ export default function DashboardPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
               <XAxis dataKey="dia" tick={{ fontSize: 12 }} stroke="#a1a1aa" />
               <YAxis tick={{ fontSize: 12 }} stroke="#a1a1aa" />
-              <Tooltip formatter={(value: number) => formatMoneda(value)} />
+              <Tooltip formatter={(value) => formatMoneda(Number(value ?? 0))} />
               <Line type="monotone" dataKey="total" stroke="#7c3aed" strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 6 }} />
             </LineChart>
           </ResponsiveContainer>
@@ -353,7 +353,7 @@ export default function DashboardPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
               <XAxis dataKey="mes" tick={{ fontSize: 12 }} stroke="#a1a1aa" />
               <YAxis tick={{ fontSize: 12 }} stroke="#a1a1aa" />
-              <Tooltip formatter={(value: number) => formatMoneda(value)} />
+              <Tooltip formatter={(value) => formatMoneda(Number(value ?? 0))} />
               <Legend />
               <Bar dataKey="Ventas" fill="#7c3aed" radius={[6, 6, 0, 0]} />
               <Bar dataKey="Compras" fill="#f97316" radius={[6, 6, 0, 0]} />
@@ -438,7 +438,7 @@ export default function DashboardPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
               <XAxis type="number" tick={{ fontSize: 12 }} stroke="#a1a1aa" />
               <YAxis type="category" dataKey="categoria" tick={{ fontSize: 12 }} stroke="#a1a1aa" width={120} />
-              <Tooltip formatter={(value: number) => formatMoneda(value)} />
+              <Tooltip formatter={(value) => formatMoneda(Number(value ?? 0))} />
               <Bar dataKey="total" fill="#0ea5e9" radius={[0, 6, 6, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -453,7 +453,7 @@ export default function DashboardPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
               <XAxis type="number" tick={{ fontSize: 12 }} stroke="#a1a1aa" />
               <YAxis type="category" dataKey="empleado" tick={{ fontSize: 12 }} stroke="#a1a1aa" width={120} />
-              <Tooltip formatter={(value: number) => formatMoneda(value)} />
+              <Tooltip formatter={(value) => formatMoneda(Number(value ?? 0))} />
               <Bar dataKey="total" fill="#22c55e" radius={[0, 6, 6, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -468,7 +468,7 @@ export default function DashboardPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
               <XAxis dataKey="proveedor" tick={{ fontSize: 12 }} stroke="#a1a1aa" />
               <YAxis tick={{ fontSize: 12 }} stroke="#a1a1aa" />
-              <Tooltip formatter={(value: number) => formatMoneda(value)} />
+              <Tooltip formatter={(value) => formatMoneda(Number(value ?? 0))} />
               <Bar dataKey="total" fill="#f97316" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
