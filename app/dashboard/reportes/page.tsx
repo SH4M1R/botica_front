@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { FileText, Printer, Loader2 } from 'lucide-react';
 
 import * as api from '@/api/reportes';
+import { generarReporteAsistenciaPos80, generarReporteAsistenciaA4 } from '@/utils/reportes/reporteAsistencia';
+import { obtenerEmpresa } from '@/api/empresa';
 import { descargarPdf, abrirPdfEnNuevaPestana } from '@/utils/reportes/pdfBase';
 
 import { generarReporteVentasPeriodoPos80, generarReporteVentasPeriodoA4 } from '@/utils/reportes/reporteVentasPeriodo';
@@ -455,7 +457,38 @@ export default function ReportesPage() {
               })
             }
           />
+
+          <ReporteCard
+            titulo="Reporte de Asistencia"
+            descripcion="Marcaciones de entrada, salida y tardanzas del personal."
+            cargando={cargando === 'asistencia'}
+            onPos80={() =>
+              ejecutar('asistencia', async () => {
+                const [data, empresa] = await Promise.all([
+                  api.obtenerReporteAsistencia(fechaInicio, fechaFin),
+                  obtenerEmpresa(),
+                ]);
+                abrirPdfEnNuevaPestana(
+                  await generarReporteAsistenciaPos80(fechaInicio, fechaFin, data, empresa.logo || undefined)
+                );
+              })
+            }
+            onA4={() =>
+              ejecutar('asistencia', async () => {
+                const [data, empresa] = await Promise.all([
+                  api.obtenerReporteAsistencia(fechaInicio, fechaFin),
+                  obtenerEmpresa(),
+                ]);
+                descargarPdf(
+                  await generarReporteAsistenciaA4(fechaInicio, fechaFin, data, empresa.logo || undefined),
+                  `reporte-asistencia-${fechaInicio}_${fechaFin}`
+                );
+              })
+            }
+          />
         </div>
+
+        
       )}
     </div>
   );

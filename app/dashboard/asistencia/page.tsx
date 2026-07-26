@@ -1,0 +1,153 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import { LogIn, LogOut, Clock } from 'lucide-react';
+import { empleadosCrudApi } from '@/api/empleados';
+import type { Empleado } from '@/api/empleados';
+import { asistenciaApi } from '@/api/asistencia';
+import type { Asistencia } from '@/api/asistencia';
+
+export default function AsistenciaPage() {
+  const [empleados, setEmpleados] = useState<Empleado[]>([]);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [procesando, setProcesando] = useState<'entrada' | 'salida' | null>(null);
+  const [mensaje, setMensaje] = useState<{ tipo: 'exito' | 'error'; texto: string } | null>(null);
+  const [registros, setRegistros] = useState<Asistencia[]>([]);
+
+  const cargarRegistros = () => asistenciaApi.listar().then(setRegistros).catch(() => setRegistros([]));
+
+  useEffect(() => {
+    empleadosCrudApi.listarActivos().then(setEmpleados);
+    cargarRegistros();
+  }, []);
+
+  const registrosHoy = useMemo(() => {
+    const hoy = new Date().toISOString().slice(0, 10);
+    return registros.filter((r) => r.fecha === hoy);
+  }, [registros]);
+
+  const handleMarcar = async (tipo: 'entrada' | 'salida') => {
+    setMensaje(null);
+    if (!username) return setMensaje({ tipo: 'error', texto: 'Selecciona tu usuario.' });
+    if (!password) return setMensaje({ tipo: 'error', texto: 'Escribe tu contraseña.' });
+
+    setProcesando(tipo);
+    try {
+      if (tipo === 'entrada') {
+        const resultado = await asistenciaApi.marcarEntrada({ username, password });
+        if (resultado.tardanza) {
+          setMensaje({ tipo: 'error', texto: `Entrada registrada, pero llegaste con ${resultado.minutosTardanza} minuto(s) de tardanza.` });
+        } else {
+          setMensaje({ tipo: 'exito', texto: '¡Entrada registrada a tiempo!' });
+        }
+      } else {
+        await asistenciaApi.marcarSalida({ username, password });
+        setMensaje({ tipo: 'exito', texto: '¡Salida registrada correctamente!' });
+      }
+      setPassword('');
+      await cargarRegistros();
+    } catch (err) {
+      setMensaje({ tipo: 'error', texto: err instanceof Error ? err.message : 'Ocurrió un error al marcar asistencia.' });
+    } finally {
+      setProcesando(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6 max-w-2xl mx-auto">
+      <div>
+        <h1 className="text-2xl font-bold text-primary tracking-tight">Registro de asistencia</h1>
+        <p className="text-sm text-zinc-500 mt-1">Selecciona tu usuario e ingresa tu contraseña para marcar tu entrada o salida.</p>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs p-6 space-y-4">
+        <div>
+          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5">Usuario</label>
+          <select
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoComplete="off"
+            name="usuario-asistencia-no-autofill"
+            className="w-full px-3.5 py-2.5 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+          >
+            <option value="">Selecciona tu usuario...</option>
+            {empleados.map((e) => (
+              <option key={e.id} value={e.username}>{e.nombre} ({e.username})</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1.5">Contraseña</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleMarcar('entrada')}
+            placeholder="Tu contraseña"
+            autoComplete="new-password"
+            name="clave-asistencia-no-autofill"
+            data-lpignore="true"
+            data-1p-ignore="true"
+            className="w-full px-3.5 py-2.5 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+          />
+        </div>
+
+        {mensaje && (
+          <p className={`text-sm font-medium ${mensaje.tipo === 'exito' ? 'text-primary' : 'text-red-500'}`}>
+            {mensaje.texto}
+          </p>
+        )}
+
+        <div className="grid grid-cols-2 gap-3 pt-1">
+          <button
+            onClick={() => handleMarcar('entrada')}
+            disabled={procesando !== null}
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            <LogIn size={16} /> {procesando === 'entrada' ? 'Marcando...' : 'Marcar entrada'}
+          </button>
+          <button
+            onClick={() => handleMarcar('salida')}
+            disabled={procesando !== null}
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-zinc-800 text-white text-sm font-semibold hover:bg-zinc-900 transition-colors disabled:opacity-50"
+          >
+            <LogOut size={16} /> {procesando === 'salida' ? 'Marcando...' : 'Marcar salida'}
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs overflow-hidden">
+        <div className="px-5 py-3 border-b border-zinc-200 flex items-center gap-2">
+          <Clock size={16} className="text-primary" />
+          <h2 className="text-sm font-bold text-zinc-800">Marcaciones de hoy</h2>
+        </div>
+        {registrosHoy.length === 0 ? (
+          <div className="py-10 text-center text-sm text-zinc-400">Aún no hay marcaciones registradas hoy.</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                <th className="px-5 py-2.5">Empleado</th>
+                <th className="px-5 py-2.5">Entrada</th>
+                <th className="px-5 py-2.5">Salida</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {registrosHoy.map((r) => (
+                <tr key={r.id}>
+                  <td className="px-5 py-2.5 font-semibold text-zinc-800">{r.nombreEmpleado}</td>
+                  <td className="px-5 py-2.5 text-zinc-600">
+                    {r.horaEntrada ? new Date(r.horaEntrada).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                    {r.tardanza && <span className="ml-2 text-[10px] font-semibold text-red-500">Tarde ({r.minutosTardanza} min)</span>}</td>
+                  <td className="px-5 py-2.5 text-zinc-600">{r.horaSalida ? new Date(r.horaSalida).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}

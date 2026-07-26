@@ -23,6 +23,7 @@ export default function ConfiguracionPage() {
     logo: '',
     icono: '',
     horaApertura: '',
+    toleranciaMinutos: 10,
     horaCierre: '',
   });
 
@@ -43,6 +44,7 @@ export default function ConfiguracionPage() {
             icono: data.icono ?? '',
             horaApertura: data.horaApertura ?? '',
             horaCierre: data.horaCierre ?? '',
+            toleranciaMinutos: 10,
           };
           setForm(datosLimpios);
 
@@ -95,6 +97,7 @@ export default function ConfiguracionPage() {
         icono: data?.icono ?? '',
         horaApertura: data?.horaApertura ?? '',
         horaCierre: data?.horaCierre ?? '',
+        toleranciaMinutos: 10,
       };
 
       setForm(datosLimpios);
@@ -190,14 +193,7 @@ export default function ConfiguracionPage() {
           </div>
 
           {/* Bloque 3: Horario de Atención */}
-          <div className="bg-white p-6 rounded-2xl border border-zinc-200 shadow-xs space-y-4">
-            <span className="flex items-center gap-2 text-sm font-bold text-zinc-800">
-              <Clock size={18} className="text-primary" />
-              Horario de Atención
-            </span>
-            <p className="text-xs text-zinc-500">Se usa para reportes y para ajustar las estadísticas del panel al horario real de la botica.</p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-zinc-600">Hora de apertura</label>
                 <input
@@ -218,9 +214,21 @@ export default function ConfiguracionPage() {
                   className="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-zinc-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
                 />
               </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-zinc-600">Tolerancia de tardanza (min)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={60}
+                  name="toleranciaMinutos"
+                  value={form.toleranciaMinutos}
+                  onChange={(e) => setForm((prev) => ({ ...prev, toleranciaMinutos: Number(e.target.value) }))}
+                  className="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-zinc-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+                />
+              </div>
             </div>
-          </div>
 
+            
           {/* Bloque 4: Color del Tema */}
           <div className="bg-white p-6 rounded-2xl border border-zinc-200 shadow-xs space-y-4">
             <span className="flex items-center gap-2 text-sm font-bold text-zinc-800">

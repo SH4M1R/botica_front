@@ -1,6 +1,8 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
-export const ROLES = ['Administrador', 'Vendedor', 'Delivery'];
+export const ROLES = ['Administrador', 'Cajero', 'Técnico Farmaceútico', 'Delivery', 'Otro'];
+
+export const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
 export interface Empleado {
   id: number;
@@ -8,6 +10,9 @@ export interface Empleado {
   username: string;
   rol: string;
   estado: boolean;
+  horaEntrada?: string | null;
+  horaSalida?: string | null;
+  diaDescanso?: string | null;
 }
 
 export interface EmpleadoPayload {
@@ -16,6 +21,9 @@ export interface EmpleadoPayload {
   password?: string;
   rol: string;
   estado: boolean;
+  horaEntrada?: string | null;
+  horaSalida?: string | null;
+  diaDescanso?: string | null;
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {

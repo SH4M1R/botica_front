@@ -58,6 +58,11 @@ export function obtenerTopProductos(fechaInicio: string, fechaFin: string, limit
   );
 }
 
+export async function obtenerReporteAsistencia(fechaInicio: string, fechaFin: string) {
+  const { asistenciaApi } = await import('@/api/asistencia');
+  return asistenciaApi.reporte(fechaInicio, fechaFin);
+}
+
 /* ============================================================
    CAJA
    ============================================================ */

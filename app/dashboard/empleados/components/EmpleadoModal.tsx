@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import { ROLES } from '@/api/empleados';
+import { ROLES, DIAS_SEMANA } from '@/api/empleados';
 import type { Empleado, EmpleadoPayload } from '@/api/empleados';
 
 interface EmpleadoModalProps {
@@ -14,6 +14,7 @@ interface EmpleadoModalProps {
 
 const emptyForm: EmpleadoPayload = {
   nombre: '', username: '', password: '', rol: ROLES[0], estado: true,
+  horaEntrada: '', horaSalida: '', diaDescanso: DIAS_SEMANA[6],
 };
 
 export default function EmpleadoModal({ open, empleado, onClose, onSave }: EmpleadoModalProps) {
@@ -29,6 +30,9 @@ export default function EmpleadoModal({ open, empleado, onClose, onSave }: Emple
       password: '',
       rol: empleado.rol,
       estado: empleado.estado,
+      horaEntrada: empleado.horaEntrada ?? '',
+      horaSalida: empleado.horaSalida ?? '',
+      diaDescanso: empleado.diaDescanso ?? DIAS_SEMANA[6],
     } : emptyForm);
   }, [empleado, open]);
 
@@ -60,7 +64,7 @@ export default function EmpleadoModal({ open, empleado, onClose, onSave }: Emple
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/40 p-4">
-      <div className="bg-white rounded-2xl shadow-xl border border-zinc-200 w-full max-w-md">
+      <div className="bg-white rounded-2xl shadow-xl border border-zinc-200 w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200">
           <h2 className="text-lg font-bold text-zinc-800">{empleado ? 'Editar empleado' : 'Nuevo empleado'}</h2>
           <button onClick={onClose} className="text-zinc-400 hover:text-zinc-600"><X size={20} /></button>
@@ -96,6 +100,24 @@ export default function EmpleadoModal({ open, empleado, onClose, onSave }: Emple
               placeholder={empleado ? 'Dejar en blanco para no cambiarla' : ''}
               className={inputClass}
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className={labelClass}>Hora de entrada</label>
+              <input type="time" value={form.horaEntrada ?? ''} onChange={(e) => set('horaEntrada', e.target.value)} className={inputClass} />
+            </div>
+            <div className="space-y-1">
+              <label className={labelClass}>Hora de salida</label>
+              <input type="time" value={form.horaSalida ?? ''} onChange={(e) => set('horaSalida', e.target.value)} className={inputClass} />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className={labelClass}>Día de descanso</label>
+            <select value={form.diaDescanso ?? ''} onChange={(e) => set('diaDescanso', e.target.value)} className={inputClass}>
+              {DIAS_SEMANA.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
           </div>
 
           <label className="flex items-center gap-2 cursor-pointer">

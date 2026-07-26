@@ -14,6 +14,7 @@ export interface EmpresaForm {
   icono: string;
   horaApertura: string;
   horaCierre: string;
+  toleranciaMinutos: number;
 }
 
 export async function obtenerEmpresa(): Promise<EmpresaForm> {
@@ -30,6 +31,7 @@ export async function obtenerEmpresa(): Promise<EmpresaForm> {
     icono: '',
     horaApertura: '',
     horaCierre: '',
+    toleranciaMinutos: 10,
   };
 
   try {

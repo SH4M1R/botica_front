@@ -1,5 +1,6 @@
 import Sidebar from '@/components/Sidebar';
 import Navbar from '@/components/Navbar';
+import RouteGuard from '@/components/RouteGuard';
 
 export default function DashboardLayout({
   children,
@@ -17,7 +18,9 @@ export default function DashboardLayout({
       </div>
 
       <main className="absolute top-16 left-64 right-0 bottom-0 overflow-y-auto p-8">
-        {children}
+        <RouteGuard>
+          {children}
+        </RouteGuard>
       </main>
     </div>
   );
