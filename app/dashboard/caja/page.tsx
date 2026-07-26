@@ -120,7 +120,7 @@ export default function ArqueoPage() {
       empleadoId,
       numero: `MOV-${Date.now().toString().slice(-6)}`,
       fechaEmision: new Date().toISOString(),
-      medioPago: 'Efectivo',
+      medioPago: 'EFECTIVO',
       ...data,
     });
   };
