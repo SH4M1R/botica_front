@@ -5,6 +5,9 @@ import { Plus, Search, Pencil, Trash2, Power } from 'lucide-react';
 import { empleadosCrudApi } from '@/api/empleados';
 import type { Empleado, EmpleadoPayload } from '@/api/empleados';
 import EmpleadoModal from './components/EmpleadoModal';
+import Paginacion from '@/components/Paginacion';
+
+const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
 export default function EmpleadosPage() {
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
@@ -12,6 +15,10 @@ export default function EmpleadosPage() {
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [empleadoActivo, setEmpleadoActivo] = useState<Empleado | null>(null);
+
+  // Paginación
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
 
   const cargarEmpleados = async () => {
     setLoading(true);
@@ -29,6 +36,23 @@ export default function EmpleadosPage() {
     if (!q) return empleados;
     return empleados.filter((e) => e.nombre.toLowerCase().includes(q) || e.username.toLowerCase().includes(q));
   }, [empleados, search]);
+
+  // Resetear a la página 1 cuando cambia la búsqueda
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
+
+  // Cálculos para la paginación
+  const totalItems = empleadosFiltrados.length;
+  const totalPaginas = Math.ceil(totalItems / pageSize) || 1;
+  const paginaSegura = Math.min(Math.max(currentPage, 1), totalPaginas);
+
+  const itemsPaginados = useMemo(() => {
+    return empleadosFiltrados.slice(
+      (paginaSegura - 1) * pageSize,
+      paginaSegura * pageSize
+    );
+  }, [empleadosFiltrados, paginaSegura, pageSize]);
 
   const handleGuardar = async (data: EmpleadoPayload) => {
     if (empleadoActivo) await empleadosCrudApi.actualizar(empleadoActivo.id, data);
@@ -68,9 +92,9 @@ export default function EmpleadosPage() {
         </div>
         <button
           onClick={() => { setEmpleadoActivo(null); setModalOpen(true); }}
-          className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-dark text-white text-sm font-semibold rounded-xl shadow-xs hover:shadow-md transition-all"
+          className="flex items-center gap-2 px-3 py-2 bg-primary hover:bg-primary-dark text-white text-xs font-semibold rounded-lg shadow-xs transition-all"
         >
-          <Plus size={18} /> Nuevo empleado
+          <Plus size={14} /> Nuevo empleado
         </button>
       </div>
 
@@ -80,7 +104,7 @@ export default function EmpleadosPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar por nombre o usuario..."
-          className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+          className="w-full pl-9 pr-4 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
         />
       </div>
 
@@ -90,52 +114,89 @@ export default function EmpleadosPage() {
         ) : empleadosFiltrados.length === 0 ? (
           <div className="py-16 text-center text-sm text-zinc-400">No se encontraron empleados.</div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-bold text-zinc-400 uppercase tracking-wider">
-                <th className="px-5 py-3">Nombre</th>
-                <th className="px-5 py-3">Usuario</th>
-                <th className="px-5 py-3">Rol</th>
-                <th className="px-5 py-3">Estado</th>
-                <th className="px-5 py-3 text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
-              {empleadosFiltrados.map((emp) => (
-                <tr key={emp.id} className="hover:bg-zinc-50/60 transition-colors">
-                  <td className="px-5 py-3 font-semibold text-zinc-800">{emp.nombre}</td>
-                  <td className="px-5 py-3 text-zinc-600 font-mono text-xs">{emp.username}</td>
-                  <td className="px-5 py-3">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${rolBadgeClass(emp.rol)}`}>
-                      {emp.rol}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${emp.estado ? 'bg-primary/10 text-primary' : 'bg-zinc-100 text-zinc-400'}`}>
-                      {emp.estado ? 'Activo' : 'Inactivo'}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3">
-                    <div className="flex justify-end gap-1">
-                      <button
-                        onClick={() => handleToggleEstado(emp)}
-                        className={`p-2 rounded-lg transition-colors ${emp.estado ? 'text-zinc-400 hover:text-amber-500 hover:bg-amber-50' : 'text-zinc-400 hover:text-primary hover:bg-primary/10'}`}
-                        title={emp.estado ? 'Desactivar' : 'Activar'}
-                      >
-                        <Power size={16} />
-                      </button>
-                      <button onClick={() => { setEmpleadoActivo(emp); setModalOpen(true); }} className="p-2 text-zinc-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors" title="Editar">
-                        <Pencil size={16} />
-                      </button>
-                      <button onClick={() => handleEliminar(emp)} className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar definitivamente">
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
+          <>
+            <table className="w-full text-sm">
+              <colgroup>
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '20%' }} />
+              </colgroup>
+              <thead>
+                <tr className="bg-primary/10 border-b border-zinc-200 text-left text-xs font-bold text-primary uppercase tracking-wider">
+                  <th className="px-5 py-3">NOMBRE</th>
+                  <th className="px-5 py-3">USUARIO</th>
+                  <th className="px-5 py-3">ROL</th>
+                  <th className="px-5 py-3">ESTADO</th>
+                  <th className="px-5 py-3 text-right">ACCIONES</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {itemsPaginados.map((emp) => (
+                  <tr key={emp.id} className="hover:bg-zinc-50/60 transition-colors">
+                    <td className="px-5 py-3 font-semibold text-zinc-800">{emp.nombre}</td>
+                    <td className="px-5 py-3 text-zinc-600 font-mono text-xs">{emp.username}</td>
+                    <td className="px-5 py-3">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${rolBadgeClass(emp.rol)}`}>
+                        {emp.rol}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${emp.estado ? 'bg-primary/10 text-primary' : 'bg-zinc-100 text-zinc-400'}`}>
+                        {emp.estado ? 'Activo' : 'Inactivo'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex justify-end gap-1">
+                        <button
+                          onClick={() => handleToggleEstado(emp)}
+                          className={`p-2 rounded-lg transition-colors border-2 ${
+                            emp.estado 
+                              ? 'text-amber-400 hover:text-amber-500 hover:bg-amber-50' 
+                              : 'text-primary/60 hover:text-primary hover:bg-primary/10'
+                          }`}
+                          title={emp.estado ? 'Desactivar' : 'Activar'}
+                        >
+                          <Power size={16} />
+                        </button>
+                        <button 
+                          onClick={() => { setEmpleadoActivo(emp); setModalOpen(true); }} 
+                          title="Editar" 
+                          className="p-2 text-green-500 hover:text-green-600 hover:bg-green-100 rounded-lg transition-colors border-2"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button 
+                          onClick={() => handleEliminar(emp)} 
+                          title="Eliminar definitivamente" 
+                          className="p-2 text-red-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors border-2"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {!loading && empleadosFiltrados.length > 0 && (
+              <Paginacion
+                currentPage={paginaSegura}
+                totalPages={totalPaginas}
+                pageSize={pageSize}
+                totalItems={totalItems}
+                itemLabel="empleados"
+                pageSizeOptions={PAGE_SIZE_OPTIONS}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={(size) => {
+                  setPageSize(size);
+                  setCurrentPage(1);
+                }}
+              />
+            )}
+          </>
         )}
       </div>
 

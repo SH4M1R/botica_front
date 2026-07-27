@@ -3,7 +3,12 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, Package, Settings, ShoppingCart, Contact, ChevronDown, List, Plus, Users, Tags, Lock, Repeat,ArrowDownToLine,ArrowUpFromLine,Wallet, CreditCard, Receipt, ArrowRightLeft,ShieldCheck, UserCheck, BarChart3, CalendarCheck, ShoppingBag } from 'lucide-react';
+import { 
+  LayoutDashboard, Package, Settings, ShoppingCart, Contact, ChevronDown, 
+  List, Plus, Users, Tags, Lock, Repeat, ArrowDownToLine, ArrowUpFromLine, 
+  Wallet, CreditCard, Receipt, ArrowRightLeft, ShieldCheck, UserCheck, 
+  BarChart3, CalendarCheck, ShoppingBag, Menu, X 
+} from 'lucide-react';
 import { useSession } from '@/hooks/useSession';
 import { arqueoApi } from '@/api/arqueo';
 import { permisosApi } from '@/api/permisos';
@@ -53,6 +58,7 @@ export default function Sidebar() {
 
   const [permisos, setPermisos] = useState<Set<string>>(new Set());
   const [cargandoPermisos, setCargandoPermisos] = useState(true);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     if (cargandoSesion || !empleado?.id) return;
@@ -69,7 +75,11 @@ export default function Sidebar() {
       .finally(() => setCargandoPermisos(false));
   }, [empleado?.id, esAdmin, cargandoSesion]);
 
-  // Mientras se resuelve la sesión o los permisos, no se muestra nada restringido (evita parpadeo de opciones no permitidas)
+  // Cerrar sidebar móvil en cambios de ruta
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
   const tienePermiso = (ruta: string) => {
     if (esAdmin) return true;
     if (cargandoSesion || cargandoPermisos) return false;
@@ -79,7 +89,6 @@ export default function Sidebar() {
   const cajaChildrenVisibles = cajaChildren.filter((c) => tienePermiso(c.href));
   const productosChildrenVisibles = productosChildren.filter((c) => tienePermiso(c.href));
   const trasladosChildrenVisibles = trasladosChildren.filter((c) => tienePermiso(c.href));
-  // "Asignar Permisos" solo tiene sentido para el Administrador, se filtra aparte de la tabla de permisos
   const empleadosChildrenVisibles = empleadosChildren.filter((c) =>
     c.href === '/dashboard/empleados/permisos' ? esAdmin : tienePermiso(c.href)
   );
@@ -163,8 +172,8 @@ export default function Sidebar() {
   const puedeVender = !!cajaAbierta;
 
   const linkClass = (active: boolean) =>
-    `flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shrink-0 ${
-      active ? 'bg-white text-primary shadow-md' : 'text-white/75 hover:bg-white/10 hover:text-white'
+    `flex items-center gap-3 px-4 py-2.5 rounded-lg text-md font-semibold transition-all shrink-0 ${
+      active ? 'bg-white text-primary shadow-md' : 'text-white hover:bg-white/20 hover:text-white'
     }`;
 
   const handleClickGenerarVenta = (e: React.MouseEvent) => {
@@ -181,15 +190,37 @@ export default function Sidebar() {
 
   return (
     <>
-      <aside className="w-64 shrink-0 h-full bg-primary flex flex-col text-white shadow-2xl transition-colors duration-300">
+      {/* Botón flotante para abrir el menú en dispositivos móviles */}
+      <button
+        onClick={() => setMobileOpen(!mobileOpen)}
+        aria-label="Abrir menú"
+        className="lg:hidden fixed top-3 left-3 z-50 p-2.5 rounded-xl bg-primary text-white shadow-lg focus:outline-hidden"
+      >
+        {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+      </button>
+
+      {/* Fondo oscuro traslúcido para móviles al abrir el menú */}
+      {mobileOpen && (
+        <div
+          onClick={() => setMobileOpen(false)}
+          className="lg:hidden fixed inset-0 z-30 bg-black/50 backdrop-blur-xs transition-opacity"
+        />
+      )}
+
+      {/* Sidebar Responsive */}
+      <aside
+        className={`fixed lg:static top-0 left-0 z-40 w-64 shrink-0 h-full bg-primary flex flex-col text-white shadow-2xl transition-transform duration-300 ease-in-out ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        }`}
+      >
         <nav
-          className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto p-5 pt-20
+          className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto p-5 pt-16 lg:pt-20
                      [&::-webkit-scrollbar]:w-1.5
                      [&::-webkit-scrollbar-track]:bg-primary
                      [&::-webkit-scrollbar-thumb]:bg-white/25
                      [&::-webkit-scrollbar-thumb]:rounded-full
                      hover:[&::-webkit-scrollbar-thumb]:bg-white/40"
-          style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.25) transparent' }}
+          style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0) transparent' }}
         >
           {topLinksVisibles.map(({ href, label, icon: Icon }) => (
             <Link key={href} href={href} className={linkClass(pathname === href)}>

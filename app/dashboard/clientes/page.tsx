@@ -6,6 +6,9 @@ import { clientesApi } from '@/api/ventas';
 import type { Cliente } from '@/api/ventas';
 import ClienteModal from './components/ClienteModal';
 import PagoDeudaModal from './components/PagoDeudaModal';
+import Paginacion from '@/components/Paginacion';
+
+const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
 export default function ClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -15,6 +18,10 @@ export default function ClientesPage() {
   const [clienteActivo, setClienteActivo] = useState<Cliente | null>(null);
   const [pagoModalOpen, setPagoModalOpen] = useState(false);
   const [clienteParaPago, setClienteParaPago] = useState<Cliente | null>(null);
+
+  // Estados de paginación
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
 
   const cargarClientes = async () => {
     setLoading(true);
@@ -32,6 +39,23 @@ export default function ClientesPage() {
     if (!q) return clientes;
     return clientes.filter((c) => c.nombre.toLowerCase().includes(q) || c.dni?.includes(q));
   }, [clientes, search]);
+
+  // Resetear a la página 1 cuando cambia la búsqueda
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
+
+  // Cálculos de paginación
+  const totalItems = clientesFiltrados.length;
+  const totalPaginas = Math.ceil(totalItems / pageSize) || 1;
+  const paginaSegura = Math.min(Math.max(currentPage, 1), totalPaginas);
+
+  const itemsPaginados = useMemo(() => {
+    return clientesFiltrados.slice(
+      (paginaSegura - 1) * pageSize,
+      paginaSegura * pageSize
+    );
+  }, [clientesFiltrados, paginaSegura, pageSize]);
 
   const handleGuardar = async (data: { nombre: string; dni?: string; telefono?: string }) => {
     if (clienteActivo) await clientesApi.actualizar(clienteActivo.id, data);
@@ -64,7 +88,7 @@ export default function ClientesPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar por nombre o DNI..."
-          className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+          className="w-full pl-9 pr-4 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
         />
       </div>
 
@@ -74,51 +98,80 @@ export default function ClientesPage() {
         ) : clientesFiltrados.length === 0 ? (
           <div className="py-16 text-center text-sm text-zinc-400">No se encontraron clientes.</div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-bold text-zinc-400 uppercase tracking-wider">
-                <th className="px-5 py-3">Nombre</th>
-                <th className="px-5 py-3">DNI</th>
-                <th className="px-5 py-3">Teléfono</th>
-                <th className="px-5 py-3">Deuda</th>
-                <th className="px-5 py-3 text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
-              {clientesFiltrados.map((c) => (
-                <tr key={c.id} className="hover:bg-zinc-50/60 transition-colors">
-                  <td className="px-5 py-3 font-semibold text-zinc-800">{c.nombre}</td>
-                  <td className="px-5 py-3 text-zinc-600 font-mono text-xs">{c.dni ?? '—'}</td>
-                  <td className="px-5 py-3 text-zinc-600">{c.telefono ?? '—'}</td>
-                  <td className="px-5 py-3">
-                    {c.saldo && c.saldo > 0 ? (
-                      <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-500">
-                        S/ {c.saldo.toFixed(2)}
-                      </span>
-                    ) : (
-                      <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-zinc-100 text-zinc-400">Sin deuda</span>
-                    )}
-                  </td>
-                  <td className="px-5 py-3">
-                    <div className="flex justify-end gap-1">
-                      {c.saldo && c.saldo > 0 && (
+          <>
+            <table className="w-full text-sm">
+              <colgroup>
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '20%' }} />
+              </colgroup>
+              <thead>
+                <tr className="bg-primary/10 border-b border-zinc-200 text-left text-xs font-bold text-primary uppercase tracking-wider">
+                  <th className="px-5 py-3">NOMBRE</th>
+                  <th className="px-5 py-3">DNI</th>
+                  <th className="px-5 py-3">TELÉFONO</th>
+                  <th className="px-5 py-3">DEUDA</th>
+                  <th className="px-5 py-3 text-right">ACCIONES</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {itemsPaginados.map((c) => (
+                  <tr key={c.id} className="hover:bg-zinc-50/60 transition-colors">
+                    <td className="px-5 py-3 font-semibold text-zinc-800">{c.nombre}</td>
+                    <td className="px-5 py-3 text-zinc-600 font-mono text-xs">{c.dni ?? '—'}</td>
+                    <td className="px-5 py-3 text-zinc-600">{c.telefono ?? '—'}</td>
+                    <td className="px-5 py-3">
+                      {c.saldo && c.saldo > 0 ? (
+                        <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-500">
+                          S/ {c.saldo.toFixed(2)}
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-zinc-100 text-zinc-400">Sin deuda</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex justify-end gap-1">
+                      {Boolean(c.saldo && c.saldo > 0) && (
                         <button
                           onClick={() => { setClienteParaPago(c); setPagoModalOpen(true); }}
                           title="Registrar pago de deuda"
-                          className="p-2 text-zinc-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                          className="p-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors border-2"
                         >
                           <HandCoins size={16} />
                         </button>
                       )}
-                      <button onClick={() => { setClienteActivo(c); setModalOpen(true); }} className="p-2 text-zinc-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors">
-                        <Pencil size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                        <button 
+                          onClick={() => { setClienteActivo(c); setModalOpen(true); }} 
+                          title="Editar" 
+                          className="p-2 text-green-500 hover:text-green-600 hover:bg-green-100 rounded-lg transition-colors border-2"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {!loading && clientesFiltrados.length > 0 && (
+              <Paginacion
+                currentPage={paginaSegura}
+                totalPages={totalPaginas}
+                pageSize={pageSize}
+                totalItems={totalItems}
+                itemLabel="clientes"
+                pageSizeOptions={PAGE_SIZE_OPTIONS}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={(size) => {
+                  setPageSize(size);
+                  setCurrentPage(1);
+                }}
+              />
+            )}
+          </>
         )}
       </div>
 

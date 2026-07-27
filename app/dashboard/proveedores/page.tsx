@@ -1,10 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Pencil, Plus } from 'lucide-react';
+import { Search, Pencil, Plus, Trash2 } from 'lucide-react';
 import { proveedorApi } from '@/api/compra';
 import type { Proveedor, ProveedorRequestDTO } from '@/api/compra';
 import ProveedorModal from './components/ProveedorModal';
+import Paginacion from '@/components/Paginacion';
+
+const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
 export default function ProveedoresPage() {
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
@@ -12,6 +15,10 @@ export default function ProveedoresPage() {
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [proveedorActivo, setProveedorActivo] = useState<Proveedor | null>(null);
+
+  // Estados de paginación
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
 
   const cargarProveedores = async () => {
     setLoading(true);
@@ -36,6 +43,23 @@ export default function ProveedoresPage() {
         p.contactoNombres?.toLowerCase().includes(q)
     );
   }, [proveedores, search]);
+
+  // Resetear a la página 1 cuando cambia la búsqueda
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
+
+  // Cálculos de paginación
+  const totalItems = proveedoresFiltrados.length;
+  const totalPaginas = Math.ceil(totalItems / pageSize) || 1;
+  const paginaSegura = Math.min(Math.max(currentPage, 1), totalPaginas);
+
+  const itemsPaginados = useMemo(() => {
+    return proveedoresFiltrados.slice(
+      (paginaSegura - 1) * pageSize,
+      paginaSegura * pageSize
+    );
+  }, [proveedoresFiltrados, paginaSegura, pageSize]);
 
   const handleGuardar = async (data: ProveedorRequestDTO) => {
     if (proveedorActivo) {
@@ -65,9 +89,9 @@ export default function ProveedoresPage() {
         </div>
         <button
           onClick={handleNuevo}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-white font-semibold text-sm shadow-sm hover:bg-primary/90 transition-all cursor-pointer"
+          className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary text-white font-semibold text-xs shadow-xs hover:bg-primary-dark transition-all cursor-pointer"
         >
-          <Plus size={16} />
+          <Plus size={14} />
           Nuevo Proveedor
         </button>
       </div>
@@ -80,7 +104,7 @@ export default function ProveedoresPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar por nombre, documento o contacto..."
-          className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+          className="w-full pl-9 pr-4 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
         />
       </div>
 
@@ -90,47 +114,70 @@ export default function ProveedoresPage() {
         ) : proveedoresFiltrados.length === 0 ? (
           <div className="py-16 text-center text-sm text-zinc-400">No se encontraron proveedores.</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-bold text-zinc-400 uppercase tracking-wider">
-                  <th className="px-5 py-3">Nombre Proveedor</th>
-                  <th className="px-5 py-3">Documento</th>
-                  <th className="px-5 py-3">Teléfono</th>
-                  <th className="px-5 py-3">Email</th>
-                  <th className="px-5 py-3">Contacto</th>
-                  <th className="px-5 py-3">Teléfono Contacto</th>
-                  <th className="px-5 py-3 text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {proveedoresFiltrados.map((p) => (
-                  <tr key={p.id} className="hover:bg-zinc-50/60 transition-colors">
-                    <td className="px-5 py-3 font-semibold text-zinc-800">{p.nombres}</td>
-                    <td className="px-5 py-3 text-zinc-600 font-mono text-xs">
-                      {p.tipoDocumento ? `${p.tipoDocumento}: ` : ''}
-                      {p.numeroDocumento ?? '—'}
-                    </td>
-                    <td className="px-5 py-3 text-zinc-600">{p.telefono ?? '—'}</td>
-                    <td className="px-5 py-3 text-zinc-600">{p.correo ?? '—'}</td>
-                    <td className="px-5 py-3 text-zinc-600">{p.contactoNombres ?? '—'}</td>
-                    <td className="px-5 py-3 text-zinc-600">{p.contactoCelular ?? '—'}</td>
-                    <td className="px-5 py-3">
-                      <div className="flex justify-end gap-1">
-                        <button
-                          onClick={() => handleEditar(p)}
-                          className="p-2 text-zinc-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
-                          title="Editar proveedor"
-                        >
-                          <Pencil size={16} />
-                        </button>
-                      </div>
-                    </td>
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <colgroup>
+                  <col style={{ width: '42%' }} />
+                  <col style={{ width: '14%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '8%' }} />
+                </colgroup>
+                <thead>
+                  <tr className="bg-primary/10 border-b border-zinc-200 text-left text-xs font-bold text-primary uppercase tracking-wider">
+                    <th className="px-5 py-3">NOMBRE PROVEEDOR</th>
+                    <th className="px-5 py-3">DOCUMENTO</th>
+                    <th className="px-5 py-3">TELÉFONO</th>
+                    <th className="px-5 py-3">CONTACTO</th>
+                    <th className="px-5 py-3">TELÉFONO CONTACTO</th>
+                    <th className="px-5 py-3 text-right">ACCIONES</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {itemsPaginados.map((p) => (
+                    <tr key={p.id} className="hover:bg-zinc-50/60 transition-colors">
+                      <td className="px-5 py-3 font-semibold text-zinc-800">{p.nombres}</td>
+                      <td className="px-5 py-3 text-primary font-mono text-sm">
+                        {p.numeroDocumento ?? '—'}
+                      </td>
+                      <td className="px-5 py-3 text-zinc-600">{p.telefono ?? '—'}</td>
+                      <td className="px-5 py-3 text-zinc-600">{p.contactoNombres ?? '—'}</td>
+                      <td className="px-5 py-3 text-zinc-600">{p.contactoCelular ?? '—'}</td>
+                      <td className="px-5 py-3">
+                        <div className="flex justify-end gap-1">
+                          <button
+                            onClick={() => handleEditar(p)}
+                            className="p-2 text-green-500 hover:text-green-600 hover:bg-green-100 rounded-lg transition-colors border-2"
+                            title="Editar proveedor"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {!loading && proveedoresFiltrados.length > 0 && (
+              <Paginacion
+                currentPage={paginaSegura}
+                totalPages={totalPaginas}
+                pageSize={pageSize}
+                totalItems={totalItems}
+                itemLabel="proveedores"
+                pageSizeOptions={PAGE_SIZE_OPTIONS}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={(size) => {
+                  setPageSize(size);
+                  setCurrentPage(1);
+                }}
+              />
+            )}
+          </>
         )}
       </div>
 

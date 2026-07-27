@@ -8,7 +8,7 @@ export const PALETTES = {
   esmeralda: { primary: 'oklch(43.2% 0.095 166.913)' },
   indigo: { primary: 'oklch(35.9% 0.144 278.697)' },
   cyan: { primary: 'oklch(71.5% 0.143 215.221)' },
-  lima: { primary: 'oklch(64.8% 0.2 131.684)' },
+  verde: { primary: 'oklch(62.7% 0.194 149.214)' },
   purpura: { primary: 'oklch(43.8% 0.218 303.724)' },
   ambar: { primary: 'oklch(55.5% 0.163 48.998)' },
 };

@@ -6,7 +6,10 @@ import { Plus, Eye, Ban, Calendar, ChevronLeft, ChevronRight } from "lucide-reac
 import { comprasApi } from "@/api/compra";
 import type { Compra } from "@/api/compra";
 import { useSession } from "@/hooks/useSession";
-import CompraDetalleModal from "./components/CompraDetalleModal"
+import CompraDetalleModal from "./components/CompraDetalleModal";
+import Paginacion from "@/components/Paginacion";
+
+const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
 function claveDia(fecha: string) {
   return fecha.slice(0, 10);
@@ -34,7 +37,12 @@ export default function ComprasPage() {
   const [loading, setLoading] = useState(true);
   const [compraDetalle, setCompraDetalle] = useState<Compra | null>(null);
 
+  // Paginación por días
   const [paginaDia, setPaginaDia] = useState(0);
+
+  // Paginación interna de la tabla
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
 
   const cargarCompras = async () => {
     setLoading(true);
@@ -79,9 +87,14 @@ export default function ComprasPage() {
     return Array.from(mapa.entries());
   }, [comprasVisibles]);
 
-  const totalPaginas = gruposPorDia.length;
-  const paginaValida = Math.min(Math.max(0, paginaDia), Math.max(0, totalPaginas - 1));
+  const totalPaginasDias = gruposPorDia.length;
+  const paginaValida = Math.min(Math.max(0, paginaDia), Math.max(0, totalPaginasDias - 1));
   const grupoActual = gruposPorDia[paginaValida];
+
+  // Resetear la paginación interna cuando cambia el día seleccionado
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [paginaValida]);
 
   const handleSeleccionarFecha = (fechaInput: string) => {
     if (!fechaInput) return;
@@ -92,6 +105,22 @@ export default function ComprasPage() {
       alert("No se encontraron compras registradas para la fecha seleccionada.");
     }
   };
+
+  // Cálculos de paginación interna de la tabla
+  const comprasDelDiaActual = useMemo(() => {
+    return grupoActual ? grupoActual[1] : [];
+  }, [grupoActual]);
+
+  const totalItemsDia = comprasDelDiaActual.length;
+  const totalPaginasTabla = Math.ceil(totalItemsDia / pageSize) || 1;
+  const paginaSeguraTabla = Math.min(Math.max(currentPage, 1), totalPaginasTabla);
+
+  const itemsPaginados = useMemo(() => {
+    return comprasDelDiaActual.slice(
+      (paginaSeguraTabla - 1) * pageSize,
+      paginaSeguraTabla * pageSize
+    );
+  }, [comprasDelDiaActual, paginaSeguraTabla, pageSize]);
 
   return (
     <div className="space-y-6">
@@ -106,9 +135,9 @@ export default function ComprasPage() {
         </div>
         <Link
           href="/dashboard/compras/generar"
-          className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-dark text-white text-sm font-semibold rounded-xl shadow-xs hover:shadow-md transition-all"
+          className="flex items-center gap-2 px-3 py-2 bg-primary hover:bg-primary-dark text-white text-xs font-semibold rounded-lg shadow-xs transition-all"
         >
-          <Plus size={18} /> Ingresar Compra
+          <Plus size={14} /> Ingresar Compra
         </Link>
       </div>
 
@@ -122,10 +151,11 @@ export default function ComprasPage() {
         </div>
       ) : (
         <div className="space-y-4">
+          {/* Navegador de días */}
           <div className="flex items-center justify-between bg-white px-5 py-3 rounded-2xl border border-zinc-200 shadow-xs">
             <button
-              onClick={() => setPaginaDia((prev) => Math.min(totalPaginas - 1, prev + 1))}
-              disabled={paginaValida >= totalPaginas - 1}
+              onClick={() => setPaginaDia((prev) => Math.min(totalPaginasDias - 1, prev + 1))}
+              disabled={paginaValida >= totalPaginasDias - 1}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-zinc-200 text-xs font-semibold text-zinc-600 hover:bg-zinc-50 disabled:opacity-30 disabled:hover:bg-transparent transition-all"
               title="Día anterior"
             >
@@ -164,85 +194,107 @@ export default function ComprasPage() {
             </button>
           </div>
 
-          {grupoActual &&
-            (() => {
-              const [, comprasDelDia] = grupoActual;
+          {/* Tabla de compras del día */}
+          {grupoActual && (
+            <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3 bg-zinc-50 border-b border-zinc-200">
+                <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">
+                  Resumen del día
+                </span>
+              </div>
 
-              return (
-                <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs overflow-hidden">
-                  <div className="flex items-center justify-between px-5 py-3 bg-zinc-50 border-b border-zinc-200">
-                    <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">
-                      Resumen del día
-                    </span>
-                  </div>
+              <table className="w-full text-sm">
+                <colgroup>
+                  <col style={{ width: "10%" }} />
+                  <col style={{ width: esAdministrador ? "25%" : "35%" }} />
+                  <col style={{ width: "15%" }} />
+                  {esAdministrador && <col style={{ width: "10%" }} />}
+                  <col style={{ width: "10%" }} />
+                  <col style={{ width: "10%" }} />
+                  <col style={{ width: "10%" }} />
+                  <col style={{ width: "10%" }} />
+                </colgroup>
+                <thead>
+                  <tr className="bg-primary/10 border-b border-zinc-200 text-left text-xs font-bold text-primary uppercase tracking-wider">
+                    <th className="px-5 py-3">N° COMPRA</th>
+                    <th className="px-5 py-3">PROVEEDOR</th>
+                    <th className="px-5 py-3">COMPROBANTE</th>
+                    {esAdministrador && <th className="px-5 py-3">REGISTRADO POR</th>}
+                    <th className="px-5 py-3">TIPO PAGO</th>
+                    <th className="px-5 py-3 text-right">PAGAR</th>
+                    <th className="px-5 py-3">ESTADO</th>
+                    <th className="px-5 py-3 text-right">ACCIONES</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {itemsPaginados.map((c) => (
+                    <tr key={c.id} className="hover:bg-zinc-50/60 transition-colors">
+                      <td className="px-5 py-3 font-mono text-zinc-600">
+                        #{String(c.id).padStart(6, "0")}
+                      </td>
+                      <td className="px-5 py-3 font-medium text-zinc-800">
+                        {c.proveedor?.nombres ?? "No registrado"}
+                      </td>
+                      <td className="px-5 py-3 text-primary font-bold">{formatComprobante(c)}</td>
+                      {esAdministrador && (
+                        <td className="px-5 py-3 text-zinc-600">
+                          {c.empleado?.nombre ?? "—"}
+                        </td>
+                      )}
+                      <td className="px-5 py-3 font-medium text-zinc-700">{c.tipoPago}</td>
+                      <td className="px-5 py-3 text-right font-medium text-zinc-800">
+                        S/ {c.pagar.toFixed(2)}
+                      </td>
+                      <td className="px-5 py-3">
+                        <span
+                          className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                            c.estado ? "bg-primary/10 text-primary" : "bg-zinc-100 text-zinc-400"
+                          }`}
+                        >
+                          {c.estado ? "Válida" : "Anulada"}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex justify-end gap-1">
+                          <button
+                            onClick={() => setCompraDetalle(c)}
+                            className="p-2 text-green-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors border-2"
+                            title="Ver detalle"
+                          >
+                            <Eye size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleAnular(c)}
+                            disabled={!c.estado}
+                            className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors border-2 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-zinc-400"
+                            title="Anular compra"
+                          >
+                            <Ban size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
 
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-zinc-100 text-left text-xs font-bold text-zinc-400 uppercase tracking-wider">
-                        <th className="px-5 py-2.5">N° Compra</th>
-                        <th className="px-5 py-2.5">Proveedor</th>
-                        <th className="px-5 py-2.5">Comprobante</th>
-                        {esAdministrador && <th className="px-5 py-2.5">Registrado por</th>}
-                        <th className="px-5 py-2.5">Tipo Pago</th>
-                        <th className="px-5 py-2.5 text-right">Pagar</th>
-                        <th className="px-5 py-2.5">Estado</th>
-                        <th className="px-5 py-2.5 text-right">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-100">
-                      {comprasDelDia.map((c) => (
-                        <tr key={c.id} className="hover:bg-zinc-50/60 transition-colors">
-                          <td className="px-5 py-3 font-mono text-zinc-600">
-                            #{String(c.id).padStart(6, "0")}
-                          </td>
-                          <td className="px-5 py-3 font-medium text-zinc-800">
-                            {c.proveedor?.nombres ?? "No registrado"}
-                          </td>
-                          <td className="px-5 py-3 text-zinc-600">{formatComprobante(c)}</td>
-                          {esAdministrador && (
-                            <td className="px-5 py-3 text-zinc-600">
-                              {c.empleado?.nombre ?? "—"}
-                            </td>
-                          )}
-                          <td className="px-5 py-3 font-medium text-zinc-700">{c.tipoPago}</td>
-                          <td className="px-5 py-3 text-right font-medium text-zinc-800">
-                            S/ {c.pagar.toFixed(2)}
-                          </td>
-                          <td className="px-5 py-3">
-                            <span
-                              className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                                c.estado ? "bg-primary/10 text-primary" : "bg-zinc-100 text-zinc-400"
-                              }`}
-                            >
-                              {c.estado ? "Válida" : "Anulada"}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3">
-                            <div className="flex justify-end gap-1">
-                              <button
-                                onClick={() => setCompraDetalle(c)}
-                                className="p-2 text-zinc-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
-                                title="Ver detalle"
-                              >
-                                <Eye size={16} />
-                              </button>
-                              <button
-                                onClick={() => handleAnular(c)}
-                                disabled={!c.estado}
-                                className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-zinc-400"
-                                title="Anular compra"
-                              >
-                                <Ban size={16} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              );
-            })()}
+              {comprasDelDiaActual.length > 0 && (
+                <Paginacion
+                  currentPage={paginaSeguraTabla}
+                  totalPages={totalPaginasTabla}
+                  pageSize={pageSize}
+                  totalItems={totalItemsDia}
+                  itemLabel="compras"
+                  pageSizeOptions={PAGE_SIZE_OPTIONS}
+                  onPageChange={setCurrentPage}
+                  onPageSizeChange={(size) => {
+                    setPageSize(size);
+                    setCurrentPage(1);
+                  }}
+                />
+              )}
+            </div>
+          )}
         </div>
       )}
 

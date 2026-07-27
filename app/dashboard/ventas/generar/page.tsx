@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Trash2, ArrowLeft, Wallet, ShoppingCart, UserPlus, Plus, X as XIcon, CalendarDays, AlertTriangle } from 'lucide-react';
+import { Search, Trash2, Wallet, ShoppingCart, UserPlus, Plus, X as XIcon, CalendarDays, AlertTriangle, ExternalLink } from 'lucide-react';
 import { productosApi } from '@/api/productos';
 import type { Producto } from '@/api/productos';
 import { ventasApi, clientesApi } from '@/api/ventas';
@@ -76,6 +76,17 @@ export default function GenerarVentaPage() {
     []
   );
 
+  // EFECTO: Ocultar sidebar si la ventana fue abierta como popup (modo ventana flotante)
+  useEffect(() => {
+    const esPopup = window.opener !== null || new URLSearchParams(window.location.search).get('popup') === 'true';
+    if (esPopup) {
+      document.body.classList.add('is-pos-popup');
+    }
+    return () => {
+      document.body.classList.remove('is-pos-popup');
+    };
+  }, []);
+
   const cargarProductos = () => {
     productosApi.listarActivos().then(setProductos).catch(() => setProductos([]));
   };
@@ -98,6 +109,22 @@ export default function GenerarVentaPage() {
     window.open(`/dashboard/ventas/boleta/${idVenta}`, '_blank');
   };
 
+  // Función para abrir la pantalla de ventas en ventana flotante
+  const abrirVentanaFlotante = () => {
+    const width = 1280;
+    const height = 800;
+    const left = (window.screen.width - width) / 2;
+    const top = (window.screen.height - height) / 2;
+
+    const popupUrl = `${window.location.origin}${window.location.pathname}?popup=true`;
+
+    window.open(
+      popupUrl,
+      'GenerarVentaPOS',
+      `width=${width},height=${height},top=${top},left=${left},resizable=yes,scrollbars=yes,status=no,toolbar=no,menubar=no,location=no`
+    );
+  };
+
   useEffect(() => {
     if (cargando) return;
     if (!empleado) {
@@ -112,7 +139,15 @@ export default function GenerarVentaPage() {
 
   const productosVisibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    const base = q ? productos.filter((p) => p.nombre.toLowerCase().includes(q)) : productos;
+    if (!q) return productos.slice(0, 30);
+
+    const base = productos.filter((p) => {
+      const nombreMatch = p.nombre.toLowerCase().includes(q);
+      const principioMatch = p.principioActivo?.nombre.toLowerCase().includes(q);
+
+      return nombreMatch || principioMatch;
+    });
+
     return base.slice(0, 30);
   }, [busqueda, productos]);
 
@@ -270,13 +305,11 @@ export default function GenerarVentaPage() {
       setModalPagoAbierto(false);
       setVentaConfirmada(venta);
 
-      // --- RESETEAR EL FORMULARIO PARA LA SIGUIENTE VENTA ---
       setCarrito([]);
       limpiarClienteSeleccionado();
       setBusqueda('');
       setError('');
 
-      // Recargar lista de productos para refrescar stocks descontados
       cargarProductos();
       cargarClientes();
     } catch (err) {
@@ -288,7 +321,6 @@ export default function GenerarVentaPage() {
 
   const inputClass = "w-full px-3 py-2 rounded-lg border border-zinc-300 bg-zinc-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all";
 
-  // --- Bloqueo mientras se verifica la caja ---
   if (cargando || cajaAbierta === undefined) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -297,7 +329,6 @@ export default function GenerarVentaPage() {
     );
   }
 
-  // --- Bloqueo si no hay caja abierta ---
   if (cajaAbierta === null) {
     return (
       <>
@@ -315,20 +346,39 @@ export default function GenerarVentaPage() {
 
   return (
     <div className="h-full flex flex-col gap-6 overflow-hidden">
-      <header className="flex flex-col lg:flex-row lg:items-center justify-between shrink-0 gap-4">
+      {/* CSS Inyectado para ocultar la barra lateral (sidebar) cuando está en modo Popup */}
+      <style jsx global>{`
+        body.is-pos-popup aside,
+        body.is-pos-popup nav,
+        body.is-pos-popup header:not(.pos-header) {
+          display: none !important;
+        }
+        body.is-pos-popup main {
+          padding: 1rem !important;
+          margin: 0 !important;
+          width: 100vw !important;
+          height: 100vh !important;
+        }
+      `}</style>
+
+      <header className="pos-header flex flex-col lg:flex-row lg:items-center justify-between shrink-0 gap-4">
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => router.push('/dashboard/ventas')}
-            className="p-2 -ml-2 rounded-xl text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition-colors shrink-0"
-            title="Volver a ventas"
-          >
-            <ArrowLeft size={20} />
-          </button>
           <div>
-            <h1 className="text-2xl font-bold text-primary tracking-tight">
-              Generar Venta
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-primary tracking-tight">
+                Generar Venta
+              </h1>
+              
+              <button
+                type="button"
+                onClick={abrirVentanaFlotante}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-semibold border border-zinc-200 transition-colors cursor-pointer"
+                title="Abrir en ventana emergente"
+              >
+                <ExternalLink size={14} />
+                <span>Ventana flotante</span>
+              </button>
+            </div>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="text-xs text-zinc-500">Atendido por:</span>
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-100 text-zinc-700 border border-zinc-200">
@@ -338,17 +388,15 @@ export default function GenerarVentaPage() {
           </div>
         </div>
 
-        {/* Fecha del día */}
         <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-zinc-200 shadow-xs shrink-0">
           <CalendarDays size={16} className="text-primary" />
           <span className="text-sm font-semibold text-zinc-700 capitalize">{fechaHoy}</span>
         </div>
 
-        {/* Card de Selección de Cliente */}
-        <div className="w-full lg:w-[700px] bg-white rounded-xl border border-zinc-200 shadow-xs p-3.5 space-y-2.5">
+        <div className="w-full lg:w-[500px] bg-white rounded-xl border border-zinc-200 shadow-xs p-3.5 space-y-2.5">
           <div className="flex items-center justify-between text-xs">
             <div className="flex items-center gap-1.5 font-medium text-zinc-700">
-              <UserPlus size={15} className="text-zinc-400" />
+              <UserPlus size={15} className="text-primary" />
               <span>Cliente (opcional)</span>
             </div>
 
@@ -417,7 +465,7 @@ export default function GenerarVentaPage() {
               <button
                 type="button"
                 onClick={() => setClienteModalAbierto(true)}
-                className="w-full h-full flex items-center justify-center rounded-lg bg-primary hover:bg-primary/90 text-white transition-colors"
+                className="w-full h-full flex items-center justify-center rounded-lg bg-primary hover:bg-primary/90 text-white transition-colors cursor-pointer"
                 title="Registrar nuevo cliente"
               >
                 <Plus size={18} />
@@ -427,25 +475,25 @@ export default function GenerarVentaPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 flex-1 min-h-0">
-        {/* Listado de productos */}
-        <div className="lg:col-span-3 bg-white rounded-2xl border border-zinc-200 shadow-xs flex flex-col overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 h-[calc(100vh-170px)] min-h-[500px] overflow-hidden">
+        
+        <div className="lg:col-span-3 bg-white rounded-2xl border border-zinc-200 shadow-xs flex flex-col h-full overflow-hidden">
           <div className="p-4 border-b border-zinc-200 shrink-0">
             <div className="relative">
               <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400"><Search size={16} /></span>
               <input
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
-                placeholder="Buscar producto por nombre..."
-                className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-zinc-300 bg-zinc-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+                placeholder="Buscar por nombre o principio activo..."
+                className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-primary/30 bg-zinc-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
               />
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto min-h-0">
             <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-zinc-50 z-10">
-                <tr className="border-b border-zinc-200 text-left text-xs font-bold text-zinc-400 uppercase tracking-wider">
+              <thead className="sticky top-0 bg-primary z-10 shadow-xs">
+                <tr className="border-b border-zinc-200 text-left text-xs font-bold text-white uppercase tracking-wider">
                   <th className="px-4 py-2.5">Producto</th>
                   <th className="px-4 py-2.5 text-right">Precio</th>
                   <th className="px-4 py-2.5 text-right">Stock</th>
@@ -457,17 +505,22 @@ export default function GenerarVentaPage() {
                   <tr key={p.id} className="hover:bg-zinc-50/60 transition-colors">
                     <td className="px-4 py-2.5 font-medium text-zinc-700">
                       <div>{p.nombre}</div>
+                      {p.principioActivo?.nombre && (
+                        <div className="text-xs text-zinc-400 font-normal italic">
+                          {p.principioActivo.nombre}
+                        </div>
+                      )}
                       {p.vende_por_presentaciones && (p.blister_habilitado || p.caja_habilitado) && (
                         <div className="flex gap-1 mt-1">
-                          {p.blister_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-500">Blister</span>}
-                          {p.caja_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-500">Caja</span>}
+                          {p.blister_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary">Blister</span>}
+                          {p.caja_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary">Caja</span>}
                         </div>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-right text-zinc-600">S/ {p.precio_venta.toFixed(2)}</td>
                     <td className="px-4 py-2.5 text-right text-zinc-500">{p.stock}</td>
                     <td className="px-4 py-2.5 text-right">
-                      <button onClick={() => agregarProducto(p)} className="px-3 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors">
+                      <button onClick={() => agregarProducto(p)} className="px-3 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors cursor-pointer">
                         Agregar
                       </button>
                     </td>
@@ -481,8 +534,7 @@ export default function GenerarVentaPage() {
           </div>
         </div>
 
-        {/* Detalle de venta */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-zinc-200 shadow-xs flex flex-col overflow-hidden">
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-zinc-200 shadow-xs flex flex-col h-full overflow-hidden">
           <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-zinc-200 shrink-0">
             <div className="flex items-center gap-2">
               <ShoppingCart size={16} className="text-primary transition-colors duration-300" />
@@ -492,14 +544,14 @@ export default function GenerarVentaPage() {
               <button
                 type="button"
                 onClick={solicitarVaciarDetalle}
-                className="flex items-center gap-1 text-xs font-semibold text-red-500 hover:text-red-600 transition-colors"
+                className="flex items-center gap-1 text-xs font-semibold text-red-500 hover:text-red-600 transition-colors cursor-pointer"
               >
                 <Trash2 size={13} /> Vaciar
               </button>
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto divide-y divide-zinc-100">
+          <div className="flex-1 overflow-y-auto min-h-0 divide-y divide-zinc-100">
             {carrito.length === 0 ? (
               <p className="text-sm text-zinc-400 text-center py-10">Aún no agregaste productos.</p>
             ) : (
@@ -512,7 +564,7 @@ export default function GenerarVentaPage() {
                       <p className="text-sm font-medium text-zinc-800 truncate flex-1">{item.producto.nombre}</p>
                       <button
                         onClick={() => quitarProducto(item.idProducto, item.tipoVenta)}
-                        className="p-1 text-zinc-400 hover:text-red-500 transition-colors shrink-0"
+                        className="p-1 text-zinc-400 hover:text-red-500 transition-colors shrink-0 cursor-pointer"
                       >
                         <Trash2 size={15} />
                       </button>
@@ -579,7 +631,7 @@ export default function GenerarVentaPage() {
             <button
               onClick={handleAbrirPago}
               disabled={carrito.length === 0}
-              className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-primary text-sm font-semibold text-primary hover:border-primary/80 transition-all disabled:opacity-40"
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-primary text-sm font-semibold text-primary hover:border-primary/80 transition-all disabled:opacity-40 cursor-pointer"
             >
               <span className="flex items-center gap-2"><Wallet size={16} /> Método de pago</span>
               <span className="text-xs font-normal">Seleccionar</span>
@@ -610,7 +662,6 @@ export default function GenerarVentaPage() {
         onSave={handleGuardarClienteNuevo}
       />
 
-      {/* Modal propio de confirmación para "Vaciar" (reemplaza confirm() del navegador) */}
       {mostrarConfirmVaciar && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/40 p-4">
           <div className="bg-white rounded-2xl shadow-xl border border-zinc-200 w-full max-w-sm">
@@ -619,7 +670,7 @@ export default function GenerarVentaPage() {
                 <AlertTriangle size={20} className="text-amber-500" />
                 <h2 className="text-lg font-bold text-zinc-800">Vaciar detalle</h2>
               </div>
-              <button onClick={() => setMostrarConfirmVaciar(false)} className="text-zinc-400 hover:text-zinc-600 transition-colors">
+              <button onClick={() => setMostrarConfirmVaciar(false)} className="text-zinc-400 hover:text-zinc-600 transition-colors cursor-pointer">
                 <XIcon size={20} />
               </button>
             </div>
@@ -630,13 +681,13 @@ export default function GenerarVentaPage() {
               <div className="flex justify-end gap-2">
                 <button
                   onClick={() => setMostrarConfirmVaciar(false)}
-                  className="px-4 py-2 text-sm font-semibold text-zinc-600 hover:bg-zinc-100 rounded-lg transition-colors"
+                  className="px-4 py-2 text-sm font-semibold text-zinc-600 hover:bg-zinc-100 rounded-lg transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   onClick={confirmarVaciarDetalle}
-                  className="px-4 py-2 text-sm font-semibold text-white bg-red-500 hover:bg-red-600 rounded-lg shadow-xs hover:shadow-md transition-all"
+                  className="px-4 py-2 text-sm font-semibold text-white bg-red-500 hover:bg-red-600 rounded-lg shadow-xs hover:shadow-md transition-all cursor-pointer"
                 >
                   Vaciar
                 </button>

@@ -6,6 +6,9 @@ import { empleadosCrudApi } from '@/api/empleados';
 import type { Empleado } from '@/api/empleados';
 import { asistenciaApi } from '@/api/asistencia';
 import type { Asistencia } from '@/api/asistencia';
+import Paginacion from '@/components/Paginacion';
+
+const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
 export default function AsistenciaPage() {
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
@@ -14,6 +17,10 @@ export default function AsistenciaPage() {
   const [procesando, setProcesando] = useState<'entrada' | 'salida' | null>(null);
   const [mensaje, setMensaje] = useState<{ tipo: 'exito' | 'error'; texto: string } | null>(null);
   const [registros, setRegistros] = useState<Asistencia[]>([]);
+
+  // Estados de paginación
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
 
   const cargarRegistros = () => asistenciaApi.listar().then(setRegistros).catch(() => setRegistros([]));
 
@@ -26,6 +33,18 @@ export default function AsistenciaPage() {
     const hoy = new Date().toISOString().slice(0, 10);
     return registros.filter((r) => r.fecha === hoy);
   }, [registros]);
+
+  // Cálculos de paginación
+  const totalItems = registrosHoy.length;
+  const totalPaginas = Math.ceil(totalItems / pageSize) || 1;
+  const paginaSegura = Math.min(Math.max(currentPage, 1), totalPaginas);
+
+  const itemsPaginados = useMemo(() => {
+    return registrosHoy.slice(
+      (paginaSegura - 1) * pageSize,
+      paginaSegura * pageSize
+    );
+  }, [registrosHoy, paginaSegura, pageSize]);
 
   const handleMarcar = async (tipo: 'entrada' | 'salida') => {
     setMensaje(null);
@@ -69,7 +88,7 @@ export default function AsistenciaPage() {
             onChange={(e) => setUsername(e.target.value)}
             autoComplete="off"
             name="usuario-asistencia-no-autofill"
-            className="w-full px-3.5 py-2.5 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+            className="w-full px-3.5 py-2.5 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
           >
             <option value="">Selecciona tu usuario...</option>
             {empleados.map((e) => (
@@ -90,7 +109,7 @@ export default function AsistenciaPage() {
             name="clave-asistencia-no-autofill"
             data-lpignore="true"
             data-1p-ignore="true"
-            className="w-full px-3.5 py-2.5 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+            className="w-full px-3.5 py-2.5 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
           />
         </div>
 
@@ -104,14 +123,14 @@ export default function AsistenciaPage() {
           <button
             onClick={() => handleMarcar('entrada')}
             disabled={procesando !== null}
-            className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary-dark transition-all disabled:opacity-50 cursor-pointer"
           >
             <LogIn size={16} /> {procesando === 'entrada' ? 'Marcando...' : 'Marcar entrada'}
           </button>
           <button
             onClick={() => handleMarcar('salida')}
             disabled={procesando !== null}
-            className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-zinc-800 text-white text-sm font-semibold hover:bg-zinc-900 transition-colors disabled:opacity-50"
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-zinc-800 text-white text-sm font-semibold hover:bg-zinc-900 transition-all disabled:opacity-50 cursor-pointer"
           >
             <LogOut size={16} /> {procesando === 'salida' ? 'Marcando...' : 'Marcar salida'}
           </button>
@@ -119,33 +138,60 @@ export default function AsistenciaPage() {
       </div>
 
       <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs overflow-hidden">
-        <div className="px-5 py-3 border-b border-zinc-200 flex items-center gap-2">
+        <div className="px-5 py-3 border-b border-zinc-200 flex items-center gap-2 bg-zinc-50/50">
           <Clock size={16} className="text-primary" />
           <h2 className="text-sm font-bold text-zinc-800">Marcaciones de hoy</h2>
         </div>
+
         {registrosHoy.length === 0 ? (
           <div className="py-10 text-center text-sm text-zinc-400">Aún no hay marcaciones registradas hoy.</div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-bold text-zinc-400 uppercase tracking-wider">
-                <th className="px-5 py-2.5">Empleado</th>
-                <th className="px-5 py-2.5">Entrada</th>
-                <th className="px-5 py-2.5">Salida</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
-              {registrosHoy.map((r) => (
-                <tr key={r.id}>
-                  <td className="px-5 py-2.5 font-semibold text-zinc-800">{r.nombreEmpleado}</td>
-                  <td className="px-5 py-2.5 text-zinc-600">
-                    {r.horaEntrada ? new Date(r.horaEntrada).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }) : '—'}
-                    {r.tardanza && <span className="ml-2 text-[10px] font-semibold text-red-500">Tarde ({r.minutosTardanza} min)</span>}</td>
-                  <td className="px-5 py-2.5 text-zinc-600">{r.horaSalida ? new Date(r.horaSalida).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <colgroup>
+                  <col style={{ width: '50%' }} />
+                  <col style={{ width: '25%' }} />
+                  <col style={{ width: '25%' }} />
+                </colgroup>
+                <thead>
+                  <tr className="bg-primary/10 border-b border-zinc-200 text-left text-xs font-bold text-primary uppercase tracking-wider">
+                    <th className="px-5 py-3">EMPLEADO</th>
+                    <th className="px-5 py-3">ENTRADA</th>
+                    <th className="px-5 py-3">SALIDA</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {itemsPaginados.map((r) => (
+                    <tr key={r.id} className="hover:bg-zinc-50/60 transition-colors">
+                      <td className="px-5 py-3 font-semibold text-zinc-800">{r.nombreEmpleado}</td>
+                      <td className="px-5 py-3 text-zinc-600">
+                        {r.horaEntrada ? new Date(r.horaEntrada).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                        {r.tardanza && <span className="ml-2 text-[10px] font-semibold text-red-500">Tarde ({r.minutosTardanza} min)</span>}
+                      </td>
+                      <td className="px-5 py-3 text-zinc-600">
+                        {r.horaSalida ? new Date(r.horaSalida).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <Paginacion
+              currentPage={paginaSegura}
+              totalPages={totalPaginas}
+              pageSize={pageSize}
+              totalItems={totalItems}
+              itemLabel="marcaciones"
+              pageSizeOptions={PAGE_SIZE_OPTIONS}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setCurrentPage(1);
+              }}
+            />
+          </>
         )}
       </div>
     </div>
