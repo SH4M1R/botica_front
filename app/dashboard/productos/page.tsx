@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Search, Pencil, Trash2, Boxes } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, Boxes, Package, AlertTriangle, CalendarClock, Database } from 'lucide-react';
 import { productosApi } from "@/api/productos";
 import type { Producto, ProductoPayload } from "@/api/productos";
 import ProductoModal from "./components/ProductoModal";
 import { ToggleSwitch } from "./components/ProductoModal";
 import StockModal from "./components/StockModal";
+import Paginacion from "@/components/Paginacion";
 
 const productoToPayload = (p: Producto): ProductoPayload => ({
   nombre: p.nombre,
@@ -36,6 +37,45 @@ const productoToPayload = (p: Producto): ProductoPayload => ({
 });
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+
+const COL_WIDTHS = {
+  producto: '33.34%',
+  categoria: '11.11%',
+  pVenta: '11.11%',
+  pCompra: '11.11%',
+  stock: '11.11%',
+  estado: '11.11%',
+  acciones: '11.11%',
+};
+
+function StatCard({
+  icon: Icon,
+  iconBg,
+  iconColor,
+  label,
+  value,
+  sublabel,
+}: {
+  icon: typeof Package;
+  iconBg: string;
+  iconColor: string;
+  label: string;
+  value: string;
+  sublabel: string;
+}) {
+  return (
+    <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs p-5 flex items-center gap-4">
+      <div className={`p-3 rounded-xl ${iconBg} ${iconColor} shrink-0`}>
+        <Icon size={35} />
+      </div>
+      <div>
+        <p className="text-xs font-medium text-zinc-500">{label}</p>
+        <p className="text-xl font-bold text-primary">{value}</p>
+        <p className="text-xs text-zinc-500">{sublabel}</p>
+      </div>
+    </div>
+  );
+}
 
 export default function ProductosPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
@@ -103,6 +143,25 @@ export default function ProductosPage() {
   const conteoActivos = useMemo(() => productos.filter((p) => p.estado).length, [productos]);
   const conteoInactivos = useMemo(() => productos.filter((p) => !p.estado).length, [productos]);
 
+  // ---- Estadísticas para las tarjetas ----
+  const stats = useMemo(() => {
+    const totalProductosActivos = productos.filter((p) => p.estado).length;
+    const stockBajo = productos.filter((p) => p.stock <= (p.stock_minimo ?? 10)).length;
+
+    const hoy = new Date();
+    const en30Dias = new Date();
+    en30Dias.setDate(hoy.getDate() + 90);
+    const porVencer = productos.filter((p) => {
+      if (!p.fecha_vencimiento) return false;
+      const fechaVenc = new Date(p.fecha_vencimiento);
+      return fechaVenc >= hoy && fechaVenc <= en30Dias;
+    }).length;
+
+    const valorTotalInventario = productos.reduce((sum, p) => sum + p.stock * p.precio_costo, 0);
+
+    return { totalProductosActivos, stockBajo, porVencer, valorTotalInventario };
+  }, [productos]);
+
   const handleGuardar = async (data: ProductoPayload) => {
     if (productoActivo) await productosApi.actualizar(productoActivo.id, data);
     else await productosApi.crear(data);
@@ -140,7 +199,7 @@ export default function ProductosPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary tracking-tight">Productos</h1>
-          <p className="text-sm text-zinc-500 mt-1">Gestiona el inventario de la botica.</p>
+          <p className="text-sm text-zinc-500 mt-1">Gestiona el inventario y los atributos de la botica.</p>
         </div>
         <button
           onClick={() => { setProductoActivo(null); setModalOpen(true); }}
@@ -148,6 +207,42 @@ export default function ProductosPage() {
         >
           <Plus size={18} /> Nuevo producto
         </button>
+      </div>
+
+      {/* Tarjetas de estadísticas */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          icon={Package}
+          iconBg="bg-primary/10"
+          iconColor="text-primary"
+          label="Total Productos"
+          value={stats.totalProductosActivos.toLocaleString('es-PE')}
+          sublabel="Activos"
+        />
+        <StatCard
+          icon={AlertTriangle}
+          iconBg="bg-amber-50"
+          iconColor="text-amber-500"
+          label="Stock Bajo"
+          value={stats.stockBajo.toLocaleString('es-PE')}
+          sublabel="Productos"
+        />
+        <StatCard
+          icon={CalendarClock}
+          iconBg="bg-red-50"
+          iconColor="text-red-500"
+          label="Por Vencer (90 días)"
+          value={stats.porVencer.toLocaleString('es-PE')}
+          sublabel="Productos"
+        />
+        <StatCard
+          icon={Database}
+          iconBg="bg-blue-50"
+          iconColor="text-blue-500"
+          label="Valor Total Inventario"
+          value={`S/ ${stats.valorTotalInventario.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          sublabel="Valor de compra"
+        />
       </div>
 
       {/* Tabs: activos / inactivos */}
@@ -204,9 +299,18 @@ export default function ProductosPage() {
         ) : productosFiltrados.length === 0 ? (
           <div className="py-16 text-center text-sm text-zinc-400">No se encontraron productos.</div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm table-fixed">
+            <colgroup>
+              <col style={{ width: COL_WIDTHS.producto }} />
+              <col style={{ width: COL_WIDTHS.categoria }} />
+              <col style={{ width: COL_WIDTHS.pVenta }} />
+              <col style={{ width: COL_WIDTHS.pCompra }} />
+              <col style={{ width: COL_WIDTHS.stock }} />
+              <col style={{ width: COL_WIDTHS.estado }} />
+              <col style={{ width: COL_WIDTHS.acciones }} />
+            </colgroup>
             <thead>
-              <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-bold text-zinc-400 uppercase tracking-wider">
+              <tr className="bg-primary/10 border-b border-zinc-200 text-left text-xs font-bold text-primary uppercase tracking-wider">
                 <th className="px-5 py-3">Producto</th>
                 <th className="px-5 py-3">Categoría</th>
                 <th className="px-5 py-3 text-right">P. Venta</th>
@@ -219,8 +323,8 @@ export default function ProductosPage() {
             <tbody className="divide-y divide-zinc-100">
               {productosPagina.map((p) => (
                 <tr key={p.id} className="hover:bg-zinc-50/60 transition-colors">
-                  <td className="px-5 py-3 font-semibold text-zinc-800">{p.nombre}</td>
-                  <td className="px-5 py-3 text-zinc-600">{p.categoria?.nombre}</td>
+                  <td className="px-5 py-3 font-semibold text-zinc-800 truncate" title={p.nombre}>{p.nombre}</td>
+                  <td className="px-5 py-3 text-primary font-semibold truncate" title={p.categoria?.nombre}>{p.categoria?.nombre}</td>
                   <td className="px-5 py-3 text-right font-medium text-zinc-800">S/ {p.precio_venta.toFixed(2)}</td>
                   <td className="px-5 py-3 text-right text-zinc-600">S/ {p.precio_costo.toFixed(2)}</td>
                   <td className="px-5 py-3 text-right">
@@ -239,14 +343,14 @@ export default function ProductosPage() {
                       <button
                         onClick={() => { setProductoParaStock(p); setStockModalOpen(true); }}
                         title="Modificar stock"
-                        className="p-2 text-zinc-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
+                        className="p-2 text-primary hover:text-primary hover:bg-primary/10 rounded-lg transition-colors border-2"
                       >
                         <Boxes size={16} />
                       </button>
-                      <button onClick={() => { setProductoActivo(p); setModalOpen(true); }} className="p-2 text-zinc-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors">
+                      <button onClick={() => { setProductoActivo(p); setModalOpen(true); }} title="Editar Producto" className="p-2 text-green-500 hover:text-green-600 hover:bg-green-100 rounded-lg transition-colors border-2">
                         <Pencil size={16} />
                       </button>
-                      <button onClick={() => handleEliminar(p)} className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                      <button onClick={() => handleEliminar(p)} title="Borrar Producto" className="p-2 text-red-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors border-2">
                         <Trash2 size={16} />
                       </button>
                     </div>
@@ -257,43 +361,17 @@ export default function ProductosPage() {
           </table>
         )}
 
-        {/* Paginacion */}
         {!loading && productosFiltrados.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-t border-zinc-200 bg-zinc-50/50">
-            <div className="flex items-center gap-2 text-sm text-zinc-500">
-              <span>Mostrar</span>
-              <select
-                value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value))}
-                className="px-2 py-1.5 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-              >
-                {PAGE_SIZE_OPTIONS.map((n) => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
-              <span>de {productosFiltrados.length} productos</span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={paginaSegura <= 1}
-                className="px-3 py-1.5 rounded-lg border border-zinc-300 text-sm text-zinc-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-100 transition-colors"
-              >
-                Anterior
-              </button>
-              <span className="text-sm text-zinc-500">
-                Página {paginaSegura} de {totalPaginas}
-              </span>
-              <button
-                onClick={() => setCurrentPage((p) => Math.min(totalPaginas, p + 1))}
-                disabled={paginaSegura >= totalPaginas}
-                className="px-3 py-1.5 rounded-lg border border-zinc-300 text-sm text-zinc-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-100 transition-colors"
-              >
-                Siguiente
-              </button>
-            </div>
-          </div>
+          <Paginacion
+            currentPage={paginaSegura}
+            totalPages={totalPaginas}
+            pageSize={pageSize}
+            totalItems={productosFiltrados.length}
+            itemLabel="productos"
+            pageSizeOptions={PAGE_SIZE_OPTIONS}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={setPageSize}
+          />
         )}
       </div>
 

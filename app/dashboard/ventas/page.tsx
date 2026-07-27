@@ -7,6 +7,9 @@ import { ventasApi } from '@/api/ventas';
 import type { Venta } from '@/api/ventas';
 import { useSession } from '@/hooks/useSession';
 import VentaDetalleModal from './components/VentaDetalleModal';
+import Paginacion from '@/components/Paginacion';
+
+const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
 function claveDia(fecha: string) {
   return fecha.slice(0, 10); // YYYY-MM-DD
@@ -41,8 +44,12 @@ export default function VentasPage() {
   const [loading, setLoading] = useState(true);
   const [ventaDetalle, setVentaDetalle] = useState<Venta | null>(null);
 
-  // Índice 0 = día más reciente
+  // Paginación por días
   const [paginaDia, setPaginaDia] = useState(0);
+
+  // Paginación de tabla por día
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
 
   const cargarVentas = async () => {
     setLoading(true);
@@ -81,10 +88,15 @@ export default function VentasPage() {
     return Array.from(mapa.entries());
   }, [ventasVisibles]);
 
-  // Validar índice de la página
-  const totalPaginas = gruposPorDia.length;
-  const paginaValida = Math.min(Math.max(0, paginaDia), Math.max(0, totalPaginas - 1));
+  // Validar índice de la página de días
+  const totalPaginasDias = gruposPorDia.length;
+  const paginaValida = Math.min(Math.max(0, paginaDia), Math.max(0, totalPaginasDias - 1));
   const grupoActual = gruposPorDia[paginaValida];
+
+  // Resetear la paginación interna de la tabla cuando cambia el día seleccionado
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [paginaValida]);
 
   // Buscar índice de día por fecha seleccionada desde el input date
   const handleSeleccionarFecha = (fechaInput: string) => {
@@ -97,6 +109,25 @@ export default function VentasPage() {
     }
   };
 
+  // Cálculos de paginación dentro del día actual
+  const ventasDelDiaActual = useMemo(() => {
+    return grupoActual ? grupoActual[1] : [];
+  }, [grupoActual]);
+
+  const totalItemsDia = ventasDelDiaActual.length;
+  const totalPaginasTabla = Math.ceil(totalItemsDia / pageSize) || 1;
+  const paginaSeguraTabla = Math.min(Math.max(currentPage, 1), totalPaginasTabla);
+
+  const itemsPaginados = useMemo(() => {
+    return ventasDelDiaActual.slice(
+      (paginaSeguraTabla - 1) * pageSize,
+      paginaSeguraTabla * pageSize
+    );
+  }, [ventasDelDiaActual, paginaSeguraTabla, pageSize]);
+
+  // Ancho porcentual uniforme según el número de columnas visibles
+  const colWidth = esAdministrador ? '14.285%' : '16.666%';
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -108,9 +139,9 @@ export default function VentasPage() {
         </div>
         <Link
           href="/dashboard/ventas/generar"
-          className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary-dark text-white text-sm font-semibold rounded-xl shadow-xs hover:shadow-md transition-all"
+          className="flex items-center gap-2 px-3 py-2 bg-primary hover:bg-primary-dark text-white text-xs font-semibold rounded-lg shadow-xs transition-all"
         >
-          <Plus size={18} /> Generar Venta
+          <Plus size={14} /> Generar Venta
         </Link>
       </div>
 
@@ -128,8 +159,8 @@ export default function VentasPage() {
           <div className="flex items-center justify-between bg-white px-5 py-3 rounded-2xl border border-zinc-200 shadow-xs">
             {/* Botón Izquierda: Retroceder hacia Día Anterior */}
             <button
-              onClick={() => setPaginaDia((prev) => Math.min(totalPaginas - 1, prev + 1))}
-              disabled={paginaValida >= totalPaginas - 1}
+              onClick={() => setPaginaDia((prev) => Math.min(totalPaginasDias - 1, prev + 1))}
+              disabled={paginaValida >= totalPaginasDias - 1}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-zinc-200 text-xs font-semibold text-zinc-600 hover:bg-zinc-50 disabled:opacity-30 disabled:hover:bg-transparent transition-all"
               title="Día anterior"
             >
@@ -152,8 +183,6 @@ export default function VentasPage() {
                 <p className="text-sm font-bold text-zinc-800">
                   {grupoActual ? formatFechaLarga(grupoActual[0]) : ''}
                 </p>
-                <p className="text-[11px] text-zinc-400 font-medium">
-                </p>
               </div>
             </div>
 
@@ -170,82 +199,106 @@ export default function VentasPage() {
           </div>
 
           {/* Tabla del Día Seleccionado */}
-          {grupoActual && (() => {
-            const [, ventasDelDia] = grupoActual;
-            const totalDia = ventasDelDia.reduce((acc, v) => acc + (v.estado ? v.total : 0), 0);
-
-            return (
-              <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs overflow-hidden">
-                <div className="flex items-center justify-between px-5 py-3 bg-zinc-50 border-b border-zinc-200">
-                  <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">
-                    Resumen del día
-                  </span>
-                </div>
-
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-zinc-100 text-left text-xs font-bold text-zinc-400 uppercase tracking-wider">
-                      <th className="px-5 py-2.5">N° Venta</th>
-                      <th className="px-5 py-2.5">Cliente</th>
-                      {esAdministrador && <th className="px-5 py-2.5">Vendedor</th>}
-                      <th className="px-5 py-2.5">Hora</th>
-                      <th className="px-5 py-2.5">Método de pago</th>
-                      <th className="px-5 py-2.5 text-right">Total</th>
-                      <th className="px-5 py-2.5">Estado</th>
-                      <th className="px-5 py-2.5 text-right">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100">
-                    {ventasDelDia.map((v) => (
-                      <tr key={v.id} className="hover:bg-zinc-50/60 transition-colors">
-                        <td className="px-5 py-3 font-mono text-zinc-600">#{String(v.id).padStart(6, '0')}</td>
-                        <td className="px-5 py-3 font-medium text-zinc-800">{v.cliente?.nombre ?? 'No registrado'}</td>
-                        {esAdministrador && (
-                          <td className="px-5 py-3 text-zinc-600">{v.empleado?.nombre ?? '—'}</td>
-                        )}
-                        <td className="px-5 py-3 text-zinc-600">
-                          {new Date(v.fecha).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
-                        </td>
-                        <td className="px-5 py-3 font-medium text-zinc-700">
-                          {obtenerSoloMetodos(v.metodoPago)}
-                        </td>
-                        <td className="px-5 py-3 text-right font-medium text-zinc-800">S/ {v.total.toFixed(2)}</td>
-                        <td className="px-5 py-3">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${v.estado ? 'bg-primary/10 text-primary' : 'bg-zinc-100 text-zinc-400'}`}>
-                            {v.estado ? 'Válida' : 'Anulada'}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3">
-                          <div className="flex justify-end gap-1">
-                            <button onClick={() => setVentaDetalle(v)} className="p-2 text-zinc-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors" title="Ver detalle">
-                              <Eye size={16} />
-                            </button>
-
-                            <button
-                              onClick={() => window.open(`/dashboard/ventas/boleta/${v.id}`, '_blank')}
-                              className="p-2 text-zinc-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
-                              title="Ver boleta"
-                            >
-                              <Receipt size={16} />
-                            </button>
-
-                            <button
-                              onClick={() => handleAnular(v)}
-                              disabled={!v.estado}
-                              className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-zinc-400"
-                              title="Anular venta"
-                            >
-                              <Ban size={16} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          {grupoActual && (
+            <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3 bg-zinc-50 border-b border-zinc-200">
+                <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">
+                  Resumen del día
+                </span>
               </div>
-            );
-          })()}
+
+              <table className="w-full text-sm">
+                <colgroup>
+                  <col style={{ width: colWidth }} />
+                  <col style={{ width: colWidth }} />
+                  {esAdministrador && <col style={{ width: colWidth }} />}
+                  <col style={{ width: colWidth }} />
+                  <col style={{ width: colWidth }} />
+                  <col style={{ width: colWidth }} />
+                  <col style={{ width: colWidth }} />
+                </colgroup>
+                <thead>
+                  <tr className="bg-primary/10 border-b border-zinc-200 text-left text-xs font-bold text-primary uppercase tracking-wider">
+                    <th className="px-5 py-3">N° VENTA</th>
+                    <th className="px-5 py-3">CLIENTE</th>
+                    {esAdministrador && <th className="px-5 py-3">VENDEDOR</th>}
+                    <th className="px-5 py-3">HORA</th>
+                    <th className="px-5 py-3">MÉTODO DE PAGO</th>
+                    <th className="px-5 py-3 text-right">TOTAL</th>
+                    <th className="px-5 py-3">ESTADO</th>
+                    <th className="px-5 py-3 text-right">ACCIONES</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {itemsPaginados.map((v) => (
+                    <tr key={v.id} className="hover:bg-zinc-50/60 transition-colors">
+                      <td className="px-5 py-3 font-mono text-zinc-600">#{String(v.id).padStart(6, '0')}</td>
+                      <td className="px-5 py-3 font-medium text-zinc-800">{v.cliente?.nombre ?? 'No registrado'}</td>
+                      {esAdministrador && (
+                        <td className="px-5 py-3 text-zinc-600">{v.empleado?.nombre ?? '—'}</td>
+                      )}
+                      <td className="px-5 py-3 text-zinc-600">
+                        {new Date(v.fecha).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td className="px-5 py-3 font-medium text-zinc-700">
+                        {obtenerSoloMetodos(v.metodoPago)}
+                      </td>
+                      <td className="px-5 py-3 text-right font-medium text-zinc-800">S/ {v.total.toFixed(2)}</td>
+                      <td className="px-5 py-3">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${v.estado ? 'bg-primary/10 text-primary' : 'bg-zinc-100 text-zinc-400'}`}>
+                          {v.estado ? 'Válida' : 'Anulada'}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex justify-end gap-1">
+                          <button 
+                            onClick={() => setVentaDetalle(v)} 
+                            className="p-2 text-green-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors border-2" 
+                            title="Ver detalle"
+                          >
+                            <Eye size={16} />
+                          </button>
+
+                          <button
+                            onClick={() => window.open(`/dashboard/ventas/boleta/${v.id}`, '_blank')}
+                            className="p-2 text-primary hover:text-primary hover:bg-primary/10 rounded-lg transition-colors border-2"
+                            title="Ver boleta"
+                          >
+                            <Receipt size={16} />
+                          </button>
+
+                          <button
+                            onClick={() => handleAnular(v)}
+                            disabled={!v.estado}
+                            className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors border-2 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-zinc-400"
+                            title="Anular venta"
+                          >
+                            <Ban size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {ventasDelDiaActual.length > 0 && (
+                <Paginacion
+                  currentPage={paginaSeguraTabla}
+                  totalPages={totalPaginasTabla}
+                  pageSize={pageSize}
+                  totalItems={totalItemsDia}
+                  itemLabel="ventas"
+                  pageSizeOptions={PAGE_SIZE_OPTIONS}
+                  onPageChange={setCurrentPage}
+                  onPageSizeChange={(size) => {
+                    setPageSize(size);
+                    setCurrentPage(1);
+                  }}
+                />
+              )}
+            </div>
+          )}
         </div>
       )}
 

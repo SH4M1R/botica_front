@@ -1,7 +1,9 @@
 'use client';
 
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { UserCircle, LogOut } from 'lucide-react';
+import { UserCircle, LogOut, AlertTriangle, ExternalLink, X } from 'lucide-react';
 import { useCompanyName } from '@/hooks/useCompanyName';
 import { useSession } from '@/hooks/useSession';
 
@@ -10,6 +12,14 @@ export default function Navbar() {
   // Asegúrate de que useCompanyName devuelva `companyLogo` o ajusta según retorne tu hook
   const { companyName, companyIcon } = useCompanyName(); 
   const { empleado, cerrarSesion } = useSession();
+  const [modalDigemidOpen, setModalDigemidOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  const URL_DIGEMID = "https://www.digemid.minsa.gob.pe/webDigemid/publicaciones/alertas-modificaciones/alertas/";
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleLogout = () => {
     cerrarSesion();
@@ -17,49 +27,105 @@ export default function Navbar() {
   };
 
   return (
-    <header className="h-16 w-full bg-white border-b border-zinc-200 flex items-center justify-between px-6 pl-72 gap-4 shadow-sm">
-      
-      {/* Sección con Logo/Ícono y Nombre */}
-      <div className="flex items-center gap-3">
-        {companyIcon ? (
-          <img 
-            src={companyIcon} 
-            alt="Logo Empresa" 
-            className="w-9 h-9 object-contain rounded-md"
-          />
-        ) : (
-          /* Fallback en caso de que no haya logo cargado */
-          <div className="w-9 h-9 rounded-md bg-zinc-100 flex items-center justify-center text-zinc-400">
-            <UserCircle size={24} />
+    <>
+      <header className="h-16 w-full bg-white border-b border-zinc-200 flex items-center justify-between px-4 sm:px-6 pl-14 lg:pl-72 gap-2 sm:gap-4 shadow-xs transition-all">
+        
+        {/* Sección con Logo, Nombre y Botón de Alertas */}
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            {companyIcon && (
+              <img 
+                src={companyIcon} 
+                alt="Logo Empresa" 
+                className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg object-contain shrink-0"
+              />
+            )}
+            <span className="text-primary font-bold tracking-tight text-sm sm:text-lg truncate">
+              {companyName}
+            </span>
           </div>
-        )}
 
-        <span className="text-primary font-bold tracking-tight text-lg">
-          {companyName}
-        </span>
-      </div>
-
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center transition-colors duration-300">
-            <UserCircle size={20} />
-          </div>
-          <div className="text-right">
-            <p className="text-sm font-semibold text-zinc-800 leading-tight">{empleado?.nombre ?? 'Usuario'}</p>
-            <p className="text-xs text-primary uppercase tracking-wide">{empleado?.rol ?? '—'}</p>
-          </div>
+          {/* Botón Alertas DIGEMID */}
+          <button
+            onClick={() => setModalDigemidOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 text-xs sm:text-sm font-semibold transition-colors shrink-0 cursor-pointer"
+            title="Ver Alertas DIGEMID"
+          >
+            <AlertTriangle size={16} className="text-amber-600" />
+            <span className="hidden md:inline">Alertas DIGEMID</span>
+          </button>
         </div>
 
-        <div className="w-px h-8 bg-zinc-200" />
+        {/* Sección con Usuario y Botón Logout */}
+        <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center transition-colors duration-300 shrink-0">
+              <UserCircle size={20} />
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-semibold text-zinc-800 leading-tight">{empleado?.nombre ?? 'Usuario'}</p>
+              <p className="text-xs text-primary uppercase tracking-wide">{empleado?.rol ?? '—'}</p>
+            </div>
+          </div>
 
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-zinc-500 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer"
-        >
-          <LogOut size={16} />
-          Salir
-        </button>
-      </div>
-    </header>
+          <div className="w-px h-6 sm:h-8 bg-zinc-200" />
+
+          <button
+            onClick={handleLogout}
+            title="Cerrar sesión"
+            className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold text-zinc-500 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer"
+          >
+            <LogOut size={16} />
+            <span className="hidden sm:inline">Salir</span>
+          </button>
+        </div>
+      </header>
+
+      {/* Modal Iframe renderizado mediante Portal en el document.body */}
+      {mounted && modalDigemidOpen && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-2 sm:p-6 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden border border-zinc-200 animate-in fade-in zoom-in-95 duration-200">
+            
+            {/* Header del Modal */}
+            <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 text-white shrink-0">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="text-amber-400" size={20} />
+                <h3 className="font-semibold text-sm sm:text-base">Alertas y Modificaciones - DIGEMID</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={URL_DIGEMID}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors flex items-center gap-1 text-xs"
+                  title="Abrir en nueva pestaña"
+                >
+                  <ExternalLink size={16} />
+                  <span className="hidden sm:inline">Abrir web</span>
+                </a>
+                <button
+                  onClick={() => setModalDigemidOpen(false)}
+                  className="p-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                  title="Cerrar"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Contenedor del Iframe */}
+            <div className="flex-1 w-full h-full bg-zinc-100 relative">
+              <iframe
+                src={URL_DIGEMID}
+                title="Alertas DIGEMID"
+                className="w-full h-full border-none"
+                loading="lazy"
+              />
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 }

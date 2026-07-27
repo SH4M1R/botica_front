@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { User, Lock, Eye, EyeOff, LogIn, KeyRound } from 'lucide-react';
 import { empleadosApi } from '@/api/ventas';
+import { obtenerEmpresa, EmpresaForm } from '@/api/empresa';
 import { useSession } from '@/hooks/useSession';
 
 const empleadosDemo = [
@@ -16,6 +17,7 @@ export default function LoginPage() {
   const router = useRouter();
   const { iniciarSesion } = useSession();
 
+  const [empresa, setEmpresa] = useState<EmpresaForm | null>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -45,6 +47,9 @@ export default function LoginPage() {
     }
   };
 
+  const logoUrl = empresa?.logo || empresa?.icono;
+  const nombreEmpresa = empresa?.nombreComercial || empresa?.razonSocial;
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4 py-8 relative transition-colors duration-300">
       <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-2xl shadow-xl border border-zinc-200 transition-all">
@@ -52,36 +57,48 @@ export default function LoginPage() {
           <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary transition-colors duration-300">
             <LogIn size={24} />
           </div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-foreground">Iniciar Sesión</h1>
         </div>
 
+        {/* Formulario */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
-            <label htmlFor="username" className="text-sm font-semibold text-zinc-700">Usuario</label>
+            <label htmlFor="username" className="text-sm font-semibold text-zinc-700">
+              Usuario
+            </label>
             <div className="relative">
-              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400"><User size={18} /></span>
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-primary">
+                <User size={18} />
+              </span>
               <input
                 id="username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-zinc-300 bg-zinc-50 text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-sm"
+                className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-primary/50 bg-zinc-50 text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-sm"
               />
             </div>
           </div>
 
           <div className="space-y-1">
-            <label htmlFor="password" className="text-sm font-semibold text-zinc-700">Contraseña</label>
+            <label htmlFor="password" className="text-sm font-semibold text-zinc-700">
+              Contraseña
+            </label>
             <div className="relative">
-              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400"><Lock size={18} /></span>
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-primary">
+                <Lock size={18} />
+              </span>
               <input
                 id="password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-zinc-300 bg-zinc-50 text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-sm"
+                className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-primary/50 bg-zinc-50 text-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all text-sm"
               />
-              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center pr-3 text-zinc-400 hover:text-zinc-600">
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 flex items-center pr-3 text-primary/50 hover:text-primary"
+              >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
