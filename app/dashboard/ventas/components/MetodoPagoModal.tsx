@@ -90,7 +90,7 @@ export default function MetodoPagoModal({ open, total, tieneCliente, onClose, on
     if (metodoActivo === 'Efectivo') {
       detalle = vueltoCalculado > 0 
         ? `Recibido S/ ${montoIngresado.toFixed(2)} · Vuelto S/ ${vueltoCalculado.toFixed(2)}`
-        : `Pago exacto S/ ${montoCobrado.toFixed(2)}`;
+        : `Pagó S/ ${montoCobrado.toFixed(2)}`;
     } else if (metodoActivo === 'Izipay') {
       detalle = `Código Izipay: ${codigo.trim()}`;
     } else if (metodoActivo === 'Transferencia') {
@@ -98,7 +98,7 @@ export default function MetodoPagoModal({ open, total, tieneCliente, onClose, on
     } else if (metodoActivo === 'Crédito') {
       detalle = 'Monto agregado a la deuda del cliente';
     } else {
-      detalle = 'Pago vía QR (Yape/Plin)';
+      detalle = '(Yape/Plin)';
     }
 
     setPagosConfirmados((prev) => [...prev, { metodo: metodoActivo, monto: montoCobrado, detalle }]);

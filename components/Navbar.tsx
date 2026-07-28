@@ -3,11 +3,16 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { UserCircle, LogOut, AlertTriangle, ExternalLink, X } from 'lucide-react';
+import { UserCircle, LogOut, AlertTriangle, ExternalLink, X, Menu } from 'lucide-react';
 import { useCompanyName } from '@/hooks/useCompanyName';
 import { useSession } from '@/hooks/useSession';
 
-export default function Navbar() {
+// Interface para las propiedades del Navbar
+interface NavbarProps {
+  onToggleSidebar?: () => void;
+}
+
+export default function Navbar({ onToggleSidebar }: NavbarProps) {
   const router = useRouter();
   const { companyName, companyIcon } = useCompanyName();
   const { empleado, cerrarSesion } = useSession();
@@ -27,10 +32,21 @@ export default function Navbar() {
 
   return (
     <>
-      <header className="h-16 w-full bg-white border-b border-zinc-200 flex items-center justify-between px-4 sm:px-6 pl-14 lg:pl-72 gap-2 sm:gap-4 shadow-xs transition-all">
+      <header className="h-16 w-full bg-white border-b border-zinc-200 flex items-center justify-between px-4 sm:px-6 gap-2 sm:gap-4 shadow-xs transition-all">
         
-        {/* Sección con Logo, Nombre y Botón de Alertas */}
+        {/* Sección con Hamburguesa, Logo, Nombre y Botón de Alertas */}
         <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          
+          {/* Botón Hamburguesa Móvil */}
+          <button
+            type="button"
+            onClick={onToggleSidebar}
+            className="p-2 -ml-1 rounded-lg text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 md:hidden cursor-pointer"
+            aria-label="Abrir menú"
+          >
+            <Menu size={22} />
+          </button>
+
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {companyIcon && (
               <img 
@@ -47,7 +63,7 @@ export default function Navbar() {
           {/* Botón Alertas DIGEMID */}
           <button
             onClick={() => setModalDigemidOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 text-xs sm:text-sm font-semibold transition-colors shrink-0 cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 text-xs sm:text-sm font-semibold transition-colors shrink-0 cursor-pointer ml-1 sm:ml-2"
             title="Ver Alertas DIGEMID"
           >
             <AlertTriangle size={16} className="text-amber-600" />

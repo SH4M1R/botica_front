@@ -6,8 +6,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { 
   LayoutDashboard, Package, Settings, ShoppingCart, Contact, ChevronDown, 
   List, Plus, Users, Tags, Lock, Repeat, ArrowDownToLine, ArrowUpFromLine, 
-  Wallet, CreditCard, Receipt, ArrowRightLeft, ShieldCheck, UserCheck, 
-  BarChart3, CalendarCheck, ShoppingBag, Menu, X 
+  CreditCard, Receipt, ArrowRightLeft, ShieldCheck, UserCheck, 
+  BarChart3, CalendarCheck, ShoppingBag, Wallet 
 } from 'lucide-react';
 import { useSession } from '@/hooks/useSession';
 import { arqueoApi } from '@/api/arqueo';
@@ -49,7 +49,11 @@ const EVENTO_CAJA_ACTUALIZADA = 'caja:actualizada';
 
 type MenuId = 'caja' | 'ventas' | 'compras' | 'productos' | 'empleados' | 'traslados' | null;
 
-export default function Sidebar() {
+interface SidebarProps {
+  onClose?: () => void;
+}
+
+export default function Sidebar({ onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { empleado, cargando: cargandoSesion } = useSession();
@@ -58,7 +62,6 @@ export default function Sidebar() {
 
   const [permisos, setPermisos] = useState<Set<string>>(new Set());
   const [cargandoPermisos, setCargandoPermisos] = useState(true);
-  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     if (cargandoSesion || !empleado?.id) return;
@@ -74,11 +77,6 @@ export default function Sidebar() {
       .catch(() => setPermisos(new Set()))
       .finally(() => setCargandoPermisos(false));
   }, [empleado?.id, esAdmin, cargandoSesion]);
-
-  // Cerrar sidebar móvil en cambios de ruta
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
 
   const tienePermiso = (ruta: string) => {
     if (esAdmin) return true;
@@ -180,50 +178,35 @@ export default function Sidebar() {
     if (!puedeVender) {
       e.preventDefault();
       setModalCajaOpen(true);
+    } else if (onClose) {
+      onClose();
     }
+  };
+
+  const handleLinkClick = () => {
+    if (onClose) onClose();
   };
 
   const irAArqueo = () => {
     setModalCajaOpen(false);
+    if (onClose) onClose();
     router.push('/dashboard/caja');
   };
 
   return (
     <>
-      {/* Botón flotante para abrir el menú en dispositivos móviles */}
-      <button
-        onClick={() => setMobileOpen(!mobileOpen)}
-        aria-label="Abrir menú"
-        className="lg:hidden fixed top-3 left-3 z-50 p-2.5 rounded-xl bg-primary text-white shadow-lg focus:outline-hidden"
-      >
-        {mobileOpen ? <X size={20} /> : <Menu size={20} />}
-      </button>
-
-      {/* Fondo oscuro traslúcido para móviles al abrir el menú */}
-      {mobileOpen && (
-        <div
-          onClick={() => setMobileOpen(false)}
-          className="lg:hidden fixed inset-0 z-30 bg-black/50 backdrop-blur-xs transition-opacity"
-        />
-      )}
-
-      {/* Sidebar Responsive */}
-      <aside
-        className={`fixed lg:static top-0 left-0 z-40 w-64 shrink-0 h-full bg-primary flex flex-col text-white shadow-2xl transition-transform duration-300 ease-in-out ${
-          mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        }`}
-      >
+      <div className="flex flex-col h-full bg-primary text-white shadow-2xl">
         <nav
-          className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto p-5 pt-16 lg:pt-20
+          className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto p-5
                      [&::-webkit-scrollbar]:w-1.5
                      [&::-webkit-scrollbar-track]:bg-primary
                      [&::-webkit-scrollbar-thumb]:bg-white/25
                      [&::-webkit-scrollbar-thumb]:rounded-full
                      hover:[&::-webkit-scrollbar-thumb]:bg-white/40"
-          style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0) transparent' }}
+          style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.25) transparent' }}
         >
           {topLinksVisibles.map(({ href, label, icon: Icon }) => (
-            <Link key={href} href={href} className={linkClass(pathname === href)}>
+            <Link key={href} href={href} onClick={handleLinkClick} className={linkClass(pathname === href)}>
               <Icon size={18} />
               {label}
             </Link>
@@ -244,7 +227,7 @@ export default function Sidebar() {
               {menuAbierto === 'caja' && (
                 <div className="flex flex-col gap-1 pl-4">
                   {cajaChildrenVisibles.map(({ href, label, icon: Icon }) => (
-                    <Link key={href} href={href} className={linkClass(pathname === href)}>
+                    <Link key={href} href={href} onClick={handleLinkClick} className={linkClass(pathname === href)}>
                       <Icon size={16} />
                       <span className="text-sm">{label}</span>
                     </Link>
@@ -269,7 +252,7 @@ export default function Sidebar() {
               {menuAbierto === 'ventas' && (
                 <div className="flex flex-col gap-1 pl-4">
                   {ventasLinksVisibles.listado && (
-                    <Link href="/dashboard/ventas" className={linkClass(pathname === '/dashboard/ventas')}>
+                    <Link href="/dashboard/ventas" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/ventas')}>
                       <List size={16} />
                       <span className="text-sm">Listado de ventas</span>
                     </Link>
@@ -288,7 +271,7 @@ export default function Sidebar() {
                   )}
 
                   {ventasLinksVisibles.clientes && (
-                    <Link href="/dashboard/clientes" className={linkClass(pathname === '/dashboard/clientes')}>
+                    <Link href="/dashboard/clientes" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/clientes')}>
                       <Contact size={16} />
                       <span className="text-sm">Clientes</span>
                     </Link>
@@ -313,21 +296,21 @@ export default function Sidebar() {
               {menuAbierto === 'compras' && (
                 <div className="flex flex-col gap-1 pl-4">
                   {comprasLinksVisibles.listado && (
-                    <Link href="/dashboard/compras" className={linkClass(pathname === '/dashboard/compras')}>
+                    <Link href="/dashboard/compras" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/compras')}>
                       <List size={16} />
                       <span className="text-sm">Listado de Compras</span>
                     </Link>
                   )}
 
                   {comprasLinksVisibles.generar && (
-                    <Link href="/dashboard/compras/generar" className={linkClass(pathname === '/dashboard/compras/generar')}>
+                    <Link href="/dashboard/compras/generar" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/compras/generar')}>
                       <Plus size={16} />
                       <span className="text-sm">Ingresar Compra</span>
                     </Link>
                   )}
 
                   {comprasLinksVisibles.proveedores && (
-                    <Link href="/dashboard/proveedores" className={linkClass(pathname === '/dashboard/proveedores')}>
+                    <Link href="/dashboard/proveedores" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/proveedores')}>
                       <Contact size={16} />
                       <span className="text-sm">Proveedores</span>
                     </Link>
@@ -352,7 +335,7 @@ export default function Sidebar() {
               {menuAbierto === 'productos' && (
                 <div className="flex flex-col gap-1 pl-4">
                   {productosChildrenVisibles.map(({ href, label, icon: Icon }) => (
-                    <Link key={href} href={href} className={linkClass(pathname === href)}>
+                    <Link key={href} href={href} onClick={handleLinkClick} className={linkClass(pathname === href)}>
                       <Icon size={16} />
                       <span className="text-sm">{label}</span>
                     </Link>
@@ -377,7 +360,7 @@ export default function Sidebar() {
               {menuAbierto === 'traslados' && (
                 <div className="flex flex-col gap-1 pl-4">
                   {trasladosChildrenVisibles.map(({ href, label, icon: Icon }) => (
-                    <Link key={href} href={href} className={linkClass(pathname === href)}>
+                    <Link key={href} href={href} onClick={handleLinkClick} className={linkClass(pathname === href)}>
                       <Icon size={16} />
                       <span className="text-sm">{label}</span>
                     </Link>
@@ -402,7 +385,7 @@ export default function Sidebar() {
               {menuAbierto === 'empleados' && (
                 <div className="flex flex-col gap-1 pl-4">
                   {empleadosChildrenVisibles.map(({ href, label, icon: Icon }) => (
-                    <Link key={href} href={href} className={linkClass(pathname === href)}>
+                    <Link key={href} href={href} onClick={handleLinkClick} className={linkClass(pathname === href)}>
                       <Icon size={16} />
                       <span className="text-sm">{label}</span>
                     </Link>
@@ -413,13 +396,13 @@ export default function Sidebar() {
           )}
 
           {esAdmin && bottomLinks.map(({ href, label, icon: Icon }) => (
-            <Link key={href} href={href} className={linkClass(pathname === href)}>
+            <Link key={href} href={href} onClick={handleLinkClick} className={linkClass(pathname === href)}>
               <Icon size={18} />
               {label}
             </Link>
           ))}
         </nav>
-      </aside>
+      </div>
 
       <CajaCerradaModal
         open={modalCajaOpen}
