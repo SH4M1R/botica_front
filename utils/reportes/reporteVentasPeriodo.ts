@@ -1,12 +1,6 @@
+// reporteVentasPeriodo.ts
 import type { ReporteVentasPeriodo } from '@/api/reportes';
-import {
-  crearPos80Builder,
-  crearA4Builder,
-  formatFecha,
-  formatEmision,
-  formatMoneda,
-  ColumnaReporte,
-} from './pdfBase';
+import { crearPos80Builder, crearA4Builder, formatFecha, formatEmision, formatMoneda, ColumnaReporte } from './pdfBase';
 
 const columnas: ColumnaReporte<ReporteVentasPeriodo['detallePorDia'][number]>[] = [
   { header: 'Fecha', align: 'left', widthA4: 40, render: (f) => formatFecha(f.fecha) },
@@ -16,9 +10,10 @@ const columnas: ColumnaReporte<ReporteVentasPeriodo['detallePorDia'][number]>[] 
   { header: 'Total', align: 'right', widthA4: 34, render: (f) => formatMoneda(f.total) },
 ];
 
-export function generarReporteVentasPeriodoPos80(data: ReporteVentasPeriodo): Blob {
-  const altura = 55 + data.detallePorDia.length * 22 + 25;
+export async function generarReporteVentasPeriodoPos80(data: ReporteVentasPeriodo, logo?: string): Promise<Blob> {
+  const altura = 65 + data.detallePorDia.length * 22 + 25;
   const b = crearPos80Builder(altura);
+  await b.encabezadoEmpresa(logo);
 
   b.texto('REPORTE DE VENTAS', { align: 'center', size: 9.5, bold: true });
   b.texto('Diarias / Periódicas', { align: 'center', size: 8, bold: true });
@@ -40,8 +35,9 @@ export function generarReporteVentasPeriodoPos80(data: ReporteVentasPeriodo): Bl
   return b.finalizar();
 }
 
-export function generarReporteVentasPeriodoA4(data: ReporteVentasPeriodo): Blob {
+export async function generarReporteVentasPeriodoA4(data: ReporteVentasPeriodo, logo?: string): Promise<Blob> {
   const b = crearA4Builder();
+  await b.encabezadoEmpresa(logo);
 
   b.titulo('Reporte de Ventas Diarias / Periódicas');
   b.subtitulo([

@@ -1,3 +1,4 @@
+// reporteAlertaStock.ts
 import type { AlertaStock } from '@/api/reportes';
 import { crearPos80Builder, crearA4Builder, formatEmision, ColumnaReporte } from './pdfBase';
 
@@ -8,9 +9,10 @@ const columnas: ColumnaReporte<AlertaStock>[] = [
   { header: 'Diferencia', align: 'right', widthA4: 40, render: (f) => String(f.diferencia) },
 ];
 
-export function generarAlertaStockPos80(filas: AlertaStock[]): Blob {
-  const altura = 55 + filas.length * 18 + 20;
+export async function generarAlertaStockPos80(filas: AlertaStock[], logo?: string): Promise<Blob> {
+  const altura = 65 + filas.length * 18 + 20;
   const b = crearPos80Builder(altura);
+  await b.encabezadoEmpresa(logo);
 
   b.texto('ALERTA DE STOCK MÍNIMO', { align: 'center', size: 9.5, bold: true });
   b.linea();
@@ -36,8 +38,9 @@ export function generarAlertaStockPos80(filas: AlertaStock[]): Blob {
   return b.finalizar();
 }
 
-export function generarAlertaStockA4(filas: AlertaStock[]): Blob {
+export async function generarAlertaStockA4(filas: AlertaStock[], logo?: string): Promise<Blob> {
   const b = crearA4Builder();
+  await b.encabezadoEmpresa(logo);
 
   b.titulo('Productos por Alerta de Stock Mínimo');
   b.subtitulo([`Fecha de emisión: ${formatEmision()}`]);

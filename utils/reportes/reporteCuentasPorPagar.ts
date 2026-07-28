@@ -1,3 +1,4 @@
+// reporteCuentasPorPagar.ts
 import type { CuentasPorPagar, CompraDetalle } from '@/api/reportes';
 import { crearPos80Builder, crearA4Builder, formatFecha, formatEmision, formatMoneda, ColumnaReporte } from './pdfBase';
 
@@ -8,9 +9,10 @@ const columnas: ColumnaReporte<CompraDetalle>[] = [
   { header: 'Estado', align: 'right', widthA4: 40, render: (f) => (f.estadoPago ? 'Pagado' : 'Pendiente') },
 ];
 
-export function generarCuentasPorPagarPos80(data: CuentasPorPagar): Blob {
-  const altura = 55 + data.compras.length * 22 + 25;
+export async function generarCuentasPorPagarPos80(data: CuentasPorPagar, logo?: string): Promise<Blob> {
+  const altura = 65 + data.compras.length * 22 + 25;
   const b = crearPos80Builder(altura);
+  await b.encabezadoEmpresa(logo);
 
   b.texto('CUENTAS POR PAGAR', { align: 'center', size: 9.5, bold: true });
   b.texto('Compras Realizadas', { align: 'center', size: 8 });
@@ -37,8 +39,9 @@ export function generarCuentasPorPagarPos80(data: CuentasPorPagar): Blob {
   return b.finalizar();
 }
 
-export function generarCuentasPorPagarA4(data: CuentasPorPagar): Blob {
+export async function generarCuentasPorPagarA4(data: CuentasPorPagar, logo?: string): Promise<Blob> {
   const b = crearA4Builder();
+  await b.encabezadoEmpresa(logo);
 
   b.titulo('Cuentas por Pagar / Compras Realizadas');
   b.subtitulo([

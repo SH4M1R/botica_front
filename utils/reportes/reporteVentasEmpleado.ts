@@ -1,3 +1,4 @@
+// reporteVentasEmpleado.ts
 import type { VentaPorEmpleado } from '@/api/reportes';
 import { crearPos80Builder, crearA4Builder, formatFecha, formatEmision, formatMoneda, ColumnaReporte } from './pdfBase';
 
@@ -7,13 +8,15 @@ const columnas: ColumnaReporte<VentaPorEmpleado>[] = [
   { header: 'Total Vendido', align: 'right', widthA4: 60, render: (f) => formatMoneda(f.totalVendido) },
 ];
 
-export function generarVentasPorEmpleadoPos80(
+export async function generarVentasPorEmpleadoPos80(
   fechaInicio: string,
   fechaFin: string,
-  filas: VentaPorEmpleado[]
-): Blob {
-  const altura = 55 + filas.length * 16 + 20;
+  filas: VentaPorEmpleado[],
+  logo?: string
+): Promise<Blob> {
+  const altura = 65 + filas.length * 16 + 20;
   const b = crearPos80Builder(altura);
+  await b.encabezadoEmpresa(logo);
 
   b.texto('VENTAS POR EMPLEADO', { align: 'center', size: 9.5, bold: true });
   b.linea();
@@ -35,12 +38,14 @@ export function generarVentasPorEmpleadoPos80(
   return b.finalizar();
 }
 
-export function generarVentasPorEmpleadoA4(
+export async function generarVentasPorEmpleadoA4(
   fechaInicio: string,
   fechaFin: string,
-  filas: VentaPorEmpleado[]
-): Blob {
+  filas: VentaPorEmpleado[],
+  logo?: string
+): Promise<Blob> {
   const b = crearA4Builder();
+  await b.encabezadoEmpresa(logo);
 
   b.titulo('Ventas por Empleado / Vendedor');
   b.subtitulo([`Del ${formatFecha(fechaInicio)} al ${formatFecha(fechaFin)}`, `Fecha de emisión: ${formatEmision()}`]);

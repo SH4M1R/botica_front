@@ -1,19 +1,22 @@
 import jsPDF from 'jspdf';
 
-/* ============================================================
-   Formateo
-   ============================================================ */
+export interface ColumnaReporte<T> {
+  header: string;
+  align: 'left' | 'right';
+  widthA4: number;
+  render: (fila: T) => string;
+}
 
-export function formatFecha(fecha: string | Date): string {
-  return new Date(fecha).toLocaleDateString('es-PE', {
+export function formatFecha(fecha: string) {
+  return new Date(fecha + 'T00:00:00').toLocaleDateString('es-PE', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
   });
 }
 
-export function formatFechaHora(fecha: string | Date): string {
-  return new Date(fecha).toLocaleString('es-PE', {
+export function formatFechaHora(fechaHora: string) {
+  return new Date(fechaHora).toLocaleString('es-PE', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -22,23 +25,25 @@ export function formatFechaHora(fecha: string | Date): string {
   });
 }
 
-export function formatEmision(): string {
-  return formatFechaHora(new Date());
+export function formatEmision() {
+  return new Date().toLocaleString('es-PE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
-export function formatMoneda(valor: number | null | undefined): string {
-  return `S/ ${(valor ?? 0).toFixed(2)}`;
+export function formatMoneda(monto: number) {
+  return `S/ ${monto.toFixed(2)}`;
 }
-
-/* ============================================================
-   Descarga / apertura del blob generado
-   ============================================================ */
 
 export function descargarPdf(blob: Blob, nombreArchivo: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = nombreArchivo.endsWith('.pdf') ? nombreArchivo : `${nombreArchivo}.pdf`;
+  a.download = `${nombreArchivo}.pdf`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -50,193 +55,216 @@ export function abrirPdfEnNuevaPestana(blob: Blob) {
   window.open(url, '_blank');
 }
 
-/* ============================================================
-   Definicion de columnas (compartida entre POS80 y A4)
-   ============================================================ */
+async function cargarImagenBase64(url: string): Promise<{ data: string; ratio: number } | null> {
+  try {
+    let data: string;
+    if (url.startsWith('data:')) {
+      data = url;
+    } else {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+    const dim = await new Promise<{ w: number; h: number }>((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.width, h: img.height });
+      img.onerror = () => resolve({ w: 100, h: 100 });
+      img.src = data;
+    });
+    return { data, ratio: dim.h / dim.w };
+  } catch {
+    return null;
+  }
+}
 
-export interface ColumnaReporte<T> {
-  header: string;
-  align?: 'left' | 'right' | 'center';
-  widthA4: number; // mm, ancho de columna en la tabla A4
-  render: (fila: T) => string;
+function formatoImagen(data: string) {
+  return data.includes('image/jpeg') || data.includes('image/jpg') ? 'JPEG' : 'PNG';
 }
 
 /* ============================================================
-   POS80 — builder tipo "ticket"
+   POS80 BUILDER
    ============================================================ */
 
-export interface Pos80Builder {
-  texto: (contenido: string, opts?: { align?: 'left' | 'center' | 'right'; size?: number; bold?: boolean }) => void;
-  linea: (dashed?: boolean) => void;
-  espacio: (mm?: number) => void;
-  tabla: <T>(columnas: ColumnaReporte<T>[], filas: T[]) => void;
-  finalizar: () => Blob;
-}
-
-export function crearPos80Builder(alturaEstimadaMm: number): Pos80Builder {
+export function crearPos80Builder(alturaEstimada: number) {
   const ANCHO = 80;
   const MARGEN = 6;
-  const doc = new jsPDF({ unit: 'mm', format: [ANCHO, Math.max(alturaEstimadaMm, 90)] });
-  let y = 6;
   const centerX = ANCHO / 2;
+  const doc = new jsPDF({ unit: 'mm', format: [ANCHO, Math.max(alturaEstimada, 120)] });
+  let y = 6;
 
-  const texto: Pos80Builder['texto'] = (contenido, opts = {}) => {
-    const { align = 'left', size = 8, bold = false } = opts;
-    doc.setFont('courier', bold ? 'bold' : 'normal');
-    doc.setFontSize(size);
-    const posX = align === 'center' ? centerX : align === 'right' ? ANCHO - MARGEN : MARGEN;
-    doc.text(contenido, posX, y, { align });
-    y += size * 0.42 + 1.2;
-  };
-
-  const linea: Pos80Builder['linea'] = (dashed = true) => {
-    doc.setLineDashPattern(dashed ? [0.5, 0.5] : [], 0);
-    doc.setDrawColor(0);
-    doc.line(MARGEN, y, ANCHO - MARGEN, y);
-    y += 3;
-  };
-
-  const espacio: Pos80Builder['espacio'] = (mm = 1) => {
-    y += mm;
-  };
-
-  // Tabla simple apilada: en 80mm no entran muchas columnas lado a lado,
-  // asi que cada fila se muestra como bloque (header en negrita + campos).
-  const tabla: Pos80Builder['tabla'] = (columnas, filas) => {
-    filas.forEach((fila) => {
-      columnas.forEach((col, i) => {
-        const valor = col.render(fila);
-        if (i === 0) {
-          texto(valor, { bold: true, size: 7.5 });
-        } else {
-          texto(`  ${col.header}: ${valor}`, { size: 7 });
-        }
+  const b = {
+    doc,
+    async encabezadoEmpresa(logoUrl?: string) {
+      if (!logoUrl) return;
+      const logo = await cargarImagenBase64(logoUrl);
+      if (!logo) return;
+      const anchoLogo = 45;
+      const altoLogo = anchoLogo * logo.ratio;
+      const xLogo = centerX - anchoLogo / 2;
+      doc.addImage(logo.data, formatoImagen(logo.data), xLogo, y, anchoLogo, altoLogo);
+      y += altoLogo + 4;
+    },
+    texto(
+      contenido: string,
+      opts: { align?: 'left' | 'center' | 'right'; size?: number; bold?: boolean } = {}
+    ) {
+      const { align = 'left', size = 8, bold = false } = opts;
+      doc.setFont('courier', bold ? 'bold' : 'normal');
+      doc.setFontSize(size);
+      const posX = align === 'center' ? centerX : align === 'right' ? ANCHO - MARGEN : MARGEN;
+      doc.text(contenido, posX, y, { align });
+      y += size * 0.42 + 1.2;
+    },
+    linea(dashed = true) {
+      doc.setLineDashPattern(dashed ? [0.5, 0.5] : [], 0);
+      doc.setDrawColor(0);
+      doc.line(MARGEN, y, ANCHO - MARGEN, y);
+      y += 3;
+    },
+    espacio(n: number) {
+      y += n;
+    },
+    tabla<T>(columnas: ColumnaReporte<T>[], filas: T[]) {
+      const anchoDisponible = ANCHO - MARGEN * 2;
+      const totalWidth = columnas.reduce((s, c) => s + c.widthA4, 0);
+      const anchos = columnas.map((c) => (c.widthA4 / totalWidth) * anchoDisponible);
+      const xs: number[] = [];
+      let acc = MARGEN;
+      anchos.forEach((w) => {
+        xs.push(acc);
+        acc += w;
       });
-      espacio(1);
-    });
+
+      doc.setFont('courier', 'bold');
+      doc.setFontSize(6.5);
+      columnas.forEach((c, i) => {
+        const posX = c.align === 'right' ? xs[i] + anchos[i] : xs[i];
+        doc.text(c.header, posX, y, { align: c.align === 'right' ? 'right' : 'left' });
+      });
+      y += 3.5;
+      doc.setDrawColor(0);
+      doc.line(MARGEN, y, ANCHO - MARGEN, y);
+      y += 3;
+
+      doc.setFont('courier', 'normal');
+      doc.setFontSize(6.5);
+      filas.forEach((fila) => {
+        columnas.forEach((c, i) => {
+          const valor = c.render(fila);
+          const posX = c.align === 'right' ? xs[i] + anchos[i] : xs[i];
+          doc.text(valor, posX, y, { align: c.align === 'right' ? 'right' : 'left', maxWidth: anchos[i] });
+        });
+        y += 4.2;
+      });
+    },
+    finalizar(): Blob {
+      return doc.output('blob');
+    },
   };
 
-  const finalizar = () => doc.output('blob');
-
-  return { texto, linea, espacio, tabla, finalizar };
+  return b;
 }
 
 /* ============================================================
-   A4 — builder tipo "documento"
+   A4 BUILDER
    ============================================================ */
 
-export interface A4Builder {
-  titulo: (texto: string) => void;
-  subtitulo: (lineas: string[]) => void;
-  lineaSeparadora: (gruesa?: boolean) => void;
-  encabezadoTabla: <T>(columnas: ColumnaReporte<T>[]) => void;
-  filaTabla: <T>(columnas: ColumnaReporte<T>[], fila: T, bold?: boolean) => void;
-  campoValor: (label: string, valor: string, bold?: boolean) => void;
-  avanzar: (mm: number) => void;
-  finalizar: () => Blob;
-}
-
-export function crearA4Builder(): A4Builder {
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+export function crearA4Builder() {
   const MARGEN = 20;
   const ANCHO_PAGINA = 210;
   const ANCHO_UTIL = ANCHO_PAGINA - MARGEN * 2;
-  let y = 25;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  let y = 20;
+  let columnasActuales: ColumnaReporte<any>[] = [];
+  let xsActuales: number[] = [];
 
-  const titulo: A4Builder['titulo'] = (texto) => {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(16);
-    doc.text(texto, MARGEN, y);
-    y += 10;
-  };
-
-  const subtitulo: A4Builder['subtitulo'] = (lineas) => {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    lineas.forEach((linea) => {
-      doc.text(linea, MARGEN, y);
-      y += 6;
+  function calcularXs(columnas: ColumnaReporte<any>[]) {
+    const xs: number[] = [];
+    let acc = MARGEN;
+    columnas.forEach((c) => {
+      xs.push(acc);
+      acc += c.widthA4;
     });
-    y += 4;
-  };
-
-  const lineaSeparadora: A4Builder['lineaSeparadora'] = (gruesa = false) => {
-    doc.setDrawColor(gruesa ? 0 : 180);
-    doc.line(MARGEN, y, MARGEN + ANCHO_UTIL, y);
-    y += gruesa ? 8 : 7;
-  };
-
-  function xsDeColumnas<T>(columnas: ColumnaReporte<T>[]) {
-    const xsDerecha: number[] = [];
-    let acumulado = MARGEN;
-    columnas.forEach((col) => {
-      acumulado += col.widthA4;
-      xsDerecha.push(acumulado);
-    });
-    return xsDerecha;
+    return xs;
   }
 
-  const saltoDePaginaSiNecesario = () => {
-    if (y > 280) {
-      doc.addPage();
-      y = 20;
-    }
-  };
-
-  const encabezadoTabla: A4Builder['encabezadoTabla'] = (columnas) => {
-    const xsDerecha = xsDeColumnas(columnas);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    let xInicio = MARGEN;
-    columnas.forEach((col, i) => {
-      if (col.align === 'right') {
-        doc.text(col.header, xsDerecha[i], y, { align: 'right' });
-      } else if (col.align === 'center') {
-        doc.text(col.header, xInicio + col.widthA4 / 2, y, { align: 'center' });
-      } else {
-        doc.text(col.header, xInicio, y);
+  const b = {
+    doc,
+    async encabezadoEmpresa(logoUrl?: string) {
+      if (!logoUrl) return;
+      const logo = await cargarImagenBase64(logoUrl);
+      if (!logo) return;
+      const altoMax = 20;
+      const anchoLogo = altoMax / logo.ratio;
+      doc.addImage(logo.data, formatoImagen(logo.data), ANCHO_PAGINA - MARGEN - anchoLogo, y, anchoLogo, altoMax);
+    },
+    titulo(texto: string) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.text(texto, MARGEN, y + 6);
+      y += 16;
+    },
+    subtitulo(lineas: string[]) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      lineas.forEach((linea) => {
+        doc.text(linea, MARGEN, y);
+        y += 6;
+      });
+    },
+    lineaSeparadora(bold = false) {
+      doc.setDrawColor(bold ? 0 : 180);
+      doc.line(MARGEN, y, MARGEN + ANCHO_UTIL, y);
+      y += 7;
+    },
+    encabezadoTabla<T>(columnas: ColumnaReporte<T>[]) {
+      columnasActuales = columnas;
+      xsActuales = calcularXs(columnas);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      columnas.forEach((c, i) => {
+        const posX = c.align === 'right' ? xsActuales[i] + c.widthA4 : xsActuales[i];
+        doc.text(c.header, posX, y, { align: c.align === 'right' ? 'right' : 'left' });
+      });
+      y += 3;
+      doc.setDrawColor(0);
+      doc.line(MARGEN, y, MARGEN + ANCHO_UTIL, y);
+      y += 7;
+      doc.setFont('helvetica', 'normal');
+    },
+    filaTabla<T>(columnas: ColumnaReporte<T>[], fila: T) {
+      if (y > 275) {
+        doc.addPage();
+        y = 20;
       }
-      xInicio += col.widthA4;
-    });
-    y += 3;
-    lineaSeparadora(true);
+      const xs = xsActuales.length === columnas.length ? xsActuales : calcularXs(columnas);
+      doc.setFontSize(9);
+      columnas.forEach((c, i) => {
+        const valor = c.render(fila);
+        const posX = c.align === 'right' ? xs[i] + c.widthA4 : xs[i];
+        doc.text(valor, posX, y, { align: c.align === 'right' ? 'right' : 'left' });
+      });
+      y += 7;
+    },
+    campoValor(label: string, valor: string, bold = false) {
+      doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      doc.setFontSize(bold ? 11 : 10);
+      doc.text(label, MARGEN, y);
+      doc.text(valor, MARGEN + ANCHO_UTIL, y, { align: 'right' });
+      y += 7;
+    },
+    avanzar(n: number) {
+      y += n;
+    },
+    finalizar(): Blob {
+      return doc.output('blob');
+    },
   };
 
-  const filaTabla: A4Builder['filaTabla'] = (columnas, fila, bold = false) => {
-    const xsDerecha = xsDeColumnas(columnas);
-    doc.setFont('helvetica', bold ? 'bold' : 'normal');
-    doc.setFontSize(10);
-    let xInicio = MARGEN;
-    columnas.forEach((col, i) => {
-      const valor = col.render(fila);
-      if (col.align === 'right') {
-        doc.text(valor, xsDerecha[i], y, { align: 'right' });
-      } else if (col.align === 'center') {
-        doc.text(valor, xInicio + col.widthA4 / 2, y, { align: 'center' });
-      } else {
-        doc.text(valor, xInicio, y);
-      }
-      xInicio += col.widthA4;
-    });
-    y += 8;
-    saltoDePaginaSiNecesario();
-  };
-
-  const avanzar: A4Builder['avanzar'] = (mm) => {
-    y += mm;
-    saltoDePaginaSiNecesario();
-  };
-
-  const campoValor: A4Builder['campoValor'] = (label, valor, bold = false) => {
-    doc.setFont('helvetica', bold ? 'bold' : 'normal');
-    doc.setFontSize(11);
-    doc.text(label, MARGEN, y);
-    doc.text(valor, MARGEN + ANCHO_UTIL, y, { align: 'right' });
-    y += 7;
-    saltoDePaginaSiNecesario();
-  };
-
-  const finalizar = () => doc.output('blob');
-
-  return { titulo, subtitulo, lineaSeparadora, encabezadoTabla, filaTabla, campoValor, avanzar, finalizar };
+  return b;
 }

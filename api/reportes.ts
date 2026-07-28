@@ -249,3 +249,83 @@ export interface ConsolidadoGeneral {
 export function obtenerConsolidadoGeneral(fechaInicio: string, fechaFin: string) {
   return getJson<ConsolidadoGeneral>(`/reportes/gestion/consolidado?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`);
 }
+
+/* ============================================================
+   VENTAS POR PRODUCTO
+   ============================================================ */
+
+export interface VentaDetalleProducto {
+  fecha: string;
+  cliente: string;
+  empleado: string;
+  cantidad: number;
+  precioUnitario: number;
+  subtotal: number;
+  tipoVenta: string;
+}
+
+export interface ReporteVentasPorProducto {
+  idProducto: number;
+  nombreProducto: string;
+  fechaInicio: string;
+  fechaFin: string;
+  totalUnidades: number;
+  totalVendido: number;
+  detalle: VentaDetalleProducto[];
+}
+
+export function obtenerVentasPorProducto(idProducto: number, fechaInicio: string, fechaFin: string) {
+  return getJson<ReporteVentasPorProducto>(
+    `/reportes/ventas/por-producto/${idProducto}?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`
+  );
+}
+
+/* ============================================================
+   PRODUCTOS POR VENCER
+   ============================================================ */
+
+export interface ProductoPorVencer {
+  idProducto: number;
+  nombreProducto: string;
+  lote: string | null;
+  fechaVencimiento: string;
+  stock: number;
+  diasRestantes: number;
+}
+
+export function obtenerProductosPorVencer(dias = 90) {
+  return getJson<ProductoPorVencer[]>(`/reportes/inventario/por-vencer?dias=${dias}`);
+}
+
+/* ============================================================
+   PRODUCTOS POR LABORATORIO
+   ============================================================ */
+
+export interface LaboratorioResumen {
+  idLaboratorio: number;
+  nombreLaboratorio: string;
+  cantidadProductos: number;
+}
+
+export interface ProductoPorLaboratorio {
+  idProducto: number;
+  nombreProducto: string;
+  stock: number;
+  precioVenta: number;
+  fechaVencimiento: string | null;
+}
+
+export interface ReporteProductosPorLaboratorio {
+  idLaboratorio: number;
+  nombreLaboratorio: string;
+  totalProductos: number;
+  productos: ProductoPorLaboratorio[];
+}
+
+export function listarLaboratorios() {
+  return getJson<LaboratorioResumen[]>(`/reportes/inventario/laboratorios`);
+}
+
+export function obtenerProductosPorLaboratorio(idLaboratorio: number) {
+  return getJson<ReporteProductosPorLaboratorio>(`/reportes/inventario/por-laboratorio/${idLaboratorio}`);
+}

@@ -1,3 +1,4 @@
+// reporteAnalisisCostos.ts
 import type { AnalisisCostos, PrecioEntrada } from '@/api/reportes';
 import { crearPos80Builder, crearA4Builder, formatFecha, formatEmision, formatMoneda, ColumnaReporte } from './pdfBase';
 
@@ -8,9 +9,10 @@ const columnas: ColumnaReporte<PrecioEntrada>[] = [
   { header: 'Precio Unit.', align: 'right', widthA4: 40, render: (f) => formatMoneda(f.precioUnitario) },
 ];
 
-export function generarAnalisisCostosPos80(data: AnalisisCostos): Blob {
-  const altura = 60 + data.historico.length * 20 + 25;
+export async function generarAnalisisCostosPos80(data: AnalisisCostos, logo?: string): Promise<Blob> {
+  const altura = 70 + data.historico.length * 20 + 25;
   const b = crearPos80Builder(altura);
+  await b.encabezadoEmpresa(logo);
 
   b.texto('ANÁLISIS DE COSTOS', { align: 'center', size: 9.5, bold: true });
   b.texto('Precios de Entrada', { align: 'center', size: 8 });
@@ -38,8 +40,9 @@ export function generarAnalisisCostosPos80(data: AnalisisCostos): Blob {
   return b.finalizar();
 }
 
-export function generarAnalisisCostosA4(data: AnalisisCostos): Blob {
+export async function generarAnalisisCostosA4(data: AnalisisCostos, logo?: string): Promise<Blob> {
   const b = crearA4Builder();
+  await b.encabezadoEmpresa(logo);
 
   b.titulo('Análisis de Costos y Precios de Entrada');
   b.subtitulo([`Producto: ${data.nombreProducto}`, `Fecha de emisión: ${formatEmision()}`]);

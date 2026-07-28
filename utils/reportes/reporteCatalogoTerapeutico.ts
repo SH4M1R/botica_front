@@ -1,3 +1,4 @@
+// reporteCatalogoTerapeutico.ts
 import type { CatalogoTerapeutico } from '@/api/reportes';
 import { crearPos80Builder, crearA4Builder, formatEmision, formatMoneda, ColumnaReporte } from './pdfBase';
 
@@ -9,9 +10,14 @@ const columnas: ColumnaReporte<CatalogoTerapeutico>[] = [
   { header: 'P. Venta', align: 'right', widthA4: 15, render: (f) => formatMoneda(f.precioVenta) },
 ];
 
-export function generarCatalogoTerapeuticoPos80(filas: CatalogoTerapeutico[], titulo = 'CATÁLOGO TERAPÉUTICO'): Blob {
-  const altura = 55 + filas.length * 22 + 20;
+export async function generarCatalogoTerapeuticoPos80(
+  filas: CatalogoTerapeutico[],
+  titulo = 'CATÁLOGO TERAPÉUTICO',
+  logo?: string
+): Promise<Blob> {
+  const altura = 65 + filas.length * 22 + 20;
   const b = crearPos80Builder(altura);
+  await b.encabezadoEmpresa(logo);
 
   b.texto(titulo, { align: 'center', size: 9.5, bold: true });
   b.texto('Principio Activo / Acción Terapéutica', { align: 'center', size: 7.5 });
@@ -39,8 +45,13 @@ export function generarCatalogoTerapeuticoPos80(filas: CatalogoTerapeutico[], ti
   return b.finalizar();
 }
 
-export function generarCatalogoTerapeuticoA4(filas: CatalogoTerapeutico[], titulo = 'Catálogo por Principio Activo y Acción Terapéutica'): Blob {
+export async function generarCatalogoTerapeuticoA4(
+  filas: CatalogoTerapeutico[],
+  titulo = 'Catálogo por Principio Activo y Acción Terapéutica',
+  logo?: string
+): Promise<Blob> {
   const b = crearA4Builder();
+  await b.encabezadoEmpresa(logo);
 
   b.titulo(titulo);
   b.subtitulo([`Fecha de emisión: ${formatEmision()}`, `Total de productos: ${filas.length}`]);
