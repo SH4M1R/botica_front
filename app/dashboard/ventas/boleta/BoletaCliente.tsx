@@ -1,17 +1,19 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { ventasApi } from '@/api/ventas';
 import { obtenerEmpresa } from '@/api/empresa';
 import { generarBoletaPdf } from '@/utils/generarBoletaPdf';
 
-export default function BoletaImprimiblePage() {
-  const params = useParams();
-  const idVenta = Number(params.id);
+export default function BoletaCliente() {
+  const searchParams = useSearchParams();
+  const idVenta = Number(searchParams.get('id'));
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (!idVenta) return;
+
     (async () => {
       try {
         const [venta, empresa] = await Promise.all([

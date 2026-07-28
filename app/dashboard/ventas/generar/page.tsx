@@ -106,7 +106,7 @@ export default function GenerarVentaPage() {
   };
 
   const abrirBoletaImprimible = (idVenta: number) => {
-    window.open(`/dashboard/ventas/boleta/${idVenta}`, '_blank');
+    window.open(`/dashboard/ventas/boleta?id=${idVenta}`, '_blank');
   };
 
   // Función para abrir la pantalla de ventas en ventana flotante
@@ -299,7 +299,7 @@ export default function GenerarVentaPage() {
         })),
       });
 
-      if (pestanaBoleta) pestanaBoleta.location.href = `/dashboard/ventas/boleta/${venta.id}`;
+      if (pestanaBoleta) pestanaBoleta.location.href = `/dashboard/ventas/boleta?id=${venta.id}`;
       else abrirBoletaImprimible(venta.id);
 
       setModalPagoAbierto(false);

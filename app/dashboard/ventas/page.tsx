@@ -260,7 +260,7 @@ export default function VentasPage() {
                           </button>
 
                           <button
-                            onClick={() => window.open(`/dashboard/ventas/boleta/${v.id}`, '_blank')}
+                            onClick={() => window.open(`/dashboard/ventas/boleta?id=${v.id}`, '_blank')}
                             className="p-2 text-primary hover:text-primary hover:bg-primary/10 rounded-lg transition-colors border-2"
                             title="Ver boleta"
                           >
