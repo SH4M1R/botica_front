@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, FC } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Plus, Pencil, Trash2 } from 'lucide-react';
 import {
@@ -12,13 +12,21 @@ import PrincipioActivoModal from "../components/PrincipioActivoModal";
 import AccionTerapeuticaModal from "../components/AccionTerapeuticaModal";
 import Paginacion from "@/components/Paginacion";
 
-type ItemBase = { id: number; nombre: string };
+export type ItemBase = { id: number; nombre: string };
+
+// Interfaz unificada para los modales de atributos
+export interface AtributoModalProps {
+  open: boolean;
+  item?: ItemBase | null;
+  onClose: () => void;
+  onSave: (nombre: string) => Promise<void>;
+}
 
 const TABS = [
-  { key: 'categoria', label: 'CATEGORÍA', api: categoriasApi, Modal: CategoriaModal },
-  { key: 'laboratorio', label: 'LABORATORIO', api: laboratoriosApi, Modal: LaboratorioModal },
-  { key: 'principio', label: 'PRINCIPIO ACTIVO', api: principiosActivosApi, Modal: PrincipioActivoModal },
-  { key: 'accion', label: 'ACCIÓN TERAPEÚTICA', api: accionesTerapeuticasApi, Modal: AccionTerapeuticaModal },
+  { key: 'categoria', label: 'CATEGORÍA', api: categoriasApi, Modal: CategoriaModal as FC<AtributoModalProps> },
+  { key: 'laboratorio', label: 'LABORATORIO', api: laboratoriosApi, Modal: LaboratorioModal as FC<AtributoModalProps> },
+  { key: 'principio', label: 'PRINCIPIO ACTIVO', api: principiosActivosApi, Modal: PrincipioActivoModal as FC<AtributoModalProps> },
+  { key: 'accion', label: 'ACCIÓN TERAPEÚTICA', api: accionesTerapeuticasApi, Modal: AccionTerapeuticaModal as FC<AtributoModalProps> },
 ] as const;
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
@@ -84,7 +92,7 @@ export default function AtributoProductoPage() {
     }
   };
 
-  const Modal = tab.Modal;
+  const ModalComponent = tab.Modal;
 
   return (
     <div className="space-y-6">
@@ -143,7 +151,6 @@ export default function AtributoProductoPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {/* 3. Renderizar solo la porción correspondiente a la página actual */}
                 {itemsPaginados.map((item) => (
                   <tr key={item.id} className="hover:bg-zinc-50/60 transition-colors">
                     <td className="px-5 py-3 text-zinc-800">{item.id}</td>
@@ -163,7 +170,6 @@ export default function AtributoProductoPage() {
               </tbody>
             </table>
 
-            {/* 4. Componente de paginación correctamente enlazado */}
             <Paginacion
               currentPage={paginaSegura}
               totalPages={totalPaginas}
@@ -181,7 +187,12 @@ export default function AtributoProductoPage() {
         )}
       </div>
 
-      <Modal open={modalOpen} item={itemActivo} onClose={() => setModalOpen(false)} onSave={handleGuardar} />
+      <ModalComponent
+        open={modalOpen}
+        item={itemActivo}
+        onClose={() => setModalOpen(false)}
+        onSave={handleGuardar}
+      />
     </div>
   );
 }

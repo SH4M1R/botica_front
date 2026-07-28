@@ -262,6 +262,102 @@ function BuscadorProducto({
   );
 }
 
+function BuscadorLaboratorio({
+  label,
+  laboratorioSeleccionado,
+  onSeleccionarLaboratorio,
+}: {
+  label: string;
+  laboratorioSeleccionado: api.LaboratorioResumen | null;
+  onSeleccionarLaboratorio: (lab: api.LaboratorioResumen | null) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [laboratorios, setLaboratorios] = useState<api.LaboratorioResumen[]>([]);
+  const [cargando, setCargando] = useState(false);
+  const [abierto, setAbierto] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setAbierto(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Carga la lista de laboratorios una sola vez al montar el buscador
+  useEffect(() => {
+    setCargando(true);
+    api
+      .listarLaboratorios()
+      .then(setLaboratorios)
+      .catch((err) => console.error('Error al cargar laboratorios:', err))
+      .finally(() => setCargando(false));
+  }, []);
+
+  const laboratoriosFiltrados = query.trim()
+    ? laboratorios.filter((l) => l.nombreLaboratorio.toLowerCase().includes(query.toLowerCase()))
+    : laboratorios;
+
+  return (
+    <div className="flex flex-col gap-1 text-xs text-zinc-500 w-full relative" ref={dropdownRef}>
+      <span>{label}</span>
+      <div className="relative">
+        <input
+          type="text"
+          placeholder="Buscar laboratorio..."
+          value={laboratorioSeleccionado ? laboratorioSeleccionado.nombreLaboratorio : query}
+          onFocus={() => {
+            setAbierto(true);
+            if (laboratorioSeleccionado) {
+              setQuery('');
+              onSeleccionarLaboratorio(null);
+            }
+          }}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            if (laboratorioSeleccionado) onSeleccionarLaboratorio(null);
+            setAbierto(true);
+          }}
+          className="w-full pl-8 pr-8 py-2 rounded-lg border border-zinc-300 bg-white text-sm text-zinc-800 focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+        />
+        <Search size={15} className="absolute left-2.5 top-2.5 text-zinc-400" />
+        {cargando ? (
+          <Loader2 size={15} className="absolute right-2.5 top-2.5 animate-spin text-zinc-400" />
+        ) : (
+          <ChevronDown size={15} className="absolute right-2.5 top-2.5 text-zinc-400 pointer-events-none" />
+        )}
+      </div>
+
+      {abierto && laboratoriosFiltrados.length > 0 && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-zinc-200 rounded-xl shadow-lg max-h-60 overflow-y-auto z-50">
+          {laboratoriosFiltrados.map((lab) => (
+            <button
+              key={lab.idLaboratorio}
+              type="button"
+              onClick={() => {
+                onSeleccionarLaboratorio(lab);
+                setAbierto(false);
+              }}
+              className="w-full text-left px-3 py-2 hover:bg-zinc-50 flex items-center justify-between border-b border-zinc-100 last:border-none transition-colors"
+            >
+              <div>
+                <p className="font-medium text-xs text-zinc-800">{lab.nombreLaboratorio}</p>
+                <p className="text-[10px] text-zinc-400">{lab.cantidadProductos} producto(s)</p>
+              </div>
+              {laboratorioSeleccionado?.idLaboratorio === lab.idLaboratorio && (
+                <Check size={14} className="text-primary" />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ReportesPage() {
   const [moduloActivo, setModuloActivo] = useState<Modulo>('ventas');
   const [cargando, setCargando] = useState<string | null>(null);
@@ -271,6 +367,7 @@ export default function ReportesPage() {
 
   const [idArqueo, setIdArqueo] = useState('');
   const [productoSeleccionado, setProductoSeleccionado] = useState<Producto | null>(null);
+  const [laboratorioSeleccionado, setLaboratorioSeleccionado] = useState<api.LaboratorioResumen | null>(null);
   const [limiteTop, setLimiteTop] = useState('20');
   const [diasVencer, setDiasVencer] = useState('30');
 
@@ -435,14 +532,14 @@ export default function ReportesPage() {
               ejecutar('arqueo', async () => {
                 if (!idArqueo) return alert('Ingresa el N° de arqueo/caja.');
                 const data = await api.obtenerReporteArqueo(Number(idArqueo));
-                abrirPdfEnNuevaPestana(await generarArqueoCajaPos80(data, logoEmpresa));
+                abrirPdfEnNuevaPestana(await generarArqueoCajaPos80(data));
               })
             }
             onA4={() =>
               ejecutar('arqueo', async () => {
                 if (!idArqueo) return alert('Ingresa el N° de arqueo/caja.');
                 const data = await api.obtenerReporteArqueo(Number(idArqueo));
-                descargarPdf(await generarArqueoCajaA4(data, logoEmpresa), `arqueo-caja-${idArqueo}`);
+                descargarPdf(await generarArqueoCajaA4(data), `arqueo-caja-${idArqueo}`);
               })
             }
           >
@@ -609,24 +706,32 @@ export default function ReportesPage() {
 
           <ReporteCard
             titulo="Productos por Laboratorio"
-            descripcion="Listado completo de productos agrupados por su marca o laboratorio."
+            descripcion="Listado completo de productos de un laboratorio o marca específica."
             cargando={cargando === 'productos-laboratorio'}
             onPos80={() =>
               ejecutar('productos-laboratorio', async () => {
-                const data = await api.obtenerProductosPorLaboratorio();
+                if (!laboratorioSeleccionado) return alert('Selecciona un laboratorio.');
+                const data = await api.obtenerProductosPorLaboratorio(laboratorioSeleccionado.idLaboratorio);
                 abrirPdfEnNuevaPestana(await generarProductosPorLaboratorioPos80(data, logoEmpresa));
               })
             }
             onA4={() =>
               ejecutar('productos-laboratorio', async () => {
-                const data = await api.obtenerProductosPorLaboratorio();
+                if (!laboratorioSeleccionado) return alert('Selecciona un laboratorio.');
+                const data = await api.obtenerProductosPorLaboratorio(laboratorioSeleccionado.idLaboratorio);
                 descargarPdf(
                   await generarProductosPorLaboratorioA4(data, logoEmpresa),
-                  'productos-por-laboratorio'
+                  `productos-laboratorio-${laboratorioSeleccionado.idLaboratorio}`
                 );
               })
             }
-          />
+          >
+            <BuscadorLaboratorio
+              label="Seleccionar Laboratorio"
+              laboratorioSeleccionado={laboratorioSeleccionado}
+              onSeleccionarLaboratorio={setLaboratorioSeleccionado}
+            />
+          </ReporteCard>
 
           <ReporteCard
             titulo="Productos Próximos a Vencer"
