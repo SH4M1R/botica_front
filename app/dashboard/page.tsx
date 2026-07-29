@@ -488,7 +488,7 @@ export default function DashboardPage() {
     {/* Encabezado */}
     <div className="flex flex-wrap items-center justify-between gap-4">
       <div>
-        <h1 className="text-xl font-extrabold text-primary">Bienvenido, Administrador</h1>
+        <h1 className="text-xl font-extrabold text-primary">Bienvenido, que haremos el día de hoy</h1>
         <p className="text-sm text-zinc-500">Resumen general de tu negocio</p>
       </div>
       <div className="flex items-center gap-3">
@@ -511,7 +511,7 @@ export default function DashboardPage() {
               className="w-full text-left bg-white p-6 rounded-2xl border border-zinc-200 shadow-xs hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between group"
             >
               <div className="flex items-start justify-between mb-3">
-                <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">{stat.title}</span>
+                <span className="text-xs font-semibold text-primary/90 uppercase tracking-wider">{stat.title}</span>
                 <div className={`p-2 rounded-xl ${tono.bg} ${tono.text}`}>
                   <Icon size={18} />
                 </div>

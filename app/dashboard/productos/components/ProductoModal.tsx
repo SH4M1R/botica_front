@@ -272,11 +272,11 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
               <div className="space-y-1">
                 <label className={labelClass}>Registro Sanitario</label>
                 <input
-                  type="number" step="0.01" min="0"
+                  type="text"
                   value={form.registro_sanitario ?? ''}
-                  onChange={(e) => set('registro_sanitario', e.target.value ? Number(e.target.value) : null)}
+                  onChange={(e) => set('registro_sanitario', e.target.value || null)}
                   className={inputClass}
-                  placeholder="Ej. 12345"
+                  placeholder="Ej. RS-12345"
                 />
               </div>
               <div className="space-y-1">

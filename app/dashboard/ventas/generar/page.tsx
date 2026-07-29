@@ -47,6 +47,52 @@ function unidadesBasePorTipo(producto: Producto, tipo: TipoVenta): number {
   return 1;
 }
 
+// Componente helper para evitar bugs al tippear decimales o borrar el input de precio/subtotal
+function PrecioInput({
+  value,
+  onChange,
+  className = '',
+  step = '0.10',
+}: {
+  value: number;
+  onChange: (val: number) => void;
+  className?: string;
+  step?: string;
+}) {
+  const [localVal, setLocalVal] = useState(value.toString());
+
+  useEffect(() => {
+    setLocalVal(Number.isNaN(value) ? '' : value.toFixed(2));
+  }, [value]);
+
+  const commitValue = () => {
+    const parsed = parseFloat(localVal);
+    if (isNaN(parsed) || parsed < 0) {
+      setLocalVal(value.toFixed(2));
+    } else {
+      onChange(parsed);
+      setLocalVal(parsed.toFixed(2));
+    }
+  };
+
+  return (
+    <input
+      type="number"
+      step={step}
+      min={0}
+      value={localVal}
+      onChange={(e) => setLocalVal(e.target.value)}
+      onBlur={commitValue}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          commitValue();
+        }
+      }}
+      className={className}
+    />
+  );
+}
+
 export default function GenerarVentaPage() {
   const router = useRouter();
   const { empleado, cargando } = useSession();
@@ -64,11 +110,11 @@ export default function GenerarVentaPage() {
 
   const [modalPagoAbierto, setModalPagoAbierto] = useState(false);
   const [error, setError] = useState('');
-  const [ventaConfirmada, setVentaConfirmada] = useState<Venta | null>(null);
+  const [, setVentaConfirmada] = useState<Venta | null>(null);
 
   const [mostrarConfirmVaciar, setMostrarConfirmVaciar] = useState(false);
 
-  // --- Verificación de caja abierta ---
+  // Verificación de caja abierta
   const [cajaAbierta, setCajaAbierta] = useState<ArqueoCaja | null | undefined>(undefined);
 
   const fechaHoy = useMemo(
@@ -76,7 +122,6 @@ export default function GenerarVentaPage() {
     []
   );
 
-  // EFECTO: Ocultar sidebar si la ventana fue abierta como popup (modo ventana flotante)
   useEffect(() => {
     const esPopup = window.opener !== null || new URLSearchParams(window.location.search).get('popup') === 'true';
     if (esPopup) {
@@ -109,7 +154,6 @@ export default function GenerarVentaPage() {
     window.open(`/dashboard/ventas/boleta?id=${idVenta}`, '_blank');
   };
 
-  // Función para abrir la pantalla de ventas en ventana flotante
   const abrirVentanaFlotante = () => {
     const width = 1280;
     const height = 800;
@@ -137,15 +181,21 @@ export default function GenerarVentaPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empleado, cargando, router]);
 
+  // FILTRO: Excluir productos con stock <= 0 e incluir búsqueda por laboratorio
   const productosVisibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    if (!q) return productos.slice(0, 30);
 
-    const base = productos.filter((p) => {
+    // Filtramos primero los que tienen stock > 0
+    const conStock = productos.filter((p) => p.stock > 0);
+
+    if (!q) return conStock.slice(0, 30);
+
+    const base = conStock.filter((p) => {
       const nombreMatch = p.nombre.toLowerCase().includes(q);
-      const principioMatch = p.principioActivo?.nombre.toLowerCase().includes(q);
+      const principioMatch = p.principioActivo?.nombre?.toLowerCase().includes(q);
+      const laboratorioMatch = p.laboratorio?.nombre?.toLowerCase().includes(q);
 
-      return nombreMatch || principioMatch;
+      return nombreMatch || principioMatch || laboratorioMatch;
     });
 
     return base.slice(0, 30);
@@ -345,37 +395,23 @@ export default function GenerarVentaPage() {
   }
 
   return (
-    <div className="h-full flex flex-col gap-6 overflow-hidden">
-      {/* CSS Inyectado para ocultar la barra lateral (sidebar) cuando está en modo Popup */}
-      <style jsx global>{`
-        body.is-pos-popup aside,
-        body.is-pos-popup nav,
-        body.is-pos-popup header:not(.pos-header) {
-          display: none !important;
-        }
-        body.is-pos-popup main {
-          padding: 1rem !important;
-          margin: 0 !important;
-          width: 100vw !important;
-          height: 100vh !important;
-        }
-      `}</style>
-
-      <header className="pos-header flex flex-col lg:flex-row lg:items-center justify-between shrink-0 gap-4">
+    <div className="h-screen w-full flex flex-col gap-4 p-4 box-border bg-zinc-100 overflow-hidden">
+      {/* HEADER POS */}
+      <header className="pos-header flex flex-col md:flex-row items-center justify-between shrink-0 gap-3 bg-white p-3 rounded-2xl border border-zinc-200 shadow-xs">
         <div className="flex items-center gap-3">
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-primary tracking-tight">
+              <h1 className="text-xl font-bold text-primary tracking-tight">
                 Generar Venta
               </h1>
               
               <button
                 type="button"
                 onClick={abrirVentanaFlotante}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-semibold border border-zinc-200 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-semibold border border-zinc-200 transition-colors cursor-pointer"
                 title="Abrir en ventana emergente"
               >
-                <ExternalLink size={14} />
+                <ExternalLink size={13} />
                 <span>Ventana flotante</span>
               </button>
             </div>
@@ -388,15 +424,15 @@ export default function GenerarVentaPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-zinc-200 shadow-xs shrink-0">
-          <CalendarDays size={16} className="text-primary" />
-          <span className="text-sm font-semibold text-zinc-700 capitalize">{fechaHoy}</span>
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-50 border border-zinc-200 shrink-0">
+          <CalendarDays size={15} className="text-primary" />
+          <span className="text-xs font-semibold text-zinc-700 capitalize">{fechaHoy}</span>
         </div>
 
-        <div className="w-full lg:w-[500px] bg-white rounded-xl border border-zinc-200 shadow-xs p-3.5 space-y-2.5">
+        <div className="w-full md:w-[480px] space-y-1">
           <div className="flex items-center justify-between text-xs">
             <div className="flex items-center gap-1.5 font-medium text-zinc-700">
-              <UserPlus size={15} className="text-primary" />
+              <UserPlus size={14} className="text-primary" />
               <span>Cliente (opcional)</span>
             </div>
 
@@ -411,8 +447,8 @@ export default function GenerarVentaPage() {
             )}
           </div>
 
-          <div className="grid grid-cols-14 gap-2">
-            <div className="col-span-9 relative">
+          <div className="grid grid-cols-12 gap-1.5">
+            <div className="col-span-7 relative">
               <input
                 value={nombreCliente}
                 onChange={(e) => {
@@ -424,10 +460,8 @@ export default function GenerarVentaPage() {
                 onBlur={() => setTimeout(() => setMostrarSugerencias(false), 150)}
                 placeholder="Nombre del cliente"
                 readOnly={!!idClienteSeleccionado}
-                className={`${inputClass} w-full text-xs transition-all ${
-                  idClienteSeleccionado
-                    ? 'bg-zinc-50 text-zinc-800 font-medium border-zinc-300'
-                    : ''
+                className={`${inputClass} text-xs py-1.5 ${
+                  idClienteSeleccionado ? 'bg-zinc-100 text-zinc-800 font-medium border-zinc-300' : ''
                 }`}
               />
 
@@ -455,8 +489,8 @@ export default function GenerarVentaPage() {
                 placeholder="DNI / RUC"
                 maxLength={11}
                 readOnly={!!idClienteSeleccionado}
-                className={`${inputClass} w-full text-xs font-mono ${
-                  idClienteSeleccionado ? 'bg-zinc-50 text-zinc-800 font-medium border-zinc-300' : ''
+                className={`${inputClass} text-xs py-1.5 font-mono ${
+                  idClienteSeleccionado ? 'bg-zinc-100 text-zinc-800 font-medium border-zinc-300' : ''
                 }`}
               />
             </div>
@@ -468,24 +502,26 @@ export default function GenerarVentaPage() {
                 className="w-full h-full flex items-center justify-center rounded-lg bg-primary hover:bg-primary/90 text-white transition-colors cursor-pointer"
                 title="Registrar nuevo cliente"
               >
-                <Plus size={18} />
+                <Plus size={16} />
               </button>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 h-[calc(100vh-170px)] min-h-[500px] overflow-hidden">
+      {/* ÁREA PRINCIPAL POS */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 flex-1 min-h-0 overflow-hidden">
         
+        {/* CATALOGO PRODUCTOS */}
         <div className="lg:col-span-3 bg-white rounded-2xl border border-zinc-200 shadow-xs flex flex-col h-full overflow-hidden">
-          <div className="p-4 border-b border-zinc-200 shrink-0">
+          <div className="p-3 border-b border-zinc-200 shrink-0">
             <div className="relative">
               <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400"><Search size={16} /></span>
               <input
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
-                placeholder="Buscar por nombre o principio activo..."
-                className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-primary/30 bg-zinc-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+                placeholder="Buscar por nombre, principio activo o laboratorio..."
+                className="w-full pl-9 pr-4 py-2 rounded-lg border border-primary/30 bg-zinc-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
               />
             </div>
           </div>
@@ -503,23 +539,28 @@ export default function GenerarVentaPage() {
               <tbody className="divide-y divide-zinc-100">
                 {productosVisibles.map((p) => (
                   <tr key={p.id} className="hover:bg-zinc-50/60 transition-colors">
-                    <td className="px-4 py-2.5 font-medium text-zinc-700">
-                      <div>{p.nombre}</div>
-                      {p.principioActivo?.nombre && (
-                        <div className="text-xs text-zinc-400 font-normal italic">
-                          {p.principioActivo.nombre}
+                    <td className="px-4 py-2 text-zinc-700">
+                      <div className="font-medium text-zinc-800">{p.nombre}</div>
+                      
+                      {/* Principio activo y Laboratorio en la misma línea */}
+                      {(p.principioActivo?.nombre || p.laboratorio?.nombre) && (
+                        <div className="text-xs text-zinc-400 font-normal italic flex items-center gap-1.5 flex-wrap">
+                          {p.principioActivo?.nombre && <span>{p.principioActivo.nombre}</span>}
+                          {p.principioActivo?.nombre && p.laboratorio?.nombre && <span>•</span>}
+                          {p.laboratorio?.nombre && <span className="text-zinc-500 font-medium">{p.laboratorio.nombre}</span>}
                         </div>
                       )}
+
                       {p.vende_por_presentaciones && (p.blister_habilitado || p.caja_habilitado) && (
-                        <div className="flex gap-1 mt-1">
-                          {p.blister_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary">Blister</span>}
-                          {p.caja_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/10 text-primary">Caja</span>}
+                        <div className="flex gap-1 mt-0.5">
+                          {p.blister_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">Blister</span>}
+                          {p.caja_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">Caja</span>}
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-right text-zinc-600">S/ {p.precio_venta.toFixed(2)}</td>
-                    <td className="px-4 py-2.5 text-right text-zinc-500">{p.stock}</td>
-                    <td className="px-4 py-2.5 text-right">
+                    <td className="px-4 py-2 text-right text-zinc-700 font-semibold whitespace-nowrap">S/ {p.precio_venta.toFixed(2)}</td>
+                    <td className="px-4 py-2 text-right text-zinc-500 font-mono whitespace-nowrap">{p.stock}</td>
+                    <td className="px-4 py-2 text-right whitespace-nowrap">
                       <button onClick={() => agregarProducto(p)} className="px-3 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors cursor-pointer">
                         Agregar
                       </button>
@@ -527,13 +568,14 @@ export default function GenerarVentaPage() {
                   </tr>
                 ))}
                 {productosVisibles.length === 0 && (
-                  <tr><td colSpan={4} className="px-4 py-10 text-center text-zinc-400">No se encontraron productos.</td></tr>
+                  <tr><td colSpan={4} className="px-4 py-10 text-center text-zinc-400">No se encontraron productos disponibles.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
         </div>
 
+        {/* DETALLE DE VENTA / CARRITO */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-zinc-200 shadow-xs flex flex-col h-full overflow-hidden">
           <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-zinc-200 shrink-0">
             <div className="flex items-center gap-2">
@@ -559,64 +601,66 @@ export default function GenerarVentaPage() {
                 const opciones = tiposDisponibles(item.producto);
                 const subtotal = item.precioUnitario * item.cantidad;
                 return (
-                  <div key={`${item.idProducto}-${item.tipoVenta}`} className="px-4 py-3 space-y-2">
+                  <div key={`${item.idProducto}-${item.tipoVenta}`} className="px-3 py-2.5 space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-zinc-800 truncate flex-1">{item.producto.nombre}</p>
+                      <p className="text-xs font-semibold text-zinc-800 truncate flex-1">{item.producto.nombre}</p>
                       <button
                         onClick={() => quitarProducto(item.idProducto, item.tipoVenta)}
                         className="p-1 text-zinc-400 hover:text-red-500 transition-colors shrink-0 cursor-pointer"
                       >
-                        <Trash2 size={15} />
+                        <Trash2 size={14} />
                       </button>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center justify-between gap-1.5 flex-wrap">
                       {opciones.length > 1 ? (
                         <select
                           value={item.tipoVenta}
                           onChange={(e) => cambiarTipoVenta(item.idProducto, item.tipoVenta, e.target.value as TipoVenta)}
-                          className="text-xs px-2 py-1.5 rounded-lg border border-zinc-300 bg-zinc-50 focus:outline-hidden focus:ring-2 focus:ring-primary/50"
+                          className="text-xs px-1.5 py-1 rounded-lg border border-zinc-300 bg-zinc-50 focus:outline-hidden focus:ring-2 focus:ring-primary/50"
                         >
                           {opciones.map((op) => <option key={op.value} value={op.value}>{op.label}</option>)}
                         </select>
                       ) : (
-                        <span className="text-xs font-medium text-zinc-500 px-2 py-1.5 bg-zinc-50 rounded-lg border border-zinc-200">Unidad</span>
+                        <span className="text-[11px] font-medium text-zinc-500 px-1.5 py-0.5 bg-zinc-50 rounded border border-zinc-200">Unidad</span>
                       )}
 
+                      {/* CANTIDAD */}
                       <div className="flex flex-col gap-0.5">
+                        <span className="text-[10px] text-zinc-400 font-medium">Cant.</span>
                         <input
                           type="number"
                           min={1}
                           value={item.cantidad}
                           onChange={(e) => cambiarCantidad(item.idProducto, item.tipoVenta, Number(e.target.value))}
-                          className="w-14 px-1 py-1 rounded-lg border border-zinc-300 text-sm text-center"
+                          className="w-12 px-1 py-0.5 rounded-lg border border-zinc-300 text-xs text-center"
                         />
                       </div>
 
+                      {/* PRECIO UNITARIO (PASOS DE 0.10) */}
                       <div className="flex flex-col gap-0.5">
-                        <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-zinc-400 font-medium">P. Unit.</span>
+                        <div className="flex items-center gap-0.5">
                           <span className="text-xs text-zinc-400">S/</span>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min={0}
+                          <PrecioInput
+                            step="0.10"
                             value={item.precioUnitario}
-                            onChange={(e) => cambiarPrecioUnitario(item.idProducto, item.tipoVenta, Number(e.target.value))}
-                            className="w-20 px-1.5 py-1 rounded-lg border border-zinc-300 text-sm text-right text-zinc-700"
+                            onChange={(nuevoPrecio) => cambiarPrecioUnitario(item.idProducto, item.tipoVenta, nuevoPrecio)}
+                            className="w-16 px-1 py-0.5 rounded-lg border border-zinc-300 text-xs text-right text-zinc-700"
                           />
                         </div>
                       </div>
 
-                      <div className="flex flex-col gap-0.5 ml-auto">
-                        <div className="flex items-center gap-1">
+                      {/* SUBTOTAL (PASOS DE 0.10) */}
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[10px] text-zinc-400 font-medium">Subtotal</span>
+                        <div className="flex items-center gap-0.5">
                           <span className="text-xs text-zinc-400">S/</span>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min={0}
-                            value={subtotal.toFixed(2)}
-                            onChange={(e) => cambiarSubtotal(item.idProducto, item.tipoVenta, Number(e.target.value))}
-                            className="w-20 px-1.5 py-1 rounded-lg border border-zinc-300 text-sm text-right font-semibold text-zinc-800"
+                          <PrecioInput
+                            step="0.10"
+                            value={subtotal}
+                            onChange={(nuevoSubtotal) => cambiarSubtotal(item.idProducto, item.tipoVenta, nuevoSubtotal)}
+                            className="w-16 px-1 py-0.5 rounded-lg border border-zinc-300 text-xs text-right font-semibold text-zinc-800"
                           />
                         </div>
                       </div>
@@ -627,19 +671,19 @@ export default function GenerarVentaPage() {
             )}
           </div>
 
-          <div className="border-t border-zinc-200 p-4 space-y-3 shrink-0">
+          <div className="border-t border-zinc-200 p-4 space-y-3 shrink-0 bg-zinc-50/50">
             <button
               onClick={handleAbrirPago}
               disabled={carrito.length === 0}
-              className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-primary text-sm font-semibold text-primary hover:border-primary/80 transition-all disabled:opacity-40 cursor-pointer"
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-primary text-sm font-semibold text-primary hover:bg-primary/5 transition-all disabled:opacity-40 cursor-pointer"
             >
-              <span className="flex items-center gap-2"><Wallet size={16} /> Método de pago</span>
+              <span className="flex items-center gap-2"><Wallet size={16} /> Realizar Venta</span>
               <span className="text-xs font-normal">Seleccionar</span>
             </button>
 
             <div className="flex justify-between items-center pt-1">
-              <span className="text-sm text-zinc-500">Total</span>
-              <span className="text-xl font-bold text-zinc-800">S/ {total.toFixed(2)}</span>
+              <span className="text-sm font-medium text-zinc-500">Total</span>
+              <span className="text-2xl font-bold text-zinc-900">S/ {total.toFixed(2)}</span>
             </div>
 
             {error && <p className="text-xs text-red-500 font-medium">{error}</p>}

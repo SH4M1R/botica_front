@@ -77,8 +77,18 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm): Prom
     altoCalculado += Math.max(lineas.length * 4, 4) + 1.5;
   });
 
-  // Totales y pie de página
-  altoCalculado += 35; // Total, Monto en letras, Método de pago, Gracias
+  // Calcular líneas de Monto en Letras
+  docSimulado.setFontSize(7);
+  const lineasMontoSim = docSimulado.splitTextToSize(`SON: ${montoEnLetras(venta.total)}`, ANCHO_UTIL);
+  altoCalculado += lineasMontoSim.length * 3.5 + 4;
+
+  // Calcular líneas de Método de Pago
+  docSimulado.setFontSize(8);
+  const lineasMetodoPagoSim = docSimulado.splitTextToSize(`Metodo Pago: ${venta.metodoPago}`, ANCHO_UTIL);
+  altoCalculado += lineasMetodoPagoSim.length * 3.8 + 6;
+
+  // Totales y pie de página estático
+  altoCalculado += 20;
   const ALTO_FINAL = Math.ceil(altoCalculado) + 10; // +10mm de margen de seguridad final
 
   // --- PASO 2: Renderizar el documento con la altura exacta ---
@@ -103,6 +113,19 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm): Prom
     const posX = x ?? (align === 'center' ? centerX : align === 'right' ? ANCHO - MARGEN : MARGEN);
     doc.text(contenido, posX, y, { align });
     y += size * 0.35 + 1.5;
+  };
+
+  // Función helper para textos multilínea en el margen útil
+  const textoMultilinea = (
+    contenido: string,
+    opts: { size?: number; bold?: boolean } = {}
+  ) => {
+    const { size = 8, bold = false } = opts;
+    doc.setFont('arial', bold ? 'bold' : 'normal');
+    doc.setFontSize(size);
+    const lineas = doc.splitTextToSize(contenido, ANCHO_UTIL);
+    doc.text(lineas, MARGEN, y);
+    y += lineas.length * (size * 0.35 + 1.2) + 1;
   };
 
   // Logo
@@ -136,7 +159,6 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm): Prom
   texto(`Fecha: ${fecha}`, { size: 8 });
   texto(`Cliente: ${venta.cliente?.nombre ?? 'CLIENTES VARIOS'}`, { size: 8 });
   if (venta.cliente?.dni) texto(`DNI: ${venta.cliente.dni}`, { size: 8 });
-  texto(`Atendido por: ${venta.empleado?.nombre}`, { size: 8 });
 
   linea();
 
@@ -177,11 +199,14 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm): Prom
   doc.text(`S/ ${venta.total.toFixed(2)}`, ANCHO - MARGEN, y, { align: 'right' });
   y += 5;
 
-  texto(`SON: ${montoEnLetras(venta.total)}`, { size: 7, bold: false });
+  // Monto en Letras Multilinea
+  textoMultilinea(`SON: ${montoEnLetras(venta.total)}`, { size: 7 });
 
   linea();
-  texto(`Metodo Pago: ${venta.metodoPago}`, { size: 8 });
+  // Método de Pago Multilinea (evita desbordamiento)
+  textoMultilinea(`Metodo Pago: ${venta.metodoPago}`, { size: 8 });
   linea();
+
   texto('¡Gracias por su compra!', { align: 'center', bold: true, size: 9 });
 
   return doc.output('blob');

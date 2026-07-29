@@ -1,18 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { 
-  LayoutDashboard, Package, Settings, ShoppingCart, Contact, ChevronDown, 
-  List, Plus, Users, Tags, Lock, Repeat, ArrowDownToLine, ArrowUpFromLine, 
-  CreditCard, Receipt, ArrowRightLeft, ShieldCheck, UserCheck, 
-  BarChart3, CalendarCheck, ShoppingBag, Wallet 
+import {
+  LayoutDashboard, Package, Settings, ShoppingCart, Contact, ChevronDown,
+  List, Plus, Users, Tags, Lock, Repeat, ArrowDownToLine, ArrowUpFromLine,
+  CreditCard, Receipt, ArrowRightLeft, ShieldCheck, UserCheck,
+  BarChart3, CalendarCheck, ShoppingBag, Wallet, ChevronsLeft, ChevronsRight,
 } from 'lucide-react';
 import { useSession } from '@/hooks/useSession';
 import { arqueoApi } from '@/api/arqueo';
 import { permisosApi } from '@/api/permisos';
-import { CajaCerradaModal } from './CajaCerradaModal';
 
 const topLinks = [
   { href: '/dashboard', label: 'Panel', icon: LayoutDashboard, siempreVisible: true },
@@ -51,11 +50,13 @@ type MenuId = 'caja' | 'ventas' | 'compras' | 'productos' | 'empleados' | 'trasl
 
 interface SidebarProps {
   onClose?: () => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+  onCajaCerrada: () => void;
 }
 
-export default function Sidebar({ onClose }: SidebarProps) {
+export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCerrada }: SidebarProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const { empleado, cargando: cargandoSesion } = useSession();
 
   const esAdmin = empleado?.rol === 'Administrador';
@@ -139,45 +140,60 @@ export default function Sidebar({ onClose }: SidebarProps) {
     setMenuAbierto((prev) => (prev === id ? null : id));
   };
 
+  const handleToggleMenu = (id: MenuId) => {
+    if (collapsed) {
+      onToggleCollapse();
+      setMenuAbierto(id);
+    } else {
+      toggleMenu(id);
+    }
+  };
+
   const [cajaAbierta, setCajaAbierta] = useState<unknown | null | undefined>(undefined);
-  const [modalCajaOpen, setModalCajaOpen] = useState(false);
+
+  // Función reútilizable para verificar el estado de la caja
+  const revisarCaja = useCallback(() => {
+    if (!empleado?.id) return;
+    arqueoApi.cajaActual(empleado.id)
+      .then((actual) => setCajaAbierta(actual ?? null))
+      .catch(() => setCajaAbierta(null));
+  }, [empleado?.id]);
 
   useEffect(() => {
     if (cargandoSesion || !empleado?.id) return;
-    let activo = true;
 
-    const revisar = () => {
-      arqueoApi.cajaActual(empleado.id)
-        .then((actual) => { if (activo) setCajaAbierta(actual ?? null); })
-        .catch(() => { if (activo) setCajaAbierta(null); });
-    };
+    // Consulta inicial inmediata
+    revisarCaja();
 
-    revisar();
+    // Eventos para detectar cambios en tiempo real sin recargar
+    window.addEventListener('focus', revisarCaja);
+    window.addEventListener(EVENTO_CAJA_ACTUALIZADA, revisarCaja);
+    window.addEventListener('storage', revisarCaja);
 
-    window.addEventListener('focus', revisar);
-    window.addEventListener(EVENTO_CAJA_ACTUALIZADA, revisar);
-
-    const intervalo = setInterval(revisar, 30000);
+    // Polling de seguridad
+    const intervalo = setInterval(revisarCaja, 5000);
 
     return () => {
-      activo = false;
       clearInterval(intervalo);
-      window.removeEventListener('focus', revisar);
-      window.removeEventListener(EVENTO_CAJA_ACTUALIZADA, revisar);
+      window.removeEventListener('focus', revisarCaja);
+      window.removeEventListener(EVENTO_CAJA_ACTUALIZADA, revisarCaja);
+      window.removeEventListener('storage', revisarCaja);
     };
-  }, [empleado?.id, cargandoSesion, pathname]);
+  }, [empleado?.id, cargandoSesion, pathname, revisarCaja]);
 
   const puedeVender = !!cajaAbierta;
 
   const linkClass = (active: boolean) =>
-    `flex items-center gap-3 px-4 py-2.5 rounded-lg text-md font-semibold transition-all shrink-0 ${
+    `flex items-center gap-3 rounded-lg text-md font-semibold transition-all shrink-0 ${
+      collapsed ? 'justify-center px-0 py-2.5' : 'px-4 py-2.5'
+    } ${
       active ? 'bg-white text-primary shadow-md' : 'text-white hover:bg-white/20 hover:text-white'
     }`;
 
   const handleClickGenerarVenta = (e: React.MouseEvent) => {
     if (!puedeVender) {
       e.preventDefault();
-      setModalCajaOpen(true);
+      onCajaCerrada(); // el modal ahora vive en el layout, no aquí
     } else if (onClose) {
       onClose();
     }
@@ -187,228 +203,266 @@ export default function Sidebar({ onClose }: SidebarProps) {
     if (onClose) onClose();
   };
 
-  const irAArqueo = () => {
-    setModalCajaOpen(false);
-    if (onClose) onClose();
-    router.push('/dashboard/caja');
-  };
-
   return (
-    <>
-      <div className="flex flex-col h-full bg-primary text-white shadow-2xl">
-        <nav
-          className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto p-5
-                     [&::-webkit-scrollbar]:w-1.5
-                     [&::-webkit-scrollbar-track]:bg-primary
-                     [&::-webkit-scrollbar-thumb]:bg-white/25
-                     [&::-webkit-scrollbar-thumb]:rounded-full
-                     hover:[&::-webkit-scrollbar-thumb]:bg-white/40"
-          style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.25) transparent' }}
+    <div className="flex flex-col h-full bg-primary text-white shadow-2xl">
+      {/* Botón de colapsar/expandir — solo escritorio, solo por clic */}
+      <div
+        className={`hidden md:flex items-center border-b border-white/50 ${
+          collapsed ? 'justify-center py-3' : 'justify-end px-3 py-3'
+        }`}
+      >
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+          className="p-2 rounded-lg text-white hover:bg-white/20 transition-colors cursor-pointer"
         >
-          {topLinksVisibles.map(({ href, label, icon: Icon }) => (
-            <Link key={href} href={href} onClick={handleLinkClick} className={linkClass(pathname === href)}>
-              <Icon size={18} />
-              {label}
-            </Link>
-          ))}
-
-          {/* Caja */}
-          {cajaModuloVisible && (
-            <>
-              <button
-                onClick={() => toggleMenu('caja')}
-                className={linkClass(cajaActivo && menuAbierto !== 'caja')}
-              >
-                <Wallet size={18} />
-                <span className="flex-1 text-left">Caja</span>
-                <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'caja' ? 'rotate-180' : ''}`} />
-              </button>
-
-              {menuAbierto === 'caja' && (
-                <div className="flex flex-col gap-1 pl-4">
-                  {cajaChildrenVisibles.map(({ href, label, icon: Icon }) => (
-                    <Link key={href} href={href} onClick={handleLinkClick} className={linkClass(pathname === href)}>
-                      <Icon size={16} />
-                      <span className="text-sm">{label}</span>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Ventas */}
-          {ventasModuloVisible && (
-            <>
-              <button
-                onClick={() => toggleMenu('ventas')}
-                className={linkClass(ventasActivo && menuAbierto !== 'ventas')}
-              >
-                <ShoppingCart size={18} />
-                <span className="flex-1 text-left">Ventas</span>
-                <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'ventas' ? 'rotate-180' : ''}`} />
-              </button>
-
-              {menuAbierto === 'ventas' && (
-                <div className="flex flex-col gap-1 pl-4">
-                  {ventasLinksVisibles.listado && (
-                    <Link href="/dashboard/ventas" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/ventas')}>
-                      <List size={16} />
-                      <span className="text-sm">Listado de ventas</span>
-                    </Link>
-                  )}
-
-                  {ventasLinksVisibles.generar && (
-                    <Link
-                      href="/dashboard/ventas/generar"
-                      onClick={handleClickGenerarVenta}
-                      title={!puedeVender ? 'Debes abrir tu caja primero' : undefined}
-                      className={`${linkClass(pathname === '/dashboard/ventas/generar')} ${!puedeVender ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      {puedeVender ? <Plus size={16} /> : <Lock size={16} />}
-                      <span className="text-sm">Generar venta</span>
-                    </Link>
-                  )}
-
-                  {ventasLinksVisibles.clientes && (
-                    <Link href="/dashboard/clientes" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/clientes')}>
-                      <Contact size={16} />
-                      <span className="text-sm">Clientes</span>
-                    </Link>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Compras */}
-          {comprasModuloVisible && (
-            <>
-              <button
-                onClick={() => toggleMenu('compras')}
-                className={linkClass(comprasActivo && menuAbierto !== 'compras')}
-              >
-                <ShoppingBag size={18} />
-                <span className="flex-1 text-left">Compras</span>
-                <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'compras' ? 'rotate-180' : ''}`} />
-              </button>
-
-              {menuAbierto === 'compras' && (
-                <div className="flex flex-col gap-1 pl-4">
-                  {comprasLinksVisibles.listado && (
-                    <Link href="/dashboard/compras" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/compras')}>
-                      <List size={16} />
-                      <span className="text-sm">Listado de Compras</span>
-                    </Link>
-                  )}
-
-                  {comprasLinksVisibles.generar && (
-                    <Link href="/dashboard/compras/generar" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/compras/generar')}>
-                      <Plus size={16} />
-                      <span className="text-sm">Ingresar Compra</span>
-                    </Link>
-                  )}
-
-                  {comprasLinksVisibles.proveedores && (
-                    <Link href="/dashboard/proveedores" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/proveedores')}>
-                      <Contact size={16} />
-                      <span className="text-sm">Proveedores</span>
-                    </Link>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Productos */}
-          {productosModuloVisible && (
-            <>
-              <button
-                onClick={() => toggleMenu('productos')}
-                className={linkClass(productosActivo && menuAbierto !== 'productos')}
-              >
-                <Package size={18} />
-                <span className="flex-1 text-left">Productos</span>
-                <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'productos' ? 'rotate-180' : ''}`} />
-              </button>
-
-              {menuAbierto === 'productos' && (
-                <div className="flex flex-col gap-1 pl-4">
-                  {productosChildrenVisibles.map(({ href, label, icon: Icon }) => (
-                    <Link key={href} href={href} onClick={handleLinkClick} className={linkClass(pathname === href)}>
-                      <Icon size={16} />
-                      <span className="text-sm">{label}</span>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Traslados */}
-          {trasladosModuloVisible && (
-            <>
-              <button
-                onClick={() => toggleMenu('traslados')}
-                className={linkClass(trasladosActivo && menuAbierto !== 'traslados')}
-              >
-                <Repeat size={18} />
-                <span className="flex-1 text-left">Traslados</span>
-                <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'traslados' ? 'rotate-180' : ''}`} />
-              </button>
-
-              {menuAbierto === 'traslados' && (
-                <div className="flex flex-col gap-1 pl-4">
-                  {trasladosChildrenVisibles.map(({ href, label, icon: Icon }) => (
-                    <Link key={href} href={href} onClick={handleLinkClick} className={linkClass(pathname === href)}>
-                      <Icon size={16} />
-                      <span className="text-sm">{label}</span>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Empleados */}
-          {empleadosModuloVisible && (
-            <>
-              <button
-                onClick={() => toggleMenu('empleados')}
-                className={linkClass(empleadosActivo && menuAbierto !== 'empleados')}
-              >
-                <Users size={18} />
-                <span className="flex-1 text-left">Empleados</span>
-                <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'empleados' ? 'rotate-180' : ''}`} />
-              </button>
-
-              {menuAbierto === 'empleados' && (
-                <div className="flex flex-col gap-1 pl-4">
-                  {empleadosChildrenVisibles.map(({ href, label, icon: Icon }) => (
-                    <Link key={href} href={href} onClick={handleLinkClick} className={linkClass(pathname === href)}>
-                      <Icon size={16} />
-                      <span className="text-sm">{label}</span>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-
-          {esAdmin && bottomLinks.map(({ href, label, icon: Icon }) => (
-            <Link key={href} href={href} onClick={handleLinkClick} className={linkClass(pathname === href)}>
-              <Icon size={18} />
-              {label}
-            </Link>
-          ))}
-        </nav>
+          {collapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
+        </button>
       </div>
 
-      <CajaCerradaModal
-        open={modalCajaOpen}
-        onClose={() => setModalCajaOpen(false)}
-        onIrAArqueo={irAArqueo}
-      />
-    </>
+      <nav
+        className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto p-3
+                   [&::-webkit-scrollbar]:w-1.5
+                   [&::-webkit-scrollbar-track]:bg-primary
+                   [&::-webkit-scrollbar-thumb]:bg-white/25
+                   [&::-webkit-scrollbar-thumb]:rounded-full
+                   hover:[&::-webkit-scrollbar-thumb]:bg-white/40"
+        style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.25) transparent' }}
+      >
+        {topLinksVisibles.map(({ href, label, icon: Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            onClick={handleLinkClick}
+            title={collapsed ? label : undefined}
+            className={linkClass(pathname === href)}
+          >
+            <Icon size={18} />
+            {!collapsed && label}
+          </Link>
+        ))}
+
+        {/* Caja */}
+        {cajaModuloVisible && (
+          <>
+            <button
+              type="button"
+              onClick={() => handleToggleMenu('caja')}
+              title={collapsed ? 'Caja' : undefined}
+              className={linkClass(cajaActivo && menuAbierto !== 'caja')}
+            >
+              <Wallet size={18} />
+              {!collapsed && <span className="flex-1 text-left">Caja</span>}
+              {!collapsed && (
+                <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'caja' ? 'rotate-180' : ''}`} />
+              )}
+            </button>
+
+            {!collapsed && menuAbierto === 'caja' && (
+              <div className="flex flex-col gap-1 pl-4">
+                {cajaChildrenVisibles.map(({ href, label, icon: Icon }) => (
+                  <Link key={href} href={href} onClick={handleLinkClick} className={linkClass(pathname === href)}>
+                    <Icon size={16} />
+                    <span className="text-sm">{label}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Ventas */}
+        {ventasModuloVisible && (
+          <>
+            <button
+              type="button"
+              onClick={() => handleToggleMenu('ventas')}
+              title={collapsed ? 'Ventas' : undefined}
+              className={linkClass(ventasActivo && menuAbierto !== 'ventas')}
+            >
+              <ShoppingCart size={18} />
+              {!collapsed && <span className="flex-1 text-left">Ventas</span>}
+              {!collapsed && (
+                <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'ventas' ? 'rotate-180' : ''}`} />
+              )}
+            </button>
+
+            {!collapsed && menuAbierto === 'ventas' && (
+              <div className="flex flex-col gap-1 pl-4">
+                {ventasLinksVisibles.listado && (
+                  <Link href="/dashboard/ventas" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/ventas')}>
+                    <List size={16} />
+                    <span className="text-sm">Listado de ventas</span>
+                  </Link>
+                )}
+
+                {ventasLinksVisibles.generar && (
+                  <Link
+                    href="/dashboard/ventas/generar"
+                    onClick={handleClickGenerarVenta}
+                    title={!puedeVender ? 'Debes abrir tu caja primero' : undefined}
+                    className={`${linkClass(pathname === '/dashboard/ventas/generar')} ${!puedeVender ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {puedeVender ? <Plus size={16} /> : <Lock size={16} />}
+                    <span className="text-sm">Generar venta</span>
+                  </Link>
+                )}
+
+                {ventasLinksVisibles.clientes && (
+                  <Link href="/dashboard/clientes" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/clientes')}>
+                    <Contact size={16} />
+                    <span className="text-sm">Clientes</span>
+                  </Link>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Compras */}
+        {comprasModuloVisible && (
+          <>
+            <button
+              type="button"
+              onClick={() => handleToggleMenu('compras')}
+              title={collapsed ? 'Compras' : undefined}
+              className={linkClass(comprasActivo && menuAbierto !== 'compras')}
+            >
+              <ShoppingBag size={18} />
+              {!collapsed && <span className="flex-1 text-left">Compras</span>}
+              {!collapsed && (
+                <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'compras' ? 'rotate-180' : ''}`} />
+              )}
+            </button>
+
+            {!collapsed && menuAbierto === 'compras' && (
+              <div className="flex flex-col gap-1 pl-4">
+                {comprasLinksVisibles.listado && (
+                  <Link href="/dashboard/compras" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/compras')}>
+                    <List size={16} />
+                    <span className="text-sm">Listado de Compras</span>
+                  </Link>
+                )}
+
+                {comprasLinksVisibles.generar && (
+                  <Link href="/dashboard/compras/generar" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/compras/generar')}>
+                    <Plus size={16} />
+                    <span className="text-sm">Ingresar Compra</span>
+                  </Link>
+                )}
+
+                {comprasLinksVisibles.proveedores && (
+                  <Link href="/dashboard/proveedores" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/proveedores')}>
+                    <Contact size={16} />
+                    <span className="text-sm">Proveedores</span>
+                  </Link>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Productos */}
+        {productosModuloVisible && (
+          <>
+            <button
+              type="button"
+              onClick={() => handleToggleMenu('productos')}
+              title={collapsed ? 'Productos' : undefined}
+              className={linkClass(productosActivo && menuAbierto !== 'productos')}
+            >
+              <Package size={18} />
+              {!collapsed && <span className="flex-1 text-left">Productos</span>}
+              {!collapsed && (
+                <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'productos' ? 'rotate-180' : ''}`} />
+              )}
+            </button>
+
+            {!collapsed && menuAbierto === 'productos' && (
+              <div className="flex flex-col gap-1 pl-4">
+                {productosChildrenVisibles.map(({ href, label, icon: Icon }) => (
+                  <Link key={href} href={href} onClick={handleLinkClick} className={linkClass(pathname === href)}>
+                    <Icon size={16} />
+                    <span className="text-sm">{label}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Traslados */}
+        {trasladosModuloVisible && (
+          <>
+            <button
+              type="button"
+              onClick={() => handleToggleMenu('traslados')}
+              title={collapsed ? 'Traslados' : undefined}
+              className={linkClass(trasladosActivo && menuAbierto !== 'traslados')}
+            >
+              <Repeat size={18} />
+              {!collapsed && <span className="flex-1 text-left">Traslados</span>}
+              {!collapsed && (
+                <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'traslados' ? 'rotate-180' : ''}`} />
+              )}
+            </button>
+
+            {!collapsed && menuAbierto === 'traslados' && (
+              <div className="flex flex-col gap-1 pl-4">
+                {trasladosChildrenVisibles.map(({ href, label, icon: Icon }) => (
+                  <Link key={href} href={href} onClick={handleLinkClick} className={linkClass(pathname === href)}>
+                    <Icon size={16} />
+                    <span className="text-sm">{label}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Empleados */}
+        {empleadosModuloVisible && (
+          <>
+            <button
+              type="button"
+              onClick={() => handleToggleMenu('empleados')}
+              title={collapsed ? 'Empleados' : undefined}
+              className={linkClass(empleadosActivo && menuAbierto !== 'empleados')}
+            >
+              <Users size={18} />
+              {!collapsed && <span className="flex-1 text-left">Empleados</span>}
+              {!collapsed && (
+                <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'empleados' ? 'rotate-180' : ''}`} />
+              )}
+            </button>
+
+            {!collapsed && menuAbierto === 'empleados' && (
+              <div className="flex flex-col gap-1 pl-4">
+                {empleadosChildrenVisibles.map(({ href, label, icon: Icon }) => (
+                  <Link key={href} href={href} onClick={handleLinkClick} className={linkClass(pathname === href)}>
+                    <Icon size={16} />
+                    <span className="text-sm">{label}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {esAdmin && bottomLinks.map(({ href, label, icon: Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            onClick={handleLinkClick}
+            title={collapsed ? label : undefined}
+            className={linkClass(pathname === href)}
+          >
+            <Icon size={18} />
+            {!collapsed && label}
+          </Link>
+        ))}
+      </nav>
+    </div>
   );
 }

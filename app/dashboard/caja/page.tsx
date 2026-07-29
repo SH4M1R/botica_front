@@ -120,23 +120,23 @@ export default function ArqueoPage() {
     });
   };
 
-  const handleImprimir = (arqueo: ArqueoCaja) => {
-    try {
-      setError('');
+  const handleImprimir = async (arqueo: ArqueoCaja) => {
+  try {
+    setError('');
 
-      // Extraemos las ventas del arqueo o asignamos un array vacío de respaldo
-      const ventas = (arqueo as any).ventas ?? [];
+    // Extraemos las ventas del arqueo o asignamos un array vacío de respaldo
+    const ventas = (arqueo as any).ventas ?? [];
 
-      // 1. Generar el Blob pasando ambos parámetros requeridos (arqueo, ventas)
-      const pdfBlob = generarReporteCajaPdf(arqueo, ventas);
+    // 1. Usamos AWAIT porque la función ahora es asíncrona (Promise<Blob>)
+    const pdfBlob = await generarReporteCajaPdf(arqueo, ventas);
 
-      // 2. Crear la URL y abrir el PDF en una nueva pestaña para su impresión
-      const pdfUrl = URL.createObjectURL(pdfBlob);
-      window.open(pdfUrl, '_blank');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al generar el reporte en PDF.');
-    }
-  };
+    // 2. Ahora pdfBlob sí es un Blob válido
+    const pdfUrl = URL.createObjectURL(pdfBlob);
+    window.open(pdfUrl, '_blank');
+  } catch (err) {
+    setError(err instanceof Error ? err.message : 'Error al generar el reporte en PDF.');
+  }
+};
 
   const filtrados = useMemo(() => {
     const lista = Array.isArray(arqueos) ? arqueos : [];

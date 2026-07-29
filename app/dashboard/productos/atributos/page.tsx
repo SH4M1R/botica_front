@@ -10,6 +10,7 @@ import LaboratorioModal from "../components/LaboratorioModal";
 import CategoriaModal from  "../components/CategoriaModal";
 import PrincipioActivoModal from "../components/PrincipioActivoModal";
 import AccionTerapeuticaModal from "../components/AccionTerapeuticaModal";
+import ModalEliminar from "@/components/ModalEliminar";
 import Paginacion from "@/components/Paginacion";
 
 export type ItemBase = { id: number; nombre: string };
@@ -48,6 +49,20 @@ export default function AtributoProductoPage() {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
 
+  const [modalConfig, setModalConfig] = useState<{
+  isOpen: boolean;
+  mensaje: string;
+  errorMensaje?: string;
+  onConfirm: () => Promise<void>;
+}>({
+  isOpen: false,
+  mensaje: '',
+  onConfirm: async () => {},
+});
+
+const cerrarModal = () =>
+  setModalConfig((prev) => ({ ...prev, isOpen: false }));
+
   const tab = TABS.find((t) => t.key === tabActiva)!;
 
   const cargar = async () => {
@@ -82,14 +97,16 @@ export default function AtributoProductoPage() {
     await cargar();
   };
 
-  const handleEliminar = async (item: ItemBase) => {
-    if (!confirm(`¿Eliminar "${item.nombre}"?`)) return;
-    try {
-      await tab.api.eliminar(item.id);
-      await cargar();
-    } catch {
-      alert('No se pudo eliminar. Puede que esté siendo usado por algún producto.');
-    }
+  const handleEliminar = (item: ItemBase) => {
+    setModalConfig({
+      isOpen: true,
+      mensaje: `¿Deseas eliminar "${item.nombre}"?`,
+      errorMensaje: 'No se pudo eliminar. Puede que esté siendo usado por algún producto.',
+      onConfirm: async () => {
+        await tab.api.eliminar(item.id);
+        await cargar();
+      },
+    });
   };
 
   const ModalComponent = tab.Modal;
@@ -193,6 +210,14 @@ export default function AtributoProductoPage() {
         onClose={() => setModalOpen(false)}
         onSave={handleGuardar}
       />
+
+      <ModalEliminar
+      isOpen={modalConfig.isOpen}
+      onClose={cerrarModal}
+      mensaje={modalConfig.mensaje}
+      errorMensajeDefault={modalConfig.errorMensaje}
+      onConfirm={modalConfig.onConfirm}
+    />
     </div>
   );
 }

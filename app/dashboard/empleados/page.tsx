@@ -6,6 +6,7 @@ import { empleadosCrudApi } from '@/api/empleados';
 import type { Empleado, EmpleadoPayload } from '@/api/empleados';
 import EmpleadoModal from './components/EmpleadoModal';
 import Paginacion from '@/components/Paginacion';
+import ModalEliminar from "@/components/ModalEliminar";
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
@@ -47,6 +48,20 @@ export default function EmpleadosPage() {
   const totalPaginas = Math.ceil(totalItems / pageSize) || 1;
   const paginaSegura = Math.min(Math.max(currentPage, 1), totalPaginas);
 
+  const [modalConfig, setModalConfig] = useState<{
+  isOpen: boolean;
+  mensaje: string;
+  errorMensaje?: string;
+  onConfirm: () => Promise<void>;
+}>({
+  isOpen: false,
+  mensaje: '',
+  onConfirm: async () => {},
+});
+
+const cerrarModal = () =>
+  setModalConfig((prev) => ({ ...prev, isOpen: false }));
+
   const itemsPaginados = useMemo(() => {
     return empleadosFiltrados.slice(
       (paginaSegura - 1) * pageSize,
@@ -67,14 +82,16 @@ export default function EmpleadosPage() {
     await cargarEmpleados();
   };
 
-  const handleEliminar = async (empleado: Empleado) => {
-    if (!confirm(`¿Eliminar definitivamente a "${empleado.nombre}"? Esta acción no se puede deshacer y fallará si tiene ventas registradas.`)) return;
-    try {
-      await empleadosCrudApi.eliminar(empleado.id);
-      await cargarEmpleados();
-    } catch {
-      alert('No se pudo eliminar. Es posible que este empleado tenga ventas registradas — intenta desactivarlo en su lugar.');
-    }
+  const handleEliminar = (empleado: Empleado) => {
+    setModalConfig({
+      isOpen: true,
+      mensaje: `¿Eliminar definitivamente a "${empleado.nombre}"? Esta acción no se puede deshacer y fallará si tiene ventas registradas.`,
+      errorMensaje: 'No se pudo eliminar. Es posible que este empleado tenga ventas registradas — intenta desactivarlo en su lugar.',
+      onConfirm: async () => {
+        await empleadosCrudApi.eliminar(empleado.id);
+        await cargarEmpleados();
+      },
+    });
   };
 
   const rolBadgeClass = (rol: string) => {
@@ -206,6 +223,14 @@ export default function EmpleadosPage() {
         onClose={() => setModalOpen(false)}
         onSave={handleGuardar}
       />
+
+      <ModalEliminar
+      isOpen={modalConfig.isOpen}
+      onClose={cerrarModal}
+      mensaje={modalConfig.mensaje}
+      errorMensajeDefault={modalConfig.errorMensaje}
+      onConfirm={modalConfig.onConfirm}
+    />
     </div>
   );
 }

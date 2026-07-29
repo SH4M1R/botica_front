@@ -45,7 +45,7 @@ export interface Producto {
   unidades_caja: number | null;
   precio_caja: number | null;
   factor?: number | null;
-  registro_sanitario?: number | null;
+  registro_sanitario?: string | null;
 }
 
 export type ProductoPayload = Omit<Producto, 'id' | 'laboratorio' | 'categoria' | 'principioActivo' | 'accionTerapeutica'> & {

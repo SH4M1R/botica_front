@@ -5,7 +5,6 @@ import { Printer } from 'lucide-react';
 import { useSession } from '@/hooks/useSession';
 import { arqueoApi, type ArqueoCaja } from '@/api/arqueo';
 import { ventasApi, type Venta, METODOS_PAGO } from '@/api/ventas';
-import { productosApi, type Producto as ProductoCatalogo } from '@/api/productos';
 import {
   generarReporteMetodoPagoPos80,
   generarReporteMetodoPagoA4,
@@ -19,7 +18,6 @@ export default function MedioDePagoPage() {
 
   const [cajaAbierta, setCajaAbierta] = useState<ArqueoCaja | null | undefined>(undefined);
   const [ventas, setVentas] = useState<Venta[]>([]);
-  const [costosPorProductoId, setCostosPorProductoId] = useState<Map<number, number>>(new Map());
   const [cargando, setCargando] = useState(true);
   const [formato, setFormato] = useState<FormatoImpresion>('pos80');
   const [error, setError] = useState('');
@@ -30,14 +28,7 @@ export default function MedioDePagoPage() {
       setCargando(true);
       setError('');
       try {
-        const [actual, productos] = await Promise.all([
-          arqueoApi.cajaActual(empleado.id),
-          productosApi.listar(),
-        ]);
-
-        const mapaCostos = new Map<number, number>();
-        productos.forEach((p: ProductoCatalogo) => mapaCostos.set(p.id, p.precio_costo ?? 0));
-        setCostosPorProductoId(mapaCostos);
+        const actual = await arqueoApi.cajaActual(empleado.id);
 
         if (!actual) {
           setCajaAbierta(null);
@@ -67,21 +58,22 @@ export default function MedioDePagoPage() {
 
   const { filas, totales } = useMemo(() => {
     const acumulado = new Map<string, FilaMetodoPago>();
-    METODOS_PAGO.forEach((m) => acumulado.set(m, { metodo: m, cantidadVentas: 0, totalVendido: 0, ganancia: 0 }));
+    
+    // Inicializar los métodos base definidos en METODOS_PAGO
+    METODOS_PAGO.forEach((m) => acumulado.set(m, { metodo: m, cantidadVentas: 0, totalVendido: 0 }));
 
     ventas.forEach((v) => {
-      const fila = acumulado.get(v.metodoPago) ?? { metodo: v.metodoPago, cantidadVentas: 0, totalVendido: 0, ganancia: 0 };
+      // Identificar a qué categoría pertenece el método de pago
+      const metodoBase = METODOS_PAGO.find((m) =>
+        v.metodoPago?.toLowerCase().startsWith(m.toLowerCase())
+      ) ?? 'Otro';
 
-      const gananciaVenta = v.detalles.reduce((sum, d) => {
-        const costoUnitario = costosPorProductoId.get(d.producto.id) ?? 0;
-        return sum + (d.subtotal - costoUnitario * d.cantidad);
-      }, 0);
+      const fila = acumulado.get(metodoBase) ?? { metodo: metodoBase, cantidadVentas: 0, totalVendido: 0 };
 
       fila.cantidadVentas += 1;
       fila.totalVendido += v.total;
-      fila.ganancia += gananciaVenta;
 
-      acumulado.set(v.metodoPago, fila);
+      acumulado.set(metodoBase, fila);
     });
 
     const filasFinal = Array.from(acumulado.values());
@@ -90,13 +82,12 @@ export default function MedioDePagoPage() {
         metodo: 'TOTAL',
         cantidadVentas: acc.cantidadVentas + f.cantidadVentas,
         totalVendido: acc.totalVendido + f.totalVendido,
-        ganancia: acc.ganancia + f.ganancia,
       }),
-      { metodo: 'TOTAL', cantidadVentas: 0, totalVendido: 0, ganancia: 0 }
+      { metodo: 'TOTAL', cantidadVentas: 0, totalVendido: 0 }
     );
 
     return { filas: filasFinal, totales: totalesFinal };
-  }, [ventas, costosPorProductoId]);
+  }, [ventas]);
 
   const handleImprimir = () => {
     if (!cajaAbierta) return;
@@ -150,7 +141,7 @@ export default function MedioDePagoPage() {
 
         {!cargando && !error && cajaAbierta === null && (
           <p className="text-center text-zinc-400 py-6">
-            No tienes una caja abierta. Abre tu caja para ver el reporte de ganancias por método de pago.
+            No tienes una caja abierta. Abre tu caja para ver el reporte por método de pago.
           </p>
         )}
 
@@ -162,7 +153,6 @@ export default function MedioDePagoPage() {
                   <th className="py-2 px-2">Método de Pago</th>
                   <th className="py-2 px-2 text-right">N° Ventas</th>
                   <th className="py-2 px-2 text-right">Total Vendido</th>
-                  <th className="py-2 px-2 text-right">Ganancia</th>
                 </tr>
               </thead>
               <tbody>
@@ -171,9 +161,6 @@ export default function MedioDePagoPage() {
                     <td className="py-2 px-2 font-semibold text-zinc-700">{fila.metodo}</td>
                     <td className="py-2 px-2 text-right">{fila.cantidadVentas}</td>
                     <td className="py-2 px-2 text-right">S/ {fila.totalVendido.toFixed(2)}</td>
-                    <td className="py-2 px-2 text-right font-semibold text-green-600">
-                      S/ {fila.ganancia.toFixed(2)}
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -182,7 +169,6 @@ export default function MedioDePagoPage() {
                   <td className="py-3 px-2">TOTAL</td>
                   <td className="py-3 px-2 text-right">{totales.cantidadVentas}</td>
                   <td className="py-3 px-2 text-right">S/ {totales.totalVendido.toFixed(2)}</td>
-                  <td className="py-3 px-2 text-right text-green-700">S/ {totales.ganancia.toFixed(2)}</td>
                 </tr>
               </tfoot>
             </table>
