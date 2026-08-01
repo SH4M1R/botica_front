@@ -45,6 +45,8 @@ const bottomLinks = [
 ];
 
 const EVENTO_CAJA_ACTUALIZADA = 'caja:actualizada';
+const RUTA_GENERAR_VENTA = '/dashboard/ventas/generar';
+const RUTA_GENERAR_COMPRA = '/dashboard/compras/generar';
 
 type MenuId = 'caja' | 'ventas' | 'compras' | 'productos' | 'empleados' | 'traslados' | null;
 
@@ -94,14 +96,14 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
 
   const ventasLinksVisibles = {
     listado: tienePermiso('/dashboard/ventas'),
-    generar: tienePermiso('/dashboard/ventas/generar'),
+    generar: tienePermiso(RUTA_GENERAR_VENTA),
     clientes: tienePermiso('/dashboard/clientes'),
   };
   const ventasModuloVisible = Object.values(ventasLinksVisibles).some(Boolean);
 
   const comprasLinksVisibles = {
     listado: tienePermiso('/dashboard/compras'),
-    generar: tienePermiso('/dashboard/compras/generar'),
+    generar: tienePermiso(RUTA_GENERAR_COMPRA),
     proveedores: tienePermiso('/dashboard/proveedores'),
   };
   const comprasModuloVisible = Object.values(comprasLinksVisibles).some(Boolean);
@@ -182,6 +184,78 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
   }, [empleado?.id, cargandoSesion, pathname, revisarCaja]);
 
   const puedeVender = !!cajaAbierta;
+
+  const abrirVentanaFlotanteVenta = useCallback(() => {
+    const width = 1280;
+    const height = 800;
+    const left = (window.screen.width - width) / 2;
+    const top = (window.screen.height - height) / 2;
+    const popupUrl = `${window.location.origin}${RUTA_GENERAR_VENTA}?popup=true`;
+
+    window.open(
+      popupUrl,
+      'GenerarVentaPOS',
+      `width=${width},height=${height},top=${top},left=${left},resizable=yes,scrollbars=yes,status=no,toolbar=no,menubar=no,location=no`
+    );
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'F4') return;
+
+      const target = e.target as HTMLElement | null;
+      const estaEscribiendo =
+        !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+      if (estaEscribiendo) return;
+
+      if (!ventasLinksVisibles.generar) return;
+
+      e.preventDefault();
+
+      if (!puedeVender) {
+        onCajaCerrada();
+        return;
+      }
+
+      abrirVentanaFlotanteVenta();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [ventasLinksVisibles.generar, puedeVender, onCajaCerrada, abrirVentanaFlotanteVenta]);
+
+  const abrirVentanaFlotanteCompra = useCallback(() => {
+    const width = 1280;
+    const height = 800;
+    const left = (window.screen.width - width) / 2;
+    const top = (window.screen.height - height) / 2;
+    const popupUrl = `${window.location.origin}${RUTA_GENERAR_COMPRA}?popup=true`;
+
+    window.open(
+      popupUrl,
+      'GenerarCompraPOS',
+      `width=${width},height=${height},top=${top},left=${left},resizable=yes,scrollbars=yes,status=no,toolbar=no,menubar=no,location=no`
+    );
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'F6') return;
+
+      const target = e.target as HTMLElement | null;
+      const estaEscribiendo =
+        !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+      if (estaEscribiendo) return;
+
+      if (!comprasLinksVisibles.generar) return;
+
+      e.preventDefault();
+      abrirVentanaFlotanteCompra();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [comprasLinksVisibles.generar, abrirVentanaFlotanteCompra]);
 
   const linkClass = (active: boolean) =>
     `flex items-center gap-3 rounded-lg text-md font-semibold transition-all shrink-0 ${
@@ -299,13 +373,16 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
 
                 {ventasLinksVisibles.generar && (
                   <Link
-                    href="/dashboard/ventas/generar"
+                    href={RUTA_GENERAR_VENTA}
                     onClick={handleClickGenerarVenta}
-                    title={!puedeVender ? 'Debes abrir tu caja primero' : undefined}
-                    className={`${linkClass(pathname === '/dashboard/ventas/generar')} ${!puedeVender ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    title={!puedeVender ? 'Debes abrir tu caja primero' : 'Generar venta (F4 abre ventana flotante desde cualquier página)'}
+                    className={`${linkClass(pathname === RUTA_GENERAR_VENTA)} ${!puedeVender ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     {puedeVender ? <Plus size={16} /> : <Lock size={16} />}
-                    <span className="text-sm">Generar venta</span>
+                    <span className="text-sm flex-1">Generar venta</span>
+                    {!collapsed && puedeVender && (
+                      <span className="text-[10px] font-semibold text-white/60 border border-white/30 rounded px-1">F4</span>
+                    )}
                   </Link>
                 )}
 
@@ -346,9 +423,17 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
                 )}
 
                 {comprasLinksVisibles.generar && (
-                  <Link href="/dashboard/compras/generar" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/compras/generar')}>
+                  <Link
+                    href={RUTA_GENERAR_COMPRA}
+                    onClick={handleLinkClick}
+                    title="Ingresar Compra (F6 abre ventana flotante desde cualquier página)"
+                    className={linkClass(pathname === RUTA_GENERAR_COMPRA)}
+                  >
                     <Plus size={16} />
-                    <span className="text-sm">Ingresar Compra</span>
+                    <span className="text-sm flex-1">Ingresar Compra</span>
+                    {!collapsed && (
+                      <span className="text-[10px] font-semibold text-white/60 border border-white/30 rounded px-1">F6</span>
+                    )}
                   </Link>
                 )}
 

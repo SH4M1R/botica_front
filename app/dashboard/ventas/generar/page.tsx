@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Trash2, Wallet, ShoppingCart, UserPlus, Plus, X as XIcon, CalendarDays, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Search, Trash2, Wallet, ShoppingCart, UserPlus, Plus, X as XIcon, CalendarDays, AlertTriangle, ExternalLink, Barcode } from 'lucide-react';
 import { productosApi } from '@/api/productos';
 import type { Producto } from '@/api/productos';
 import { ventasApi, clientesApi } from '@/api/ventas';
@@ -23,6 +23,13 @@ interface CarritoItem {
   precioUnitario: number;
   producto: Producto;
 }
+
+// NOTA: Se asume que el objeto `Producto` puede traer un campo `codigo_barras`.
+// Si tu tipo `Producto` (definido en '@/api/productos') todavía no lo tiene,
+// agrégalo ahí como `codigo_barras?: string | null;` para que quede
+// correctamente tipado. Mientras tanto se usa este tipo auxiliar para no
+// romper la compilación.
+type ProductoConCodigo = Producto & { codigo_barras?: string | null };
 
 function tiposDisponibles(producto: Producto): { value: TipoVenta; label: string }[] {
   const tipos: { value: TipoVenta; label: string }[] = [{ value: 'unidad', label: 'Unidad' }];
@@ -100,6 +107,12 @@ export default function GenerarVentaPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
   const [busqueda, setBusqueda] = useState('');
   const [carrito, setCarrito] = useState<CarritoItem[]>([]);
+
+  // Índice del producto resaltado en la lista de resultados, para poder
+  // navegar y agregar productos usando solo el teclado (↑ / ↓ / Enter).
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
 
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [nombreCliente, setNombreCliente] = useState('');
@@ -181,7 +194,16 @@ export default function GenerarVentaPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empleado, cargando, router]);
 
-  // FILTRO: Excluir productos con stock <= 0 e incluir búsqueda por laboratorio
+  // Enfoca el buscador automáticamente apenas la pantalla está lista, para
+  // poder empezar a vender sin tocar el mouse.
+  useEffect(() => {
+    if (cajaAbierta) {
+      searchInputRef.current?.focus();
+    }
+  }, [cajaAbierta]);
+
+  // FILTRO: Excluir productos con stock <= 0. Se busca por nombre y
+  // principio activo (NO por laboratorio) y también por código de barras.
   const productosVisibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
 
@@ -191,15 +213,27 @@ export default function GenerarVentaPage() {
     if (!q) return conStock.slice(0, 30);
 
     const base = conStock.filter((p) => {
-      const nombreMatch = p.nombre.toLowerCase().includes(q);
-      const principioMatch = p.principioActivo?.nombre?.toLowerCase().includes(q);
-      const laboratorioMatch = p.laboratorio?.nombre?.toLowerCase().includes(q);
+      const producto = p as ProductoConCodigo;
+      const nombreMatch = producto.nombre.toLowerCase().includes(q);
+      const principioMatch = producto.principioActivo?.nombre?.toLowerCase().includes(q);
+      const codigoBarrasMatch = producto.codigo_barras?.toLowerCase().includes(q);
 
-      return nombreMatch || principioMatch || laboratorioMatch;
+      return nombreMatch || principioMatch || codigoBarrasMatch;
     });
 
     return base.slice(0, 30);
   }, [busqueda, productos]);
+
+  // Cada vez que cambia el resultado de la búsqueda, volvemos a resaltar
+  // el primer producto de la lista.
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [productosVisibles]);
+
+  // Mantiene visible en pantalla la fila resaltada al navegar con el teclado.
+  useEffect(() => {
+    rowRefs.current[selectedIndex]?.scrollIntoView({ block: 'nearest' });
+  }, [selectedIndex]);
 
   const sugerenciasCliente = useMemo(() => {
     if (idClienteSeleccionado) return [];
@@ -288,6 +322,7 @@ export default function GenerarVentaPage() {
     setCarrito([]);
     setError('');
     setMostrarConfirmVaciar(false);
+    searchInputRef.current?.focus();
   };
 
   const seleccionarCliente = (cliente: Cliente) => {
@@ -362,12 +397,90 @@ export default function GenerarVentaPage() {
 
       cargarProductos();
       cargarClientes();
+      searchInputRef.current?.focus();
     } catch (err) {
       console.error(err);
       setError('Ocurrió un error al procesar la venta. Inténtalo nuevamente.');
       throw err;
     }
   };
+
+  // Agrega un producto por coincidencia EXACTA de código de barras (por
+  // ejemplo, cuando un lector de código de barras "escribe" el código y
+  // envía Enter). Devuelve true si encontró y agregó el producto.
+  const intentarAgregarPorCodigoBarras = (valor: string): boolean => {
+    const q = valor.trim().toLowerCase();
+    if (!q) return false;
+    const match = (productos as ProductoConCodigo[]).find(
+      (p) => p.codigo_barras && p.codigo_barras.toLowerCase() === q
+    );
+    if (match && match.stock > 0) {
+      agregarProducto(match);
+      setBusqueda('');
+      setError('');
+      return true;
+    }
+    if (match && match.stock <= 0) {
+      setError(`"${match.nombre}" no tiene stock disponible.`);
+      setBusqueda('');
+      return true;
+    }
+    return false;
+  };
+
+  // Manejo de teclado dentro del buscador:
+  // - Escribir un código de barras + Enter agrega el producto de inmediato.
+  // - ↑ / ↓ navegan la lista de resultados visibles.
+  // - Enter agrega el producto resaltado (si no hubo match de código de barras).
+  // - Escape limpia la búsqueda.
+  const handleBusquedaKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex((prev) => Math.min(prev + 1, productosVisibles.length - 1));
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex((prev) => Math.max(prev - 1, 0));
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const agregadoPorCodigo = intentarAgregarPorCodigoBarras(busqueda);
+      if (agregadoPorCodigo) return;
+
+      const seleccionado = productosVisibles[selectedIndex];
+      if (seleccionado) {
+        agregarProducto(seleccionado);
+        setBusqueda('');
+      }
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setBusqueda('');
+    }
+  };
+
+  // Atajos de teclado globales para operar todo el POS sin mouse:
+  // F2 = ir a cobrar, F3 = enfocar el buscador, Escape = cerrar diálogos.
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F2') {
+        e.preventDefault();
+        if (!modalPagoAbierto) handleAbrirPago();
+      } else if (e.key === 'F3') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      } else if (e.key === 'Escape' && mostrarConfirmVaciar) {
+        setMostrarConfirmVaciar(false);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carrito, modalPagoAbierto, mostrarConfirmVaciar]);
 
   const inputClass = "w-full px-3 py-2 rounded-lg border border-zinc-300 bg-zinc-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all";
 
@@ -395,16 +508,16 @@ export default function GenerarVentaPage() {
   }
 
   return (
-    <div className="h-screen w-full flex flex-col gap-4 p-4 box-border bg-zinc-100 overflow-hidden">
+    <div className="h-full w-full flex flex-col gap-2 sm:gap-3 lg:gap-4 p-2 sm:p-3 lg:p-4 box-border bg-zinc-100 overflow-hidden">
       {/* HEADER POS */}
-      <header className="pos-header flex flex-col md:flex-row items-center justify-between shrink-0 gap-3 bg-white p-3 rounded-2xl border border-zinc-200 shadow-xs">
-        <div className="flex items-center gap-3">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl font-bold text-primary tracking-tight">
+      <header className="pos-header flex flex-wrap items-center justify-between shrink-0 gap-2 sm:gap-3 bg-white p-2.5 sm:p-3 rounded-2xl border border-zinc-200 shadow-xs">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+              <h1 className="text-lg sm:text-xl font-bold text-primary tracking-tight whitespace-nowrap">
                 Generar Venta
               </h1>
-              
+
               <button
                 type="button"
                 onClick={abrirVentanaFlotante}
@@ -412,7 +525,7 @@ export default function GenerarVentaPage() {
                 title="Abrir en ventana emergente"
               >
                 <ExternalLink size={13} />
-                <span>Ventana flotante</span>
+                <span className="hidden sm:inline">Ventana flotante</span>
               </button>
             </div>
             <div className="flex items-center gap-2 mt-0.5">
@@ -424,12 +537,12 @@ export default function GenerarVentaPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-50 border border-zinc-200 shrink-0">
+        <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-50 border border-zinc-200 shrink-0">
           <CalendarDays size={15} className="text-primary" />
           <span className="text-xs font-semibold text-zinc-700 capitalize">{fechaHoy}</span>
         </div>
 
-        <div className="w-full md:w-[480px] space-y-1">
+        <div className="w-full md:w-auto md:min-w-[340px] md:max-w-[480px] md:flex-1 xl:flex-none space-y-1">
           <div className="flex items-center justify-between text-xs">
             <div className="flex items-center gap-1.5 font-medium text-zinc-700">
               <UserPlus size={14} className="text-primary" />
@@ -458,6 +571,13 @@ export default function GenerarVentaPage() {
                 }}
                 onFocus={() => setMostrarSugerencias(true)}
                 onBlur={() => setTimeout(() => setMostrarSugerencias(false), 150)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setMostrarSugerencias(false);
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
                 placeholder="Nombre del cliente"
                 readOnly={!!idClienteSeleccionado}
                 className={`${inputClass} text-xs py-1.5 ${
@@ -510,20 +630,28 @@ export default function GenerarVentaPage() {
       </header>
 
       {/* ÁREA PRINCIPAL POS */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 flex-1 min-h-0 overflow-hidden">
-        
+      <div className="grid grid-cols-1 lg:grid-cols-5 grid-rows-[1fr_1fr] lg:grid-rows-1 gap-2 sm:gap-3 lg:gap-4 flex-1 min-h-0 overflow-hidden">
+
         {/* CATALOGO PRODUCTOS */}
-        <div className="lg:col-span-3 bg-white rounded-2xl border border-zinc-200 shadow-xs flex flex-col h-full overflow-hidden">
-          <div className="p-3 border-b border-zinc-200 shrink-0">
+        <div className="lg:col-span-3 bg-white rounded-2xl border border-zinc-200 shadow-xs flex flex-col h-full min-h-0 overflow-hidden">
+          <div className="p-2.5 sm:p-3 border-b border-zinc-200 shrink-0 space-y-1">
             <div className="relative">
               <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400"><Search size={16} /></span>
               <input
+                ref={searchInputRef}
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
-                placeholder="Buscar por nombre, principio activo o laboratorio..."
-                className="w-full pl-9 pr-4 py-2 rounded-lg border border-primary/30 bg-zinc-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+                onKeyDown={handleBusquedaKeyDown}
+                placeholder="Buscar por nombre, principio activo o escanear código de barras..."
+                className="w-full pl-9 pr-9 py-2 rounded-lg border border-primary/30 bg-zinc-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
               />
+              <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-zinc-300" title="Compatible con lector de código de barras">
+                <Barcode size={16} />
+              </span>
             </div>
+            <p className="hidden sm:block text-[10px] text-zinc-400 pl-1">
+              ↑ ↓ para navegar &nbsp;•&nbsp; Enter para agregar &nbsp;•&nbsp; Esc para limpiar &nbsp;•&nbsp; F2 para cobrar &nbsp;•&nbsp; F3 para buscar
+            </p>
           </div>
 
           <div className="flex-1 overflow-y-auto min-h-0">
@@ -537,11 +665,18 @@ export default function GenerarVentaPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {productosVisibles.map((p) => (
-                  <tr key={p.id} className="hover:bg-zinc-50/60 transition-colors">
+                {productosVisibles.map((p, idx) => (
+                  <tr
+                    key={p.id}
+                    ref={(el) => { rowRefs.current[idx] = el; }}
+                    onClick={() => setSelectedIndex(idx)}
+                    className={`transition-colors cursor-pointer ${
+                      idx === selectedIndex ? 'bg-primary/10' : 'hover:bg-zinc-50/60'
+                    }`}
+                  >
                     <td className="px-4 py-2 text-zinc-700">
                       <div className="font-medium text-zinc-800">{p.nombre}</div>
-                      
+
                       {/* Principio activo y Laboratorio en la misma línea */}
                       {(p.principioActivo?.nombre || p.laboratorio?.nombre) && (
                         <div className="text-xs text-zinc-400 font-normal italic flex items-center gap-1.5 flex-wrap">
@@ -559,9 +694,12 @@ export default function GenerarVentaPage() {
                       )}
                     </td>
                     <td className="px-4 py-2 text-right text-zinc-700 font-semibold whitespace-nowrap">S/ {p.precio_venta.toFixed(2)}</td>
-                    <td className="px-4 py-2 text-right text-zinc-500 font-mono whitespace-nowrap">{p.stock}</td>
+                    <td className="px-4 py-2 text-right text-zinc-900 font-mono whitespace-nowrap">{p.stock}</td>
                     <td className="px-4 py-2 text-right whitespace-nowrap">
-                      <button onClick={() => agregarProducto(p)} className="px-3 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors cursor-pointer">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); agregarProducto(p); }}
+                        className="px-3 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors cursor-pointer"
+                      >
                         Agregar
                       </button>
                     </td>
@@ -576,8 +714,8 @@ export default function GenerarVentaPage() {
         </div>
 
         {/* DETALLE DE VENTA / CARRITO */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-zinc-200 shadow-xs flex flex-col h-full overflow-hidden">
-          <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-zinc-200 shrink-0">
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-zinc-200 shadow-xs flex flex-col h-full min-h-0 overflow-hidden">
+          <div className="flex items-center justify-between gap-2 px-4 py-2.5 sm:py-3 border-b border-zinc-200 shrink-0">
             <div className="flex items-center gap-2">
               <ShoppingCart size={16} className="text-primary transition-colors duration-300" />
               <span className="text-sm font-bold text-zinc-700">Detalle de venta</span>
@@ -601,12 +739,13 @@ export default function GenerarVentaPage() {
                 const opciones = tiposDisponibles(item.producto);
                 const subtotal = item.precioUnitario * item.cantidad;
                 return (
-                  <div key={`${item.idProducto}-${item.tipoVenta}`} className="px-3 py-2.5 space-y-1.5">
+                  <div key={`${item.idProducto}-${item.tipoVenta}`} className="px-3 py-2 sm:py-2.5 space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs font-semibold text-zinc-800 truncate flex-1">{item.producto.nombre}</p>
                       <button
                         onClick={() => quitarProducto(item.idProducto, item.tipoVenta)}
                         className="p-1 text-zinc-400 hover:text-red-500 transition-colors shrink-0 cursor-pointer"
+                        title="Quitar producto (o navega con Tab y presiona Enter)"
                       >
                         <Trash2 size={14} />
                       </button>
@@ -671,19 +810,19 @@ export default function GenerarVentaPage() {
             )}
           </div>
 
-          <div className="border-t border-zinc-200 p-4 space-y-3 shrink-0 bg-zinc-50/50">
+          <div className="border-t border-zinc-200 p-3 sm:p-4 space-y-2 sm:space-y-3 shrink-0 bg-zinc-50/50">
             <button
               onClick={handleAbrirPago}
               disabled={carrito.length === 0}
               className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-primary text-sm font-semibold text-primary hover:bg-primary/5 transition-all disabled:opacity-40 cursor-pointer"
             >
               <span className="flex items-center gap-2"><Wallet size={16} /> Realizar Venta</span>
-              <span className="text-xs font-normal">Seleccionar</span>
+              <span className="text-xs font-normal">F2</span>
             </button>
 
             <div className="flex justify-between items-center pt-1">
               <span className="text-sm font-medium text-zinc-500">Total</span>
-              <span className="text-2xl font-bold text-zinc-900">S/ {total.toFixed(2)}</span>
+              <span className="text-xl sm:text-2xl font-bold text-zinc-900">S/ {total.toFixed(2)}</span>
             </div>
 
             {error && <p className="text-xs text-red-500 font-medium">{error}</p>}
@@ -731,6 +870,7 @@ export default function GenerarVentaPage() {
                 </button>
                 <button
                   onClick={confirmarVaciarDetalle}
+                  autoFocus
                   className="px-4 py-2 text-sm font-semibold text-white bg-red-500 hover:bg-red-600 rounded-lg shadow-xs hover:shadow-md transition-all cursor-pointer"
                 >
                   Vaciar

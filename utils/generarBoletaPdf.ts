@@ -70,7 +70,7 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm): Prom
   altoCalculado += 8;
 
   docSimulado.setFont('arial', 'normal');
-  docSimulado.setFontSize(8);
+  docSimulado.setFontSize(9);
   venta.detalles.forEach((d) => {
     const nombre = d.producto.nombre + (labelTipo[d.tipoVenta] ? ` (${labelTipo[d.tipoVenta]})` : '');
     const lineas = docSimulado.splitTextToSize(nombre, COL_PROD);

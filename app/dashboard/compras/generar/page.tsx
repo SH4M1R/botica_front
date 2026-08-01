@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Search, Plus, ShoppingCart, Barcode, Trash2, ArrowLeft, PackagePlus } from "lucide-react";
+import { Search, Plus, ShoppingCart, Barcode, Trash2, ArrowLeft, PackagePlus, ExternalLink } from "lucide-react";
 
 // Modales
 import CompraProductoModal from "../components/CompraProductoModal";
@@ -65,6 +65,33 @@ export default function GenerarCompraPage() {
 
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Si esta página se abre como ventana emergente (?popup=true), lo
+  // marcamos en el <body> por si algún estilo global depende de esa clase.
+  useEffect(() => {
+    const esPopup = window.opener !== null || new URLSearchParams(window.location.search).get("popup") === "true";
+    if (esPopup) {
+      document.body.classList.add("is-pos-popup");
+    }
+    return () => {
+      document.body.classList.remove("is-pos-popup");
+    };
+  }, []);
+
+  const abrirVentanaFlotante = () => {
+    const width = 1280;
+    const height = 800;
+    const left = (window.screen.width - width) / 2;
+    const top = (window.screen.height - height) / 2;
+
+    const popupUrl = `${window.location.origin}${window.location.pathname}?popup=true`;
+
+    window.open(
+      popupUrl,
+      "GenerarCompraPOS",
+      `width=${width},height=${height},top=${top},left=${left},resizable=yes,scrollbars=yes,status=no,toolbar=no,menubar=no,location=no`
+    );
+  };
 
   const cargarProveedores = async () => {
     try {
@@ -211,12 +238,21 @@ export default function GenerarCompraPage() {
   }
 
   return (
-    // PANTALLA COMPLETA: h-full o min-h-[calc(100vh-4rem)] según el layout global
-    <div className="flex flex-col h-[calc(100vh-5rem)] gap-3 overflow-hidden">
+    <div className="flex flex-col h-full gap-3 overflow-hidden p-4 md:p-6">
       {/* Header Fijo superior */}
       <div className="flex items-center justify-between shrink-0">
-        <div>
-           <h1 className="text-xl font-bold text-primary tracking-tight">Ingresar Compra</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-bold text-primary tracking-tight">Ingresar Compra</h1>
+
+          <button
+            type="button"
+            onClick={abrirVentanaFlotante}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-semibold border border-zinc-200 transition-colors cursor-pointer"
+            title="Abrir en ventana emergente (F6 desde cualquier página)"
+          >
+            <ExternalLink size={13} />
+            <span className="hidden sm:inline">Ventana flotante</span>
+          </button>
         </div>
       </div>
 
