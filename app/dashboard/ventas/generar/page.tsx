@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Trash2, Wallet, ShoppingCart, UserPlus, Plus, X as XIcon, CalendarDays, AlertTriangle, ExternalLink, Barcode } from 'lucide-react';
+import { Search, Trash2, Wallet, ShoppingCart, UserPlus, Plus, X as XIcon, CalendarDays, AlertTriangle, ExternalLink, Barcode, MousePointerClick } from 'lucide-react';
 import { productosApi } from '@/api/productos';
 import type { Producto } from '@/api/productos';
 import { ventasApi, clientesApi } from '@/api/ventas';
@@ -13,10 +13,11 @@ import { useSession } from '@/hooks/useSession';
 import MetodoPagoModal, { PagoParte } from '../components/MetodoPagoModal';
 import ClienteModal from '@/app/dashboard/clientes/components/ClienteModal';
 import { CajaCerradaModal } from '@/components/CajaCerradaModal';
+import VentaNoMouse from './VentaNoMouse';
 
-type TipoVenta = 'unidad' | 'blister' | 'caja';
+export type TipoVenta = 'unidad' | 'blister' | 'caja';
 
-interface CarritoItem {
+export interface CarritoItem {
   idProducto: number;
   cantidad: number;
   tipoVenta: TipoVenta;
@@ -29,9 +30,9 @@ interface CarritoItem {
 // agrégalo ahí como `codigo_barras?: string | null;` para que quede
 // correctamente tipado. Mientras tanto se usa este tipo auxiliar para no
 // romper la compilación.
-type ProductoConCodigo = Producto & { codigo_barras?: string | null };
+export type ProductoConCodigo = Producto & { codigo_barras?: string | null };
 
-function tiposDisponibles(producto: Producto): { value: TipoVenta; label: string }[] {
+export function tiposDisponibles(producto: Producto): { value: TipoVenta; label: string }[] {
   const tipos: { value: TipoVenta; label: string }[] = [{ value: 'unidad', label: 'Unidad' }];
   if (producto.vende_por_presentaciones && producto.blister_habilitado) {
     tipos.push({ value: 'blister', label: `Blister (${producto.unidades_blister ?? '?'} und)` });
@@ -42,13 +43,13 @@ function tiposDisponibles(producto: Producto): { value: TipoVenta; label: string
   return tipos;
 }
 
-function precioPorTipo(producto: Producto, tipo: TipoVenta): number {
+export function precioPorTipo(producto: Producto, tipo: TipoVenta): number {
   if (tipo === 'blister') return producto.precio_blister ?? producto.precio_venta;
   if (tipo === 'caja') return producto.precio_caja ?? producto.precio_venta;
   return producto.precio_venta;
 }
 
-function unidadesBasePorTipo(producto: Producto, tipo: TipoVenta): number {
+export function unidadesBasePorTipo(producto: Producto, tipo: TipoVenta): number {
   if (tipo === 'blister') return producto.unidades_blister ?? 1;
   if (tipo === 'caja') return producto.unidades_caja ?? 1;
   return 1;
@@ -127,6 +128,11 @@ export default function GenerarVentaPage() {
 
   const [mostrarConfirmVaciar, setMostrarConfirmVaciar] = useState(false);
 
+  // Modo "Sin Mouse": alterna a una pantalla de venta operable 100% con
+  // teclado (pensada para lectores de código de barras / cajeros rápidos),
+  // reutilizando exactamente la misma lógica y estado que la pantalla normal.
+  const [modoSinMouse, setModoSinMouse] = useState(false);
+
   // Verificación de caja abierta
   const [cajaAbierta, setCajaAbierta] = useState<ArqueoCaja | null | undefined>(undefined);
 
@@ -197,10 +203,10 @@ export default function GenerarVentaPage() {
   // Enfoca el buscador automáticamente apenas la pantalla está lista, para
   // poder empezar a vender sin tocar el mouse.
   useEffect(() => {
-    if (cajaAbierta) {
+    if (cajaAbierta && !modoSinMouse) {
       searchInputRef.current?.focus();
     }
-  }, [cajaAbierta]);
+  }, [cajaAbierta, modoSinMouse]);
 
   // FILTRO: Excluir productos con stock <= 0. Se busca por nombre y
   // principio activo (NO por laboratorio) y también por código de barras.
@@ -261,6 +267,43 @@ export default function GenerarVentaPage() {
       ...prev,
       { idProducto: producto.id, cantidad: 1, tipoVenta: 'unidad', precioUnitario: producto.precio_venta, producto },
     ]);
+  };
+
+  // Versión "detallada" de agregarProducto: permite indicar de una sola vez
+  // el tipo de venta (unidad/blister/caja), la cantidad y, opcionalmente,
+  // un precio unitario manual. La usa VentaNoMouse para registrar una línea
+  // completa (código de barras + cantidad + tipo) en un solo paso, sin
+  // depender de clicks.
+  const agregarProductoConDetalle = (
+    producto: Producto,
+    tipoVenta: TipoVenta,
+    cantidad: number,
+    precioUnitarioManual?: number
+  ) => {
+    setCarrito((prev) => {
+      const existente = prev.find((c) => c.idProducto === producto.id && c.tipoVenta === tipoVenta);
+      if (existente) {
+        return prev.map((item) =>
+          item.idProducto === producto.id && item.tipoVenta === tipoVenta
+            ? {
+                ...item,
+                cantidad: item.cantidad + cantidad,
+                precioUnitario: precioUnitarioManual ?? item.precioUnitario,
+              }
+            : item
+        );
+      }
+      return [
+        ...prev,
+        {
+          idProducto: producto.id,
+          cantidad,
+          tipoVenta,
+          precioUnitario: precioUnitarioManual ?? precioPorTipo(producto, tipoVenta),
+          producto,
+        },
+      ];
+    });
   };
 
   const cambiarCantidad = (idProducto: number, tipoVenta: TipoVenta, cantidad: number) => {
@@ -480,7 +523,7 @@ export default function GenerarVentaPage() {
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [carrito, modalPagoAbierto, mostrarConfirmVaciar]);
+  }, [carrito, modalPagoAbierto, mostrarConfirmVaciar, modoSinMouse]);
 
   const inputClass = "w-full px-3 py-2 rounded-lg border border-zinc-300 bg-zinc-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all";
 
@@ -507,6 +550,93 @@ export default function GenerarVentaPage() {
     );
   }
 
+  // MODO SIN MOUSE: reemplaza la pantalla normal por una pantalla operable
+  // 100% con teclado, reutilizando exactamente el mismo estado/lógica de
+  // carrito, cliente y venta que la pantalla original.
+  if (modoSinMouse) {
+    return (
+      <>
+        <VentaNoMouse
+          empleadoNombre={empleado?.nombre ?? ''}
+          fechaHoy={fechaHoy}
+          productos={productos}
+          carrito={carrito}
+          total={total}
+          error={error}
+          setError={setError}
+          nombreCliente={nombreCliente}
+          dniCliente={dniCliente}
+          idClienteSeleccionado={idClienteSeleccionado}
+          clientes={clientes}
+          onCambiarNombreCliente={(v) => {
+            setNombreCliente(v);
+            setIdClienteSeleccionado(null);
+          }}
+          onCambiarDniCliente={setDniCliente}
+          onSeleccionarCliente={seleccionarCliente}
+          onLimpiarCliente={limpiarClienteSeleccionado}
+          onAbrirNuevoCliente={() => setClienteModalAbierto(true)}
+          agregarProductoConDetalle={agregarProductoConDetalle}
+          quitarProducto={quitarProducto}
+          onVaciarCarrito={solicitarVaciarDetalle}
+          onAbrirPago={handleAbrirPago}
+          onVolverModoNormal={() => setModoSinMouse(false)}
+        />
+
+        <MetodoPagoModal
+          open={modalPagoAbierto}
+          total={total}
+          tieneCliente={tieneCliente}
+          onClose={() => setModalPagoAbierto(false)}
+          onConfirmarVenta={handleConfirmarVenta}
+        />
+
+        <ClienteModal
+          open={clienteModalAbierto}
+          cliente={null}
+          onClose={() => setClienteModalAbierto(false)}
+          onSave={handleGuardarClienteNuevo}
+        />
+
+        {mostrarConfirmVaciar && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/40 p-4">
+            <div className="bg-white rounded-2xl shadow-xl border border-zinc-200 w-full max-w-sm">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle size={20} className="text-amber-500" />
+                  <h2 className="text-lg font-bold text-zinc-800">Vaciar detalle</h2>
+                </div>
+                <button onClick={() => setMostrarConfirmVaciar(false)} className="text-zinc-400 hover:text-zinc-600 transition-colors cursor-pointer">
+                  <XIcon size={20} />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <p className="text-sm text-zinc-600">
+                  ¿Seguro que quieres vaciar todo el detalle de venta? Se eliminarán los {carrito.length} producto(s) agregados.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setMostrarConfirmVaciar(false)}
+                    className="px-4 py-2 text-sm font-semibold text-zinc-600 hover:bg-zinc-100 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={confirmarVaciarDetalle}
+                    autoFocus
+                    className="px-4 py-2 text-sm font-semibold text-white bg-red-500 hover:bg-red-600 rounded-lg shadow-xs hover:shadow-md transition-all cursor-pointer"
+                  >
+                    Vaciar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
   return (
     <div className="h-full w-full flex flex-col gap-2 sm:gap-3 lg:gap-4 p-2 sm:p-3 lg:p-4 box-border bg-zinc-100 overflow-hidden">
       {/* HEADER POS */}
@@ -521,14 +651,25 @@ export default function GenerarVentaPage() {
               <button
                 type="button"
                 onClick={abrirVentanaFlotante}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-semibold border border-zinc-200 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-primary text-primary hover:bg-primary/10 text-xs font-semibold transition-colors cursor-pointer"
                 title="Abrir en ventana emergente"
               >
                 <ExternalLink size={13} />
                 <span className="hidden sm:inline">Ventana flotante</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => setModoSinMouse(true)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary text-white hover:bg-primary/90 text-xs font-semibold transition-colors cursor-pointer"
+                title="Cambiar a pantalla de venta operable solo con teclado"
+              >
+                <MousePointerClick size={13} />
+                <span>Modo Sin Mouse</span>
+              </button>
             </div>
-            <div className="flex items-center gap-2 mt-0.5">
+
+            <div className="flex items-center gap-2 mt-1.5">
               <span className="text-xs text-zinc-500">Atendido por:</span>
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-100 text-zinc-700 border border-zinc-200">
                 {empleado?.nombre}
@@ -814,7 +955,7 @@ export default function GenerarVentaPage() {
             <button
               onClick={handleAbrirPago}
               disabled={carrito.length === 0}
-              className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-primary text-sm font-semibold text-primary hover:bg-primary/5 transition-all disabled:opacity-40 cursor-pointer"
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-primary text-sm font-semibold text-white hover:bg-primary/90 transition-all disabled:opacity-40 cursor-pointer"
             >
               <span className="flex items-center gap-2"><Wallet size={16} /> Realizar Venta</span>
               <span className="text-xs font-normal">F2</span>

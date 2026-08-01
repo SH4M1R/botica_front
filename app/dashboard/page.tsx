@@ -488,7 +488,7 @@ export default function DashboardPage() {
     {/* Encabezado */}
     <div className="flex flex-wrap items-center justify-between gap-4">
       <div>
-        <h1 className="text-xl font-extrabold text-primary">Bienvenido, que haremos el día de hoy</h1>
+        <h1 className="text-xl font-extrabold text-primary">Bienvenido a JPFarma</h1>
         <p className="text-sm text-zinc-500">Resumen general de tu negocio</p>
       </div>
       <div className="flex items-center gap-3">

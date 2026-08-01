@@ -5,13 +5,8 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import Navbar from '@/components/Navbar';
 import RouteGuard from '@/components/RouteGuard';
-import ModeloIA from '@/components/ModeloIA';
 import { CajaCerradaModal } from '@/components/CajaCerradaModal';
 
-// Rutas que necesitan ocupar TODO el alto disponible sin padding, sin
-// scroll propio del <main> y sin footer (por ejemplo, el POS de ventas,
-// que maneja su propio scroll interno). Agrega aquí cualquier otra ruta
-// que necesite el mismo comportamiento "pantalla completa".
 const RUTAS_PANTALLA_COMPLETA = ['/dashboard/ventas/generar', '/dashboard/compras/generar'];
 
 export default function DashboardLayout({
@@ -117,8 +112,6 @@ export default function DashboardLayout({
           />
         </main>
       </div>
-
-      <ModeloIA />
     </div>
   );
 }
