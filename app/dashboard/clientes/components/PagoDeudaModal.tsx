@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import type { Cliente } from '@/api/ventas';
+import { getNombreCompleto } from '@/api/ventas';
 
 interface PagoDeudaModalProps {
   open: boolean;
@@ -59,7 +60,7 @@ export default function PagoDeudaModal({ open, cliente, onClose, onSave }: PagoD
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
             <p className="text-sm text-zinc-500">Cliente</p>
-            <p className="text-sm font-semibold text-zinc-800">{cliente.nombre}</p>
+            <p className="text-sm font-semibold text-zinc-800">{getNombreCompleto(cliente)}</p>
           </div>
 
           <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-red-50">
