@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Trash2, Save, Pencil, MousePointer2, XCircle } from 'lucide-react';
 import type { Producto } from '@/api/productos';
 import type { Cliente } from '@/api/ventas';
+import { getNombreCompleto } from '@/api/ventas';
 import type { CarritoItem, ProductoConCodigo, TipoVenta } from './page';
 import { tiposDisponibles, unidadesBasePorTipo } from './page';
 
@@ -396,7 +397,7 @@ export default function VentaNoMouse({
               {clientes
                 .filter(
                   (c) =>
-                    c.nombre.toLowerCase().includes(nombreCliente.trim().toLowerCase()) ||
+                    getNombreCompleto(c).toLowerCase().includes(nombreCliente.trim().toLowerCase()) ||
                     c.dni?.includes(nombreCliente.trim())
                 )
                 .slice(0, 5)
@@ -407,7 +408,7 @@ export default function VentaNoMouse({
                     onMouseDown={() => onSeleccionarCliente(c)}
                     className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-left hover:bg-zinc-50"
                   >
-                    <span className="font-medium text-zinc-800 truncate mr-2">{c.nombre}</span>
+                    <span className="font-medium text-zinc-800 truncate mr-2">{getNombreCompleto(c)}</span>
                     <span className="font-mono text-zinc-400 shrink-0">{c.dni ?? '—'}</span>
                   </button>
                 ))}

@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import type { Venta, TipoVenta } from '@/api/ventas';
+import { getNombreCompleto } from '@/api/ventas';
 import type { EmpresaForm } from '@/api/empresa';
 import { montoEnLetras } from './Montoenletras';
 
@@ -40,7 +41,8 @@ async function cargarImagenBase64(url: string): Promise<{ data: string; ratio: n
   }
 }
 
-export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm): Promise<Blob> {
+// --- CAMBIO: nuevo parámetro opcional `vuelto` ---
+export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm, vuelto?: number): Promise<Blob> {
   let imgLogo: { data: string; ratio: number } | null = null;
   if (empresa.logo) {
     imgLogo = await cargarImagenBase64(empresa.logo);
@@ -89,7 +91,8 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm): Prom
 
   // Totales y pie de página estático
   altoCalculado += 20;
-  const ALTO_FINAL = Math.ceil(altoCalculado) + 10; // +10mm de margen de seguridad final
+  if (vuelto && vuelto > 0) altoCalculado += 5; // --- NUEVO: espacio para la línea de vuelto ---
+  const ALTO_FINAL = Math.ceil(altoCalculado) + 10;
 
   // --- PASO 2: Renderizar el documento con la altura exacta ---
   const doc = new jsPDF({ unit: 'mm', format: [ANCHO, ALTO_FINAL] });
@@ -115,7 +118,6 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm): Prom
     y += size * 0.35 + 1.5;
   };
 
-  // Función helper para textos multilínea en el margen útil
   const textoMultilinea = (
     contenido: string,
     opts: { size?: number; bold?: boolean } = {}
@@ -128,7 +130,6 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm): Prom
     y += lineas.length * (size * 0.35 + 1.2) + 1;
   };
 
-  // Logo
   if (imgLogo) {
     const anchoImg = ANCHO_UTIL;
     const altoImg = anchoImg * imgLogo.ratio;
@@ -136,7 +137,6 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm): Prom
     y += altoImg + 4;
   }
 
-  // Datos Empresa
   texto(empresa.nombreComercial || empresa.razonSocial, { align: 'center', size: 10, bold: true });
   if (empresa.razonSocial && empresa.nombreComercial && empresa.razonSocial !== empresa.nombreComercial) {
     texto(empresa.razonSocial, { align: 'center', size: 8 });
@@ -152,17 +152,16 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm): Prom
   texto(`NOTA DE VENTA NV01 - ${String(venta.id).padStart(8, '0')}`, { align: 'center', bold: true, size: 9 });
   linea();
 
-  // Datos Venta
   const fecha = new Date(venta.fecha).toLocaleString('es-PE', {
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
   texto(`Fecha: ${fecha}`, { size: 8 });
-  texto(`Cliente: ${venta.cliente?.nombre ?? 'CLIENTES VARIOS'}`, { size: 8 });
+  // --- CAMBIO: usa getNombreCompleto ---
+  texto(`Cliente: ${venta.cliente ? getNombreCompleto(venta.cliente) : 'CLIENTES VARIOS'}`, { size: 8 });
   if (venta.cliente?.dni) texto(`DNI: ${venta.cliente.dni}`, { size: 8 });
 
   linea();
 
-  // Encabezado de la Tabla
   doc.setFont('arial', 'bold');
   doc.setFontSize(8);
   doc.text('Producto', X_PROD, y);
@@ -173,7 +172,6 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm): Prom
 
   linea();
 
-  // Detalle de Productos
   venta.detalles.forEach((d) => {
     const nombre = d.producto.nombre + (labelTipo[d.tipoVenta] ? ` (${labelTipo[d.tipoVenta]})` : '');
 
@@ -198,6 +196,13 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm): Prom
   doc.text('TOTAL:', MARGEN, y);
   doc.text(`S/ ${venta.total.toFixed(2)}`, ANCHO - MARGEN, y, { align: 'right' });
   y += 5;
+
+  // --- NUEVO: línea de vuelto, solo si corresponde ---
+  if (vuelto && vuelto > 0) {
+    doc.text('VUELTO:', MARGEN, y);
+    doc.text(`S/ ${vuelto.toFixed(2)}`, ANCHO - MARGEN, y, { align: 'right' });
+    y += 5;
+  }
 
   // Monto en Letras Multilinea
   textoMultilinea(`SON: ${montoEnLetras(venta.total)}`, { size: 7 });

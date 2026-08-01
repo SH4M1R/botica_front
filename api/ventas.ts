@@ -11,10 +11,55 @@ export interface Producto {
 
 export interface Cliente {
   id: number;
-  nombre: string;
+  nombres: string;
+  apellidoPaterno?: string;
+  apellidoMaterno?: string;
   dni?: string;
   telefono?: string;
   saldo?: number;
+}
+
+export interface ReniecResponse {
+  success: boolean;
+  dni: string;
+  nombres: string;
+  apellidoPaterno: string;
+  apellidoMaterno: string;
+  codVerifica?: string;
+}
+
+// --- NUEVO: helpers de nombre completo ---
+export function getNombreCompleto(c: Pick<Cliente, 'nombres' | 'apellidoPaterno' | 'apellidoMaterno'>): string {
+  return [c.nombres, c.apellidoPaterno, c.apellidoMaterno].filter(Boolean).join(' ');
+}
+
+// Divide "Juan Carlos Pérez García" en { nombres, apellidoPaterno, apellidoMaterno }
+export function splitNombreCompleto(nombreCompleto: string): {
+  nombres: string;
+  apellidoPaterno: string;
+  apellidoMaterno: string;
+} {
+  const partes = nombreCompleto.trim().split(/\s+/).filter(Boolean);
+
+  if (partes.length >= 3) {
+    return {
+      nombres: partes.slice(0, partes.length - 2).join(' '),
+      apellidoPaterno: partes[partes.length - 2],
+      apellidoMaterno: partes[partes.length - 1],
+    };
+  }
+  if (partes.length === 2) {
+    return { nombres: partes[0], apellidoPaterno: partes[1], apellidoMaterno: '' };
+  }
+  return { nombres: partes[0] ?? '', apellidoPaterno: '', apellidoMaterno: '' };
+}
+
+interface ClientePayload {
+  nombres: string;
+  apellidoPaterno?: string;
+  apellidoMaterno?: string;
+  dni?: string;
+  telefono?: string;
 }
 
 export interface Empleado {
@@ -81,12 +126,15 @@ export const ventasApi = {
 
 export const clientesApi = {
   listar: () => request<Cliente[]>('/clientes'),
-  crear: (data: { nombre: string; dni?: string; telefono?: string }) =>
+  crear: (data: ClientePayload) =>
     request<Cliente>('/clientes', { method: 'POST', body: JSON.stringify(data) }),
-  actualizar: (id: number, data: { nombre: string; dni?: string; telefono?: string }) =>
+  actualizar: (id: number, data: ClientePayload) =>
     request<Cliente>(`/clientes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   registrarPago: (id: number, monto: number) =>
     request<Cliente>(`/clientes/${id}/pago`, { method: 'PUT', body: JSON.stringify({ monto }) }),
+  consultarDni: (dni: string) => request<ReniecResponse>(`/clientes/reniec/${dni}`),
+  actualizarSaldo: (id: number, saldo: number) =>
+    request<Cliente>(`/clientes/${id}/saldo`, { method: 'PUT', body: JSON.stringify({ saldo }) }),
 };
 
 export const empleadosApi = {

@@ -7,6 +7,7 @@ export interface PagoParte {
   metodo: string;
   monto: number;
   detalle: string;
+  vuelto?: number; // --- NUEVO ---
 }
 
 interface MetodoPagoModalProps {
@@ -14,7 +15,7 @@ interface MetodoPagoModalProps {
   total: number;
   tieneCliente: boolean;
   onClose: () => void;
-  onConfirmarVenta: (pagos: PagoParte[], metodoPagoFormateado: string) => Promise<void>;
+  onConfirmarVenta: (pagos: PagoParte[], metodoPagoFormateado: string, vuelto: number) => Promise<void>; // --- CAMBIO: +vuelto ---
 }
 
 const METODOS = [
@@ -35,8 +36,6 @@ export default function MetodoPagoModal({ open, total, tieneCliente, onClose, on
   const [error, setError] = useState('');
   const [procesando, setProcesando] = useState(false);
 
-  // Refs para poder enfocar por teclado los botones de método de pago y
-  // el botón "Confirmar venta" sin depender del mouse.
   const metodoButtonsRef = useRef<(HTMLButtonElement | null)[]>([]);
   const confirmarButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -98,7 +97,15 @@ export default function MetodoPagoModal({ open, total, tieneCliente, onClose, on
       detalle = 'Pago directo';
     }
 
-    setPagosConfirmados((prev) => [...prev, { metodo: metodoActivo, monto: montoCobrado, detalle }]);
+    setPagosConfirmados((prev) => [
+      ...prev,
+      {
+        metodo: metodoActivo,
+        monto: montoCobrado,
+        detalle,
+        vuelto: metodoActivo === 'Efectivo' ? vueltoCalculado : undefined, // --- NUEVO ---
+      },
+    ]);
     setMetodoActivo(null);
     setMonto('');
     setCodigo('');
@@ -114,13 +121,15 @@ export default function MetodoPagoModal({ open, total, tieneCliente, onClose, on
     setError('');
     setProcesando(true);
 
-    // Formateo del string consolidado para el backend: "Efectivo (100.00), Yape/Plin (50.00)"
     const metodoPagoFormateado = pagosConfirmados
       .map((p) => `${p.metodo} (${p.monto.toFixed(2)})`)
       .join(', ');
 
+    // --- NUEVO: suma el vuelto de todas las partes (normalmente solo Efectivo lo tiene) ---
+    const vueltoTotal = pagosConfirmados.reduce((sum, p) => sum + (p.vuelto ?? 0), 0);
+
     try {
-      await onConfirmarVenta(pagosConfirmados, metodoPagoFormateado);
+      await onConfirmarVenta(pagosConfirmados, metodoPagoFormateado, vueltoTotal);
       resetLocal();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo generar la venta.');
@@ -188,7 +197,6 @@ export default function MetodoPagoModal({ open, total, tieneCliente, onClose, on
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/40 p-4">
       <div className="bg-white rounded-2xl shadow-xl border border-zinc-200 w-full max-w-lg max-h-[92vh] flex flex-col overflow-hidden">
-        {/* Header fijo */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 bg-white shrink-0">
           <h2 className="text-lg font-bold text-zinc-800">Método de pago</h2>
           <button onClick={handleClose} disabled={procesando} className="text-zinc-400 hover:text-zinc-600 disabled:opacity-40">
@@ -196,7 +204,6 @@ export default function MetodoPagoModal({ open, total, tieneCliente, onClose, on
           </button>
         </div>
 
-        {/* Cuerpo scrolleable */}
         <div className="p-6 space-y-5 overflow-y-auto flex-1">
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3">
@@ -211,7 +218,6 @@ export default function MetodoPagoModal({ open, total, tieneCliente, onClose, on
             </div>
           </div>
 
-          {/* Pagos agregados */}
           {pagosConfirmados.length > 0 && (
             <div className="rounded-xl border border-zinc-200 overflow-hidden">
               <table className="w-full text-sm">
@@ -248,7 +254,6 @@ export default function MetodoPagoModal({ open, total, tieneCliente, onClose, on
             </div>
           )}
 
-          {/* Selección de Método */}
           {!completado && !metodoActivo && (
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -280,7 +285,6 @@ export default function MetodoPagoModal({ open, total, tieneCliente, onClose, on
             </div>
           )}
 
-          {/* Formulario del Método Activo con desglose vertical de Vuelto */}
           {metodoActivo && (
             <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-4 space-y-3">
               <div className="flex items-center justify-between">
@@ -310,7 +314,6 @@ export default function MetodoPagoModal({ open, total, tieneCliente, onClose, on
                 />
               </div>
 
-              {/* Mapeo vertical destacado para el Vuelto / Saldo */}
               {metodoActivo === 'Efectivo' && montoIngresado > 0 && (
                 <div className="bg-white border border-zinc-200 rounded-lg p-3 space-y-1.5 shadow-xs">
                   <div className="flex justify-between items-center text-xs text-zinc-600">
@@ -373,7 +376,6 @@ export default function MetodoPagoModal({ open, total, tieneCliente, onClose, on
           {error && <p className="text-xs text-red-500 font-medium text-center">{error}</p>}
         </div>
 
-        {/* Footer fijo */}
         <div className="flex justify-end gap-2 p-4 border-t border-zinc-100 bg-white shrink-0">
           <button onClick={handleClose} disabled={procesando} className="px-4 py-2 text-sm font-semibold text-zinc-600 hover:bg-zinc-100 rounded-lg transition-colors disabled:opacity-50">
             Cancelar <span className="text-zinc-400">(Esc)</span>

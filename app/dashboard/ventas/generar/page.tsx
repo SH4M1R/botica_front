@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Search, Trash2, Wallet, ShoppingCart, UserPlus, Plus, X as XIcon, CalendarDays, AlertTriangle, ExternalLink, Barcode, MousePointerClick } from 'lucide-react';
 import { productosApi } from '@/api/productos';
 import type { Producto } from '@/api/productos';
-import { ventasApi, clientesApi } from '@/api/ventas';
+import { ventasApi, clientesApi, getNombreCompleto, splitNombreCompleto } from '@/api/ventas';
 import type { Venta, Cliente } from '@/api/ventas';
 import { arqueoApi } from '@/api/arqueo';
 import type { ArqueoCaja } from '@/api/arqueo';
@@ -25,11 +25,6 @@ export interface CarritoItem {
   producto: Producto;
 }
 
-// NOTA: Se asume que el objeto `Producto` puede traer un campo `codigo_barras`.
-// Si tu tipo `Producto` (definido en '@/api/productos') todavía no lo tiene,
-// agrégalo ahí como `codigo_barras?: string | null;` para que quede
-// correctamente tipado. Mientras tanto se usa este tipo auxiliar para no
-// romper la compilación.
 export type ProductoConCodigo = Producto & { codigo_barras?: string | null };
 
 export function tiposDisponibles(producto: Producto): { value: TipoVenta; label: string }[] {
@@ -55,7 +50,6 @@ export function unidadesBasePorTipo(producto: Producto, tipo: TipoVenta): number
   return 1;
 }
 
-// Componente helper para evitar bugs al tippear decimales o borrar el input de precio/subtotal
 function PrecioInput({
   value,
   onChange,
@@ -109,8 +103,6 @@ export default function GenerarVentaPage() {
   const [busqueda, setBusqueda] = useState('');
   const [carrito, setCarrito] = useState<CarritoItem[]>([]);
 
-  // Índice del producto resaltado en la lista de resultados, para poder
-  // navegar y agregar productos usando solo el teclado (↑ / ↓ / Enter).
   const [selectedIndex, setSelectedIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const rowRefs = useRef<(HTMLTableRowElement | null)[]>([]);
@@ -128,12 +120,8 @@ export default function GenerarVentaPage() {
 
   const [mostrarConfirmVaciar, setMostrarConfirmVaciar] = useState(false);
 
-  // Modo "Sin Mouse": alterna a una pantalla de venta operable 100% con
-  // teclado (pensada para lectores de código de barras / cajeros rápidos),
-  // reutilizando exactamente la misma lógica y estado que la pantalla normal.
   const [modoSinMouse, setModoSinMouse] = useState(false);
 
-  // Verificación de caja abierta
   const [cajaAbierta, setCajaAbierta] = useState<ArqueoCaja | null | undefined>(undefined);
 
   const fechaHoy = useMemo(
@@ -169,8 +157,9 @@ export default function GenerarVentaPage() {
     }
   };
 
-  const abrirBoletaImprimible = (idVenta: number) => {
-    window.open(`/dashboard/ventas/boleta?id=${idVenta}`, '_blank');
+  // --- CAMBIO: ahora recibe el vuelto y lo agrega como query param ---
+  const abrirBoletaImprimible = (idVenta: number, vuelto: number) => {
+    window.open(`/dashboard/ventas/boleta?id=${idVenta}&vuelto=${vuelto.toFixed(2)}`, '_blank');
   };
 
   const abrirVentanaFlotante = () => {
@@ -200,20 +189,15 @@ export default function GenerarVentaPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empleado, cargando, router]);
 
-  // Enfoca el buscador automáticamente apenas la pantalla está lista, para
-  // poder empezar a vender sin tocar el mouse.
   useEffect(() => {
     if (cajaAbierta && !modoSinMouse) {
       searchInputRef.current?.focus();
     }
   }, [cajaAbierta, modoSinMouse]);
 
-  // FILTRO: Excluir productos con stock <= 0. Se busca por nombre y
-  // principio activo (NO por laboratorio) y también por código de barras.
   const productosVisibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
 
-    // Filtramos primero los que tienen stock > 0
     const conStock = productos.filter((p) => p.stock > 0);
 
     if (!q) return conStock.slice(0, 30);
@@ -230,23 +214,21 @@ export default function GenerarVentaPage() {
     return base.slice(0, 30);
   }, [busqueda, productos]);
 
-  // Cada vez que cambia el resultado de la búsqueda, volvemos a resaltar
-  // el primer producto de la lista.
   useEffect(() => {
     setSelectedIndex(0);
   }, [productosVisibles]);
 
-  // Mantiene visible en pantalla la fila resaltada al navegar con el teclado.
   useEffect(() => {
     rowRefs.current[selectedIndex]?.scrollIntoView({ block: 'nearest' });
   }, [selectedIndex]);
 
+  // --- CAMBIO: usa getNombreCompleto para buscar y mostrar ---
   const sugerenciasCliente = useMemo(() => {
     if (idClienteSeleccionado) return [];
     const q = nombreCliente.trim().toLowerCase();
     if (!q) return [];
     return clientes
-      .filter((c) => c.nombre.toLowerCase().includes(q) || c.dni?.includes(q))
+      .filter((c) => getNombreCompleto(c).toLowerCase().includes(q) || c.dni?.includes(q))
       .slice(0, 5);
   }, [nombreCliente, clientes, idClienteSeleccionado]);
 
@@ -269,11 +251,6 @@ export default function GenerarVentaPage() {
     ]);
   };
 
-  // Versión "detallada" de agregarProducto: permite indicar de una sola vez
-  // el tipo de venta (unidad/blister/caja), la cantidad y, opcionalmente,
-  // un precio unitario manual. La usa VentaNoMouse para registrar una línea
-  // completa (código de barras + cantidad + tipo) en un solo paso, sin
-  // depender de clicks.
   const agregarProductoConDetalle = (
     producto: Producto,
     tipoVenta: TipoVenta,
@@ -368,9 +345,10 @@ export default function GenerarVentaPage() {
     searchInputRef.current?.focus();
   };
 
+  // --- CAMBIO: usa getNombreCompleto ---
   const seleccionarCliente = (cliente: Cliente) => {
     setIdClienteSeleccionado(cliente.id);
-    setNombreCliente(cliente.nombre);
+    setNombreCliente(getNombreCompleto(cliente));
     setDniCliente(cliente.dni ?? '');
     setMostrarSugerencias(false);
   };
@@ -381,7 +359,14 @@ export default function GenerarVentaPage() {
     setDniCliente('');
   };
 
-  const handleGuardarClienteNuevo = async (data: { nombre: string; dni?: string; telefono?: string }) => {
+  // --- CAMBIO: nuevo shape con nombres/apellidos ---
+  const handleGuardarClienteNuevo = async (data: {
+    nombres: string;
+    apellidoPaterno?: string;
+    apellidoMaterno?: string;
+    dni?: string;
+    telefono?: string;
+  }) => {
     const nuevo = await clientesApi.crear(data);
     setClientes((prev) => [...prev, nuevo]);
     seleccionarCliente(nuevo);
@@ -399,7 +384,8 @@ export default function GenerarVentaPage() {
     setModalPagoAbierto(true);
   };
 
-  const handleConfirmarVenta = async (pagos: PagoParte[]) => {
+  // --- CAMBIO: recibe el vuelto y lo propaga a la boleta ---
+  const handleConfirmarVenta = async (pagos: PagoParte[], metodoPagoFormateado: string, vuelto: number) => {
     if (!empleado) throw new Error('Sesión expirada. Vuelve a iniciar sesión.');
 
     try {
@@ -407,28 +393,27 @@ export default function GenerarVentaPage() {
 
       let idCliente: number | null = idClienteSeleccionado;
       if (!idCliente && nombreCliente.trim()) {
+        const { nombres, apellidoPaterno, apellidoMaterno } = splitNombreCompleto(nombreCliente.trim());
         const nuevoCliente = await clientesApi.crear({
-          nombre: nombreCliente.trim(),
+          nombres,
+          apellidoPaterno: apellidoPaterno || undefined,
+          apellidoMaterno: apellidoMaterno || undefined,
           dni: dniCliente.trim() || undefined,
         });
         idCliente = nuevoCliente.id;
       }
 
-      const metodoPago = pagos
-        .map((p) => `${p.metodo}: S/ ${p.monto.toFixed(2)} (${p.detalle})`)
-        .join('  +  ');
-
       const venta = await ventasApi.crear({
         idEmpleado: empleado.id,
         idCliente,
-        metodoPago,
+        metodoPago: metodoPagoFormateado,
         items: carrito.map(({ idProducto, cantidad, tipoVenta, precioUnitario }) => ({
           idProducto, cantidad, tipoVenta, precioUnitario,
         })),
       });
 
-      if (pestanaBoleta) pestanaBoleta.location.href = `/dashboard/ventas/boleta?id=${venta.id}`;
-      else abrirBoletaImprimible(venta.id);
+      if (pestanaBoleta) pestanaBoleta.location.href = `/dashboard/ventas/boleta?id=${venta.id}&vuelto=${vuelto.toFixed(2)}`;
+      else abrirBoletaImprimible(venta.id, vuelto);
 
       setModalPagoAbierto(false);
       setVentaConfirmada(venta);
@@ -448,9 +433,6 @@ export default function GenerarVentaPage() {
     }
   };
 
-  // Agrega un producto por coincidencia EXACTA de código de barras (por
-  // ejemplo, cuando un lector de código de barras "escribe" el código y
-  // envía Enter). Devuelve true si encontró y agregó el producto.
   const intentarAgregarPorCodigoBarras = (valor: string): boolean => {
     const q = valor.trim().toLowerCase();
     if (!q) return false;
@@ -471,11 +453,6 @@ export default function GenerarVentaPage() {
     return false;
   };
 
-  // Manejo de teclado dentro del buscador:
-  // - Escribir un código de barras + Enter agrega el producto de inmediato.
-  // - ↑ / ↓ navegan la lista de resultados visibles.
-  // - Enter agrega el producto resaltado (si no hubo match de código de barras).
-  // - Escape limpia la búsqueda.
   const handleBusquedaKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -505,8 +482,6 @@ export default function GenerarVentaPage() {
     }
   };
 
-  // Atajos de teclado globales para operar todo el POS sin mouse:
-  // F2 = ir a cobrar, F3 = enfocar el buscador, Escape = cerrar diálogos.
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'F2') {
@@ -550,9 +525,6 @@ export default function GenerarVentaPage() {
     );
   }
 
-  // MODO SIN MOUSE: reemplaza la pantalla normal por una pantalla operable
-  // 100% con teclado, reutilizando exactamente el mismo estado/lógica de
-  // carrito, cliente y venta que la pantalla original.
   if (modoSinMouse) {
     return (
       <>
@@ -639,7 +611,6 @@ export default function GenerarVentaPage() {
 
   return (
     <div className="h-full w-full flex flex-col gap-2 sm:gap-3 lg:gap-4 p-2 sm:p-3 lg:p-4 box-border bg-zinc-100 overflow-hidden">
-      {/* HEADER POS */}
       <header className="pos-header flex flex-wrap items-center justify-between shrink-0 gap-2 sm:gap-3 bg-white p-2.5 sm:p-3 rounded-2xl border border-zinc-200 shadow-xs">
         <div className="flex items-center gap-3 min-w-0">
           <div className="min-w-0">
@@ -735,7 +706,7 @@ export default function GenerarVentaPage() {
                       onMouseDown={() => seleccionarCliente(c)}
                       className="w-full flex items-center justify-between px-3 py-2 text-xs text-left hover:bg-zinc-50 transition-colors"
                     >
-                      <span className="font-medium text-zinc-800 truncate mr-2">{c.nombre}</span>
+                      <span className="font-medium text-zinc-800 truncate mr-2">{getNombreCompleto(c)}</span>
                       <span className="font-mono text-zinc-400 shrink-0">{c.dni ?? '—'}</span>
                     </button>
                   ))}
@@ -770,10 +741,8 @@ export default function GenerarVentaPage() {
         </div>
       </header>
 
-      {/* ÁREA PRINCIPAL POS */}
       <div className="grid grid-cols-1 lg:grid-cols-5 grid-rows-[1fr_1fr] lg:grid-rows-1 gap-2 sm:gap-3 lg:gap-4 flex-1 min-h-0 overflow-hidden">
 
-        {/* CATALOGO PRODUCTOS */}
         <div className="lg:col-span-3 bg-white rounded-2xl border border-zinc-200 shadow-xs flex flex-col h-full min-h-0 overflow-hidden">
           <div className="p-2.5 sm:p-3 border-b border-zinc-200 shrink-0 space-y-1">
             <div className="relative">
@@ -818,7 +787,6 @@ export default function GenerarVentaPage() {
                     <td className="px-4 py-2 text-zinc-700">
                       <div className="font-medium text-zinc-800">{p.nombre}</div>
 
-                      {/* Principio activo y Laboratorio en la misma línea */}
                       {(p.principioActivo?.nombre || p.laboratorio?.nombre) && (
                         <div className="text-xs text-zinc-400 font-normal italic flex items-center gap-1.5 flex-wrap">
                           {p.principioActivo?.nombre && <span>{p.principioActivo.nombre}</span>}
@@ -854,7 +822,6 @@ export default function GenerarVentaPage() {
           </div>
         </div>
 
-        {/* DETALLE DE VENTA / CARRITO */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-zinc-200 shadow-xs flex flex-col h-full min-h-0 overflow-hidden">
           <div className="flex items-center justify-between gap-2 px-4 py-2.5 sm:py-3 border-b border-zinc-200 shrink-0">
             <div className="flex items-center gap-2">
@@ -905,7 +872,6 @@ export default function GenerarVentaPage() {
                         <span className="text-[11px] font-medium text-zinc-500 px-1.5 py-0.5 bg-zinc-50 rounded border border-zinc-200">Unidad</span>
                       )}
 
-                      {/* CANTIDAD */}
                       <div className="flex flex-col gap-0.5">
                         <span className="text-[10px] text-zinc-400 font-medium">Cant.</span>
                         <input
@@ -917,7 +883,6 @@ export default function GenerarVentaPage() {
                         />
                       </div>
 
-                      {/* PRECIO UNITARIO (PASOS DE 0.10) */}
                       <div className="flex flex-col gap-0.5">
                         <span className="text-[10px] text-zinc-400 font-medium">P. Unit.</span>
                         <div className="flex items-center gap-0.5">
@@ -931,7 +896,6 @@ export default function GenerarVentaPage() {
                         </div>
                       </div>
 
-                      {/* SUBTOTAL (PASOS DE 0.10) */}
                       <div className="flex flex-col gap-0.5">
                         <span className="text-[10px] text-zinc-400 font-medium">Subtotal</span>
                         <div className="flex items-center gap-0.5">

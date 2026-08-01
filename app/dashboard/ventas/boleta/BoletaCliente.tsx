@@ -9,6 +9,8 @@ import { generarBoletaPdf } from '@/utils/generarBoletaPdf';
 export default function BoletaCliente() {
   const searchParams = useSearchParams();
   const idVenta = Number(searchParams.get('id'));
+  const vueltoParam = searchParams.get('vuelto');
+  const vuelto = vueltoParam ? Number(vueltoParam) : undefined;
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -20,7 +22,7 @@ export default function BoletaCliente() {
           ventasApi.obtener(idVenta),
           obtenerEmpresa(),
         ]);
-        const blob = await generarBoletaPdf(venta, empresa);
+        const blob = await generarBoletaPdf(venta, empresa, vuelto);
         const url = URL.createObjectURL(blob);
         window.location.replace(url);
       } catch {

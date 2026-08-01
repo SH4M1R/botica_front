@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Plus, Eye, Ban, Receipt, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
-import { ventasApi } from '@/api/ventas';
+import { ventasApi, getNombreCompleto } from '@/api/ventas';
 import type { Venta } from '@/api/ventas';
 import { useSession } from '@/hooks/useSession';
 import VentaDetalleModal from './components/VentaDetalleModal';
@@ -233,7 +233,9 @@ export default function VentasPage() {
                   {itemsPaginados.map((v) => (
                     <tr key={v.id} className="hover:bg-zinc-50/60 transition-colors">
                       <td className="px-5 py-3 font-mono text-zinc-600">#{String(v.id).padStart(6, '0')}</td>
-                      <td className="px-5 py-3 font-medium text-zinc-800">{v.cliente?.nombre ?? 'No registrado'}</td>
+                      <td className="px-5 py-3 font-medium text-zinc-800">
+                        {v.cliente ? getNombreCompleto(v.cliente) : 'No registrado'}
+                      </td>
                       {esAdministrador && (
                         <td className="px-5 py-3 text-zinc-600">{v.empleado?.nombre ?? '—'}</td>
                       )}
