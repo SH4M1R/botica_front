@@ -1,4 +1,5 @@
 import jsPDF from 'jspdf';
+import { obtenerEmpresa, EmpresaForm } from '@/api/empresa'; // 👈 Importamos tu servicio de empresa
 
 export interface ColumnaReporte<T> {
   header: string;
@@ -62,6 +63,7 @@ async function cargarImagenBase64(url: string): Promise<{ data: string; ratio: n
       data = url;
     } else {
       const res = await fetch(url);
+      if (!res.ok) return null;
       const blob = await res.blob();
       data = await new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -93,21 +95,54 @@ function formatoImagen(data: string) {
 export function crearPos80Builder(alturaEstimada: number) {
   const ANCHO = 80;
   const MARGEN = 6;
+  const ANCHO_UTIL = ANCHO - MARGEN * 2;
   const centerX = ANCHO / 2;
   const doc = new jsPDF({ unit: 'mm', format: [ANCHO, Math.max(alturaEstimada, 120)] });
   let y = 6;
 
   const b = {
     doc,
-    async encabezadoEmpresa(logoUrl?: string) {
-      if (!logoUrl) return;
-      const logo = await cargarImagenBase64(logoUrl);
-      if (!logo) return;
-      const anchoLogo = 45;
-      const altoLogo = anchoLogo * logo.ratio;
-      const xLogo = centerX - anchoLogo / 2;
-      doc.addImage(logo.data, formatoImagen(logo.data), xLogo, y, anchoLogo, altoLogo);
-      y += altoLogo + 4;
+    /**
+     * Carga el logo y los datos desde la API si no se especifica un logoUrl directo.
+     */
+    async encabezadoEmpresa(logoUrlManual?: string) {
+      let urlLogo = logoUrlManual;
+      let empresa: EmpresaForm | null = null;
+
+      // Si no nos pasan un logo explícito, lo traemos de la API de empresa
+      if (!urlLogo) {
+        empresa = await obtenerEmpresa();
+        urlLogo = empresa.logo;
+      }
+
+      // Si hay un logo disponible, lo agregamos arriba centrado
+      if (urlLogo) {
+        const logo = await cargarImagenBase64(urlLogo);
+        if (logo) {
+          const anchoLogo = 40;
+          const altoLogo = anchoLogo * logo.ratio;
+          const xLogo = centerX - anchoLogo / 2;
+          doc.addImage(logo.data, formatoImagen(logo.data), xLogo, y, anchoLogo, altoLogo);
+          y += altoLogo + 3;
+        }
+      }
+
+      // Si obtuvimos la información de la empresa, imprimimos el nombre comercial / RUC en el ticket
+      if (empresa && (empresa.nombreComercial || empresa.razonSocial)) {
+        const nombre = empresa.nombreComercial || empresa.razonSocial;
+        doc.setFont('courier', 'bold');
+        doc.setFontSize(9);
+        doc.text(nombre, centerX, y, { align: 'center' });
+        y += 4;
+
+        if (empresa.ruc) {
+          doc.setFont('courier', 'normal');
+          doc.setFontSize(7.5);
+          doc.text(`RUC: ${empresa.ruc}`, centerX, y, { align: 'center' });
+          y += 4;
+        }
+        y += 2;
+      }
     },
     texto(
       contenido: string,
@@ -116,9 +151,15 @@ export function crearPos80Builder(alturaEstimada: number) {
       const { align = 'left', size = 8, bold = false } = opts;
       doc.setFont('courier', bold ? 'bold' : 'normal');
       doc.setFontSize(size);
-      const posX = align === 'center' ? centerX : align === 'right' ? ANCHO - MARGEN : MARGEN;
-      doc.text(contenido, posX, y, { align });
-      y += size * 0.42 + 1.2;
+
+      const lineas = doc.splitTextToSize(contenido, ANCHO_UTIL);
+      const lineHeight = size * 0.42 + 1.2;
+
+      lineas.forEach((linea: string) => {
+        const posX = align === 'center' ? centerX : align === 'right' ? ANCHO - MARGEN : MARGEN;
+        doc.text(linea, posX, y, { align });
+        y += lineHeight;
+      });
     },
     linea(dashed = true) {
       doc.setLineDashPattern(dashed ? [0.5, 0.5] : [], 0);
@@ -130,9 +171,8 @@ export function crearPos80Builder(alturaEstimada: number) {
       y += n;
     },
     tabla<T>(columnas: ColumnaReporte<T>[], filas: T[]) {
-      const anchoDisponible = ANCHO - MARGEN * 2;
       const totalWidth = columnas.reduce((s, c) => s + c.widthA4, 0);
-      const anchos = columnas.map((c) => (c.widthA4 / totalWidth) * anchoDisponible);
+      const anchos = columnas.map((c) => (c.widthA4 / totalWidth) * ANCHO_UTIL);
       const xs: number[] = [];
       let acc = MARGEN;
       anchos.forEach((w) => {
@@ -153,13 +193,31 @@ export function crearPos80Builder(alturaEstimada: number) {
 
       doc.setFont('courier', 'normal');
       doc.setFontSize(6.5);
+      const fontSize = 6.5;
+      const lineHeight = fontSize * 0.42 + 1;
+
       filas.forEach((fila) => {
-        columnas.forEach((c, i) => {
+        let maxFilasEnFila = 1;
+
+        const celdasProcesadas = columnas.map((c, i) => {
           const valor = c.render(fila);
-          const posX = c.align === 'right' ? xs[i] + anchos[i] : xs[i];
-          doc.text(valor, posX, y, { align: c.align === 'right' ? 'right' : 'left', maxWidth: anchos[i] });
+          const lineas = doc.splitTextToSize(valor, anchos[i]);
+          if (lineas.length > maxFilasEnFila) {
+            maxFilasEnFila = lineas.length;
+          }
+          return { col: c, index: i, lineas };
         });
-        y += 4.2;
+
+        celdasProcesadas.forEach(({ col, index, lineas }) => {
+          const posX = col.align === 'right' ? xs[index] + anchos[index] : xs[index];
+          lineas.forEach((linea: string, lineIdx: number) => {
+            doc.text(linea, posX, y + lineIdx * lineHeight, {
+              align: col.align === 'right' ? 'right' : 'left',
+            });
+          });
+        });
+
+        y += maxFilasEnFila * lineHeight + 1;
       });
     },
     finalizar(): Blob {
@@ -177,10 +235,10 @@ export function crearPos80Builder(alturaEstimada: number) {
 export function crearA4Builder() {
   const MARGEN = 20;
   const ANCHO_PAGINA = 210;
+  const ALTO_PAGINA = 297;
   const ANCHO_UTIL = ANCHO_PAGINA - MARGEN * 2;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   let y = 20;
-  let columnasActuales: ColumnaReporte<any>[] = [];
   let xsActuales: number[] = [];
 
   function calcularXs(columnas: ColumnaReporte<any>[]) {
@@ -195,27 +253,70 @@ export function crearA4Builder() {
 
   const b = {
     doc,
-    async encabezadoEmpresa(logoUrl?: string) {
-      if (!logoUrl) return;
-      const logo = await cargarImagenBase64(logoUrl);
-      if (!logo) return;
-      const altoMax = 20;
-      const anchoLogo = altoMax / logo.ratio;
-      doc.addImage(logo.data, formatoImagen(logo.data), ANCHO_PAGINA - MARGEN - anchoLogo, y, anchoLogo, altoMax);
+    /**
+     * Carga el logo y los datos desde la API si no se especifica un logoUrl directo.
+     */
+    async encabezadoEmpresa(logoUrlManual?: string) {
+      let urlLogo = logoUrlManual;
+      let empresa: EmpresaForm | null = null;
+
+      if (!urlLogo) {
+        empresa = await obtenerEmpresa();
+        urlLogo = empresa.logo;
+      }
+
+      // Dibujar datos de la empresa en la esquina izquierda si existen
+      if (empresa && empresa.razonSocial) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.text(empresa.nombreComercial || empresa.razonSocial, MARGEN, y);
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        let yInfo = y + 4;
+        if (empresa.ruc) {
+          doc.text(`RUC: ${empresa.ruc}`, MARGEN, yInfo);
+          yInfo += 3.5;
+        }
+        if (empresa.direccion) {
+          doc.text(empresa.direccion, MARGEN, yInfo);
+          yInfo += 3.5;
+        }
+      }
+
+      // Dibujar Logo en la esquina superior derecha
+      if (urlLogo) {
+        const logo = await cargarImagenBase64(urlLogo);
+        if (logo) {
+          const altoMax = 18;
+          const anchoLogo = altoMax / logo.ratio;
+          doc.addImage(
+            logo.data,
+            formatoImagen(logo.data),
+            ANCHO_PAGINA - MARGEN - anchoLogo,
+            y,
+            anchoLogo,
+            altoMax
+          );
+        }
+      }
+
+      y += 20; // Avanzamos espacio vertical tras el encabezado
     },
     titulo(texto: string) {
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(16);
-      doc.text(texto, MARGEN, y + 6);
-      y += 16;
+      doc.setFontSize(15);
+      doc.text(texto, MARGEN, y);
+      y += 7;
     },
     subtitulo(lineas: string[]) {
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10);
+      doc.setFontSize(9);
       lineas.forEach((linea) => {
         doc.text(linea, MARGEN, y);
-        y += 6;
+        y += 5;
       });
+      y += 2;
     },
     lineaSeparadora(bold = false) {
       doc.setDrawColor(bold ? 0 : 180);
@@ -223,7 +324,6 @@ export function crearA4Builder() {
       y += 7;
     },
     encabezadoTabla<T>(columnas: ColumnaReporte<T>[]) {
-      columnasActuales = columnas;
       xsActuales = calcularXs(columnas);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(9);
@@ -238,20 +338,42 @@ export function crearA4Builder() {
       doc.setFont('helvetica', 'normal');
     },
     filaTabla<T>(columnas: ColumnaReporte<T>[], fila: T) {
-      if (y > 275) {
+      const xs = xsActuales.length === columnas.length ? xsActuales : calcularXs(columnas);
+      doc.setFontSize(9);
+      const fontSize = 9;
+      const lineHeight = fontSize * 0.38 + 1.2;
+
+      const celdasCalculadas = columnas.map((c, i) => {
+        const valor = c.render(fila);
+        const anchoDisponible = c.widthA4 - 2; 
+        const lineas = doc.splitTextToSize(valor, anchoDisponible);
+        return { col: c, x: xs[i], lineas };
+      });
+
+      const maxLineas = Math.max(...celdasCalculadas.map((item) => item.lineas.length));
+      const alturaFila = maxLineas * lineHeight;
+
+      if (y + alturaFila > ALTO_PAGINA - 22) {
         doc.addPage();
         y = 20;
       }
-      const xs = xsActuales.length === columnas.length ? xsActuales : calcularXs(columnas);
-      doc.setFontSize(9);
-      columnas.forEach((c, i) => {
-        const valor = c.render(fila);
-        const posX = c.align === 'right' ? xs[i] + c.widthA4 : xs[i];
-        doc.text(valor, posX, y, { align: c.align === 'right' ? 'right' : 'left' });
+
+      celdasCalculadas.forEach(({ col, x, lineas }) => {
+        const posX = col.align === 'right' ? x + col.widthA4 : x;
+        lineas.forEach((lineaTexto: string, lineIdx: number) => {
+          doc.text(lineaTexto, posX, y + lineIdx * lineHeight, {
+            align: col.align === 'right' ? 'right' : 'left',
+          });
+        });
       });
-      y += 7;
+
+      y += alturaFila + 2.5;
     },
     campoValor(label: string, valor: string, bold = false) {
+      if (y > ALTO_PAGINA - 20) {
+        doc.addPage();
+        y = 20;
+      }
       doc.setFont('helvetica', bold ? 'bold' : 'normal');
       doc.setFontSize(bold ? 11 : 10);
       doc.text(label, MARGEN, y);

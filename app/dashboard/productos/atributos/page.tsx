@@ -114,9 +114,6 @@ const cerrarModal = () =>
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Link href="/dashboard/productos" className="text-zinc-400 hover:text-zinc-600">
-          <ArrowLeft size={20} />
-        </Link>
         <div>
           <h1 className="text-2xl font-bold text-primary tracking-tight">Atributos de Producto</h1>
           <p className="text-sm text-zinc-500 mt-1">Gestiona los catálogos usados al registrar productos.</p>

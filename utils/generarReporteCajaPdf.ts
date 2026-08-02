@@ -1,5 +1,6 @@
 import type { ArqueoCaja } from '@/api/arqueo';
 import type { Venta } from '@/api/ventas';
+import { getNombreCompleto } from '@/api/ventas';
 import {
   crearPos80Builder,
   formatEmision,
@@ -41,7 +42,7 @@ export async function generarReporteCajaPdf(
   let total = 0;
 
   ventas.forEach((v) => {
-    const cliente = v.cliente?.nombre ?? 'Clientes Varios';
+    const cliente = v.cliente ? getNombreCompleto(v.cliente) : 'Clientes Varios';
     const hora = new Date(v.fecha).toLocaleTimeString('es-PE', {
       hour: '2-digit',
       minute: '2-digit',

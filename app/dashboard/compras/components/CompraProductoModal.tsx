@@ -20,10 +20,6 @@ interface ProductoModalProps {
   onAgregar: (item: DetalleCompraItem) => void;
 }
 
-// Extiende Producto con la bandera que indica si el producto se puede
-// vender/comprar por caja (presentación) o solo por unidad, y guarda el
-// producto original completo (tal cual viene de /productos) para poder
-// reconstruir el payload de actualización sin perder ningún campo.
 type ProductoExtendido = Producto & {
   ventaPorCajas: boolean;
   _original: ProductoAPI;
@@ -39,13 +35,13 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
   const [tipoPrecio, setTipoPrecio] = useState<TipoPrecio>("MAYORISTA");
   const [cantidad, setCantidad] = useState<number | "">("");
   const [precioCompra, setPrecioCompra] = useState<number>(0);
+  const [importe, setImporte] = useState<number>(0);
   const [precioVenta, setPrecioVenta] = useState<number>(0);
   const [codigoLote, setCodigoLote] = useState("");
   const [fechaVencimiento, setFechaVencimiento] = useState("");
 
   const [errorPrecio, setErrorPrecio] = useState<string | null>(null);
 
-  // Cargar productos desde la base de datos al abrir el modal
   useEffect(() => {
     if (open) {
       productosApi
@@ -55,7 +51,6 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
     }
   }, [open]);
 
-  // Filtrar productos guardados en BD según la búsqueda
   useEffect(() => {
     const q = query.trim().toLowerCase();
     if (!q || producto) {
@@ -81,54 +76,78 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
         costoUnitario: p.precio_costo ?? p.costoUnitario ?? 0,
         stockActual: p.stock ?? 0,
         unidadesPorPresentacion: p.unidades_caja ?? p.factor ?? 1,
-        // Si el producto no maneja presentaciones (cajas), solo se puede vender por unidad
         ventaPorCajas: Boolean(p.vende_por_presentaciones),
-        // Producto completo tal como viene de /productos, para poder actualizarlo después
         _original: p as ProductoAPI,
       }));
 
     setOpciones(filtrados);
   }, [query, listaProductos, producto]);
 
-  // Al elegir producto, precargar precio de compra y precio de venta actuales
+  // Al elegir producto, precargar precio de compra, importe y precio de venta
   useEffect(() => {
     if (!producto) return;
 
-    // Si el producto no se vende por cajas, forzar tipo de ingreso "UNITARIO"
+    let nuevoTipoPrecio = tipoPrecio;
     if (!producto.ventaPorCajas && tipoPrecio === "MAYORISTA") {
+      nuevoTipoPrecio = "UNITARIO";
       setTipoPrecio("UNITARIO");
-    } else {
-      setPrecioCompra(tipoPrecio === "MAYORISTA" ? producto.precioMayorista : producto.precioUnitario);
     }
 
-    // El precio de venta es independiente: se precarga con el precio actual del catálogo
+    const nuevoPrecioCompra =
+      nuevoTipoPrecio === "MAYORISTA" ? producto.precioMayorista : producto.precioUnitario;
+    setPrecioCompra(nuevoPrecioCompra);
+
+    const cant = typeof cantidad === "number" ? cantidad : 0;
+    setImporte(Number((cant * nuevoPrecioCompra).toFixed(2)));
+
     setPrecioVenta(producto.precioUnitario);
     setErrorPrecio(null);
   }, [producto]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Si cambia el tipo de ingreso, recalcular el precio de compra mostrado
+  // Si cambia el tipo de ingreso, recalcular precio de compra e importe
   useEffect(() => {
     if (!producto) return;
-    setPrecioCompra(tipoPrecio === "MAYORISTA" ? producto.precioMayorista : producto.precioUnitario);
-  }, [tipoPrecio, producto]);
+    const nuevoPrecioCompra =
+      tipoPrecio === "MAYORISTA" ? producto.precioMayorista : producto.precioUnitario;
+    setPrecioCompra(nuevoPrecioCompra);
 
-  // Factor de conversión de unidades físicas:
-  // - Por Caja -> se multiplica por las unidades que trae cada caja
-  // - Por Unidad -> se suma 1 a 1 (no hay conversión)
+    const cant = typeof cantidad === "number" ? cantidad : 0;
+    setImporte(Number((cant * nuevoPrecioCompra).toFixed(2)));
+  }, [tipoPrecio, producto]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const factorConversion =
     tipoPrecio === "MAYORISTA" ? producto?.unidadesPorPresentacion ?? 1 : 1;
 
-  // Unidades ingresadas SIEMPRE en unidades físicas reales
   const unidadesIngresadas = useMemo(() => {
     const cant = typeof cantidad === "number" ? cantidad : 0;
     return cant * factorConversion;
   }, [cantidad, factorConversion]);
 
-  // Importe = cantidad ingresada (cajas o unidades) x precio de compra (de esa misma presentación)
-  const importe = useMemo(() => {
+  // --- Handlers de edición cruzada Cantidad / Precio Compra / Importe ---
+
+  function handleCantidadChange(valor: string) {
+    if (valor === "") {
+      setCantidad("");
+      setImporte(0);
+      return;
+    }
+    // Solo enteros: sin decimales en cantidad de ingreso
+    const nuevaCantidad = Math.max(0, Math.floor(Number(valor)));
+    setCantidad(nuevaCantidad);
+    setImporte(Number((nuevaCantidad * precioCompra).toFixed(2)));
+  }
+
+  function handlePrecioCompraChange(valor: number) {
+    setPrecioCompra(valor);
     const cant = typeof cantidad === "number" ? cantidad : 0;
-    return Number((cant * precioCompra).toFixed(2));
-  }, [cantidad, precioCompra]);
+    setImporte(Number((cant * valor).toFixed(2)));
+  }
+
+  function handleImporteChange(valor: number) {
+    setImporte(valor);
+    const cant = typeof cantidad === "number" ? cantidad : 0;
+    setPrecioCompra(cant > 0 ? Number((valor / cant).toFixed(4)) : 0);
+  }
 
   function limpiarFormulario() {
     setQuery("");
@@ -137,6 +156,7 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
     setTipoPrecio("MAYORISTA");
     setCantidad("");
     setPrecioCompra(0);
+    setImporte(0);
     setPrecioVenta(0);
     setCodigoLote("");
     setFechaVencimiento("");
@@ -153,16 +173,10 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
     e.preventDefault();
     if (!producto || !cantidad || cantidad <= 0) return;
 
-    // El dato que se guarda en la orden de compra es el Precio de Compra,
-    // convertido a costo por unidad física (importe / unidades ingresadas),
-    // ya que la cantidad que viaja al backend también va en unidades físicas.
     const precioCompraUnitario =
       unidadesIngresadas > 0 ? Number((importe / unidadesIngresadas).toFixed(4)) : 0;
     const afectacionIgv: AfectacionIgv = producto.gravada ? "GRAVADO_ONEROSO" : "INAFECTO";
 
-    // productosApi.actualizar hace un PUT completo, así que reconstruimos el
-    // payload a partir del producto original y solo pisamos precio_venta
-    // con el valor del campo "Precio de Venta" (independiente del de compra).
     const original = producto._original;
     const payload: ProductoPayload = {
       nombre: original.nombre,
@@ -225,7 +239,6 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-zinc-900/40 p-4">
       <div className="bg-white rounded-2xl shadow-xl border border-zinc-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-200 shrink-0">
           <div className="flex items-center gap-2">
             <PackagePlus size={18} className="text-primary transition-colors duration-300" />
@@ -240,9 +253,7 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
           </button>
         </div>
 
-        {/* Body */}
         <form onSubmit={handleAgregar} className="p-5 space-y-4 overflow-y-auto">
-          {/* Fila 1 - Buscar Producto | Tipo de Ingreso */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="relative space-y-1">
               <label className={labelClass}>Buscar Producto *</label>
@@ -274,7 +285,6 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
                 )}
               </div>
 
-              {/* Desplegable de resultados */}
               {mostrarOpciones && opciones.length > 0 && !producto && (
                 <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-zinc-200 bg-white shadow-lg divide-y divide-zinc-100">
                   {opciones.map((p) => (
@@ -321,19 +331,21 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
             </div>
           </div>
 
-          {/* Fila 2 - Cantidad | Unidades Ingresadas | Precio de Compra | Importe */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
             <div className="space-y-1">
               <label className={labelClass}>Cantidad de Ingreso *</label>
               <div className="relative">
                 <input
                   type="number"
-                  min={0.01}
-                  step="any"
+                  min={1}
+                  step={1}
+                  inputMode="numeric"
                   value={cantidad}
-                  onChange={(e) =>
-                    setCantidad(e.target.value === "" ? "" : Number(e.target.value))
-                  }
+                  onChange={(e) => handleCantidadChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    // Bloquea el punto/coma decimal al escribir
+                    if (e.key === "." || e.key === ",") e.preventDefault();
+                  }}
                   className={`${inputClass} pl-8`}
                   placeholder="0"
                 />
@@ -356,7 +368,7 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
                 type="number"
                 step="any"
                 value={precioCompra}
-                onChange={(e) => setPrecioCompra(Number(e.target.value))}
+                onChange={(e) => handlePrecioCompraChange(Number(e.target.value))}
                 className={inputClass}
               />
             </div>
@@ -364,14 +376,15 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
             <div className="space-y-1">
               <label className={labelClass}>Importe (S/)</label>
               <input
-                readOnly
-                value={importe.toFixed(2)}
-                className={`${inputClass} bg-zinc-100 font-bold text-zinc-800`}
+                type="number"
+                step="any"
+                value={importe}
+                onChange={(e) => handleImporteChange(Number(e.target.value))}
+                className={`${inputClass} font-bold text-zinc-800`}
               />
             </div>
           </div>
 
-          {/* Fila 3 - Precio de Venta | Lote | Fecha Vencimiento */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="space-y-1">
               <label className={labelClass}>Precio de Venta (por unidad)</label>
@@ -407,7 +420,6 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
 
           {errorPrecio && <p className="text-[11px] text-red-500">{errorPrecio}</p>}
 
-          {/* Botones de acción */}
           <div className="flex justify-end gap-2 pt-3 border-t border-zinc-100 shrink-0">
             <button
               type="button"

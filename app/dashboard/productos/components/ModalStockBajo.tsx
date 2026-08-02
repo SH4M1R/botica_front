@@ -152,6 +152,7 @@ export const ModalAlertaStock: React.FC<ModalAlertaStockProps> = ({
                 <thead className="bg-primary/10 text-primary font-bold uppercase border-b border-slate-200">
                   <tr>
                     <th className="px-4 py-2.5">Producto</th>
+                    <th className="px-4 py-2.5">Laboratorio</th>
                     <th className="px-4 py-2.5">Categoría</th>
                     <th className="px-4 py-2.5 text-right">Stock Actual</th>
                     <th className="px-4 py-2.5 text-right">Stock Mín.</th>
@@ -161,6 +162,7 @@ export const ModalAlertaStock: React.FC<ModalAlertaStockProps> = ({
                   {productosFiltrados.map((p) => (
                     <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="px-4 py-2.5 font-semibold text-slate-800">{p.nombre}</td>
+                      <td className="px-4 py-2.5 text-slate-600">{p.laboratorio?.nombre ?? '-'}</td>
                       <td className="px-4 py-2.5 text-slate-600">{p.categoria?.nombre ?? '-'}</td>
                       <td className="px-4 py-2.5 text-right font-bold text-red-500">{p.stock}</td>
                       <td className="px-4 py-2.5 text-right text-slate-500">{p.stock_minimo ?? 10}</td>

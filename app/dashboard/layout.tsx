@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import Navbar from '@/components/Navbar';
@@ -9,7 +9,8 @@ import { CajaCerradaModal } from '@/components/CajaCerradaModal';
 
 const RUTAS_PANTALLA_COMPLETA = ['/dashboard/ventas/generar', '/dashboard/compras/generar'];
 
-export default function DashboardLayout({
+// Componente interno: aquí vive el useSearchParams(), por eso necesita Suspense.
+function DashboardLayoutContent({
   children,
 }: {
   children: React.ReactNode;
@@ -113,5 +114,19 @@ export default function DashboardLayout({
         </main>
       </div>
     </div>
+  );
+}
+
+// Wrapper exportado: no usa useSearchParams directamente, así que no bloquea
+// el prerenderizado estático. Suspense cubre el hook que sí lo usa.
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <Suspense fallback={null}>
+      <DashboardLayoutContent>{children}</DashboardLayoutContent>
+    </Suspense>
   );
 }

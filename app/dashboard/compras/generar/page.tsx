@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Search, Plus, ShoppingCart, Barcode, Trash2, ArrowLeft, PackagePlus, ExternalLink } from "lucide-react";
+import { Plus, ShoppingCart, Barcode, Trash2, PackagePlus, ExternalLink } from "lucide-react";
+import { productosApi } from "@/api/productos";
+import type { ProductoPayload } from "@/api/productos";
 
 // Modales
 import CompraProductoModal from "../components/CompraProductoModal";
@@ -27,7 +28,7 @@ const COMPROBANTES = [
   { value: "FACTURA", label: "Factura" },
   { value: "BOLETA", label: "Boleta" },
   { value: "GUIA", label: "Guía de Remisión" },
-  { value: "OTROS", label: "Otros" },
+  { value: "NOTA_VENTA", label: "Nota de Venta" },
 ];
 
 export default function GenerarCompraPage() {
@@ -65,6 +66,7 @@ export default function GenerarCompraPage() {
 
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const esNotaVenta = comprobante === "NOTA_VENTA";
 
   // Si esta página se abre como ventana emergente (?popup=true), lo
   // marcamos en el <body> por si algún estilo global depende de esa clase.
@@ -188,8 +190,12 @@ export default function GenerarCompraPage() {
   async function handleGuardar() {
     setError(null);
 
-    if (!comprobante || !serie || !numero || !fechaEmision) {
-      setError("Completa comprobante, serie, número y fecha de emisión");
+    if (!comprobante || !fechaEmision) {
+      setError("Completa comprobante y fecha de emisión");
+      return;
+    }
+    if (!esNotaVenta && (!serie || !numero)) {
+      setError("Completa serie y número");
       return;
     }
     if (!proveedor) {
@@ -212,8 +218,8 @@ export default function GenerarCompraPage() {
 
     const payload: CompraRequestDTO = {
       comprobante,
-      serie,
-      numero,
+      serie: esNotaVenta ? (serie || "S/N") : serie,
+      numero: esNotaVenta ? (numero || "S/N") : numero,
       fechaEmision,
       regularizar: false,
       idProveedor: proveedor.id,
@@ -283,20 +289,24 @@ export default function GenerarCompraPage() {
               </select>
             </div>
             <div className="col-span-6 sm:col-span-2">
-              <label className="mb-1 block text-xs font-semibold text-zinc-600">Serie*</label>
+              <label className="mb-1 block text-xs font-semibold text-zinc-600">
+                Serie{!esNotaVenta && "*"}
+              </label>
               <input
                 value={serie}
                 onChange={(e) => setSerie(e.target.value)}
-                placeholder="F001"
+                placeholder={esNotaVenta ? "Opcional" : "F001"}
                 className="w-full rounded-xl border border-zinc-200 py-1.5 px-3 text-sm focus:border-primary focus:outline-none"
               />
             </div>
             <div className="col-span-6 sm:col-span-2">
-              <label className="mb-1 block text-xs font-semibold text-zinc-600">Número*</label>
+              <label className="mb-1 block text-xs font-semibold text-zinc-600">
+                Número{!esNotaVenta && "*"}
+              </label>
               <input
                 value={numero}
                 onChange={(e) => setNumero(e.target.value)}
-                placeholder="00000001"
+                placeholder={esNotaVenta ? "Opcional" : "00000001"}
                 className="w-full rounded-xl border border-zinc-200 py-1.5 px-3 text-sm focus:border-primary focus:outline-none"
               />
             </div>
@@ -536,9 +546,10 @@ export default function GenerarCompraPage() {
       {/* Modal para CREAR un producto totalmente nuevo en el catálogo */}
       <CrearProductoModal
         open={modalCrearProductoAbierto}
-        producto={null}
+        producto={null} 
         onClose={() => setModalCrearProductoAbierto(false)}
-        onSave={async () => {
+        onSave={async (data: ProductoPayload) => {
+          await productosApi.crear(data);
           setModalCrearProductoAbierto(false);
         }}
       />

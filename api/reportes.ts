@@ -199,6 +199,7 @@ export interface ReporteInventarioValorado {
 export interface AlertaStock {
   idProducto: number;
   nombreProducto: string;
+  laboratorio: { idLaboratorio: number; nombre: string } | null;
   stock: number;
   stockMinimo: number;
   diferencia: number;
