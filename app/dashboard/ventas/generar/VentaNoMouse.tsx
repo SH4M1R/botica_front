@@ -482,24 +482,26 @@ export default function VentaNoMouse({
           )}
         </div>
 
-        <div className="flex items-end gap-2 pb-1 overflow-visible">
-          <div className="w-36 shrink-0">
-            <label className="text-[10px] font-semibold text-zinc-500">Código de Barras</label>
+        <div className="grid grid-cols-12 gap-2 items-end pb-1 overflow-visible">
+          {/* Código de Barras (1 columna) */}
+          <div className="col-span-1">
+            <label className="text-[10px] font-semibold text-zinc-500 truncate block">Código</label>
             <input
               ref={codigoBarrasRef}
               value={codigoBarras}
               onChange={(e) => setCodigoBarras(e.target.value)}
               onKeyDown={handleCodigoBarrasKeyDown}
               disabled={!!editandoKey}
-              className={`${inputBase} bg-primary/20 border-primary/30 focus:ring-primary/50 focus:border-primary/50 font-mono`}
+              className={`${inputBase} bg-primary/20 border-primary/30 focus:ring-primary/50 focus:border-primary/50 font-mono text-xs`}
               placeholder="Escanear..."
               autoComplete="off"
             />
-            <p className="text-[9px] text-zinc-400 mt-0.5">[ Enter agrega directo · Esc limpia ]</p>
+            <p className="text-[9px] text-zinc-400 mt-0.5 truncate">[ Enter ]</p>
           </div>
 
-          <div className="flex-1 min-w-[200px] relative">
-            <label className="text-[10px] font-semibold text-zinc-500">
+          {/* Buscador (4 columnas - Ocupa la mayor parte) */}
+          <div className="col-span-4 relative">
+            <label className="text-[10px] font-semibold text-zinc-500 truncate block">
               {criterio === 'principio' ? 'Principio Activo' : 'Nombre Comercial'}
             </label>
             <input
@@ -515,10 +517,11 @@ export default function VentaNoMouse({
               placeholder="Buscar..."
               autoComplete="off"
             />
-            <p className="text-[9px] text-zinc-400 mt-0.5">[ ↑ ↓ navega · Enter selecciona · Esc finaliza ]</p>
+            <p className="text-[9px] text-zinc-400 mt-0.5 truncate">[ ↑ ↓ navega · Enter selecciona ]</p>
 
+            {/* Sugerencias con ancho fijo de 500px */}
             {!editandoKey && sugerencias.length > 0 && (
-              <div className="absolute left-0 right-0 z-50 mt-1 max-h-56 overflow-y-auto bg-white border border-zinc-200 rounded-lg shadow-xl divide-y divide-zinc-100">
+              <div className="absolute left-0 w-[600px] z-50 mt-1 max-h-56 overflow-y-auto bg-white border border-zinc-200 rounded-lg shadow-xl divide-y divide-zinc-100">
                 {sugerencias.map((p, idx) => (
                   <button
                     key={p.id}
@@ -541,8 +544,9 @@ export default function VentaNoMouse({
             )}
           </div>
 
-          <div className="w-32 shrink-0">
-            <label className="text-[10px] font-semibold text-zinc-500">Presentación</label>
+          {/* Presentación (1 columna) */}
+          <div className="col-span-1">
+            <label className="text-[10px] font-semibold text-zinc-500 truncate block">Presentación</label>
             <select
               value={tipoVentaEntrada}
               disabled={!productoSeleccionado}
@@ -561,8 +565,9 @@ export default function VentaNoMouse({
             </select>
           </div>
 
-          <div className="w-16 shrink-0">
-            <label className="text-[10px] font-semibold text-zinc-500">Cantidad</label>
+          {/* Cantidad (1 columna) */}
+          <div className="col-span-1">
+            <label className="text-[10px] font-semibold text-zinc-500 truncate block">Cant.</label>
             <input
               ref={cantidadRef}
               type="number"
@@ -576,8 +581,9 @@ export default function VentaNoMouse({
             />
           </div>
 
-          <div className="w-24 shrink-0">
-            <label className="text-[10px] font-semibold text-zinc-500">Precio Unidad</label>
+          {/* Precio Unidad (1 columna) */}
+          <div className="col-span-1">
+            <label className="text-[10px] font-semibold text-zinc-500 truncate block">P. Unid</label>
             <input
               type="number"
               step="0.10"
@@ -590,8 +596,9 @@ export default function VentaNoMouse({
             />
           </div>
 
-          <div className="w-24 shrink-0">
-            <label className="text-[10px] font-semibold text-zinc-500">Precio Caja</label>
+          {/* Precio Caja (1 columna) */}
+          <div className="col-span-1">
+            <label className="text-[10px] font-semibold text-zinc-500 truncate block">P. Caja</label>
             <input
               type="number"
               step="0.10"
@@ -604,13 +611,9 @@ export default function VentaNoMouse({
             />
           </div>
 
-          <div className="w-16 shrink-0">
-            <label className="text-[10px] font-semibold text-zinc-500">Unid-Caja</label>
-            <input readOnly value={unidCaja} className={`${inputBase} bg-zinc-50 text-right`} />
-          </div>
-
-          <div className="w-24 shrink-0">
-            <label className="text-[10px] font-semibold text-zinc-500">Precio Blister</label>
+          {/* Precio Blister (1 columna) */}
+          <div className="col-span-1">
+            <label className="text-[10px] font-semibold text-zinc-500 truncate block">P. Blister</label>
             <input
               type="number"
               step="0.10"
@@ -623,25 +626,22 @@ export default function VentaNoMouse({
             />
           </div>
 
-          <div className="w-16 shrink-0">
-            <label className="text-[10px] font-semibold text-zinc-500">Unid-Blister</label>
-            <input readOnly value={unidBlister} className={`${inputBase} bg-zinc-50 text-right`} />
-          </div>
-
-          <div className="w-16 shrink-0">
-            <label className="text-[10px] font-semibold text-zinc-500">Stock</label>
+          {/* Stock (1 columna) */}
+          <div className="col-span-1">
+            <label className="text-[10px] font-semibold text-zinc-500 truncate block">Stock</label>
             <input readOnly value={stockDisponible} className={`${inputBase} bg-zinc-50 text-right font-mono`} />
           </div>
 
-          <div className="w-28 shrink-0">
+          {/* Botón Grabar (1 columna) */}
+          <div className="col-span-1">
             <button
               type="button"
               onClick={grabarLinea}
-              className={`w-full h-[34px] flex items-center justify-center gap-1.5 rounded-lg text-white text-xs font-bold transition-colors ${
+              className={`w-full h-[34px] flex items-center justify-center gap-1 rounded-lg text-white text-xs font-bold transition-colors ${
                 editandoKey ? 'bg-amber-500 hover:bg-amber-600' : 'bg-primary hover:bg-primary/80'
               }`}
             >
-              <Save size={14} /> {editandoKey ? 'Actualizar' : 'Grabar'}
+              <Save size={14} /> {editandoKey ? 'Act.' : 'Grabar'}
             </button>
           </div>
         </div>

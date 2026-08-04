@@ -68,8 +68,6 @@ export default function GenerarCompraPage() {
   const [error, setError] = useState<string | null>(null);
   const esNotaVenta = comprobante === "NOTA_VENTA";
 
-  // Si esta página se abre como ventana emergente (?popup=true), lo
-  // marcamos en el <body> por si algún estilo global depende de esa clase.
   useEffect(() => {
     const esPopup = window.opener !== null || new URLSearchParams(window.location.search).get("popup") === "true";
     if (esPopup) {
@@ -344,7 +342,7 @@ export default function GenerarCompraPage() {
           </div>
 
           {/* Fila 2 - Proveedor & Acciones de Producto */}
-          <div className="grid grid-cols-12 items-end gap-3">
+          <div className="grid grid-cols-12 items-end gap-4">
             <div className="relative col-span-12 lg:col-span-4">
               <label className="mb-1 block text-xs font-semibold text-zinc-600">Proveedor*</label>
               <div className="flex gap-1.5">
@@ -405,16 +403,6 @@ export default function GenerarCompraPage() {
             </div>
 
             <div className="col-span-6 lg:col-span-2">
-              <div className="relative">
-                <input
-                  value={codigoBarra}
-                  onChange={(e) => setCodigoBarra(e.target.value)}
-                  onKeyDown={handleBuscarPorCodigoBarra}
-                  placeholder="Código Barra"
-                  className="w-full rounded-xl border border-zinc-200 py-1.5 pl-8 pr-2 text-sm focus:border-primary focus:outline-none"
-                />
-                <Barcode className="absolute left-2 top-2 text-zinc-400" size={16} />
-              </div>
             </div>
 
             {/* BOTONES DE AGREGAR Y CREAR PRODUCTO */}
@@ -434,16 +422,6 @@ export default function GenerarCompraPage() {
                 <PackagePlus size={15} /> NUEVO PROD
               </button>
             </div>
-          </div>
-
-          {/* Fila 3 - Descripción */}
-          <div>
-            <input
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-              placeholder="Observación o detalle general de la compra..."
-              className="w-full rounded-xl border border-zinc-200 py-1.5 px-3 text-sm focus:border-primary focus:outline-none"
-            />
           </div>
 
           {/* TABLA CON TAMAÑO FIJO Y SCROLL INTERNO */}

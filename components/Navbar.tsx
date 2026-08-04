@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { UserCircle, LogOut, AlertTriangle, ExternalLink, X, Menu } from 'lucide-react';
+import { UserCircle, LogOut, AlertTriangle, ExternalLink, X, Menu, Clock } from 'lucide-react';
 import { useCompanyName } from '@/hooks/useCompanyName';
 import { useSession } from '@/hooks/useSession';
 
@@ -19,11 +19,22 @@ export default function Navbar({ onToggleSidebar }: NavbarProps) {
   const [modalDigemidOpen, setModalDigemidOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
+  // Reloj del sistema, visible en la barra superior.
+  const [horaActual, setHoraActual] = useState(new Date());
+
   const URL_DIGEMID = "https://www.digemid.minsa.gob.pe/webDigemid/publicaciones/alertas-modificaciones/alertas/";
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    const intervalo = setInterval(() => setHoraActual(new Date()), 1000);
+    return () => clearInterval(intervalo);
+  }, []);
+
+  const horaFormateada = horaActual.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const fechaFormateada = horaActual.toLocaleDateString('es-PE', { weekday: 'short', day: 'numeric', month: 'short' });
 
   const handleLogout = () => {
     cerrarSesion();
@@ -69,6 +80,16 @@ export default function Navbar({ onToggleSidebar }: NavbarProps) {
             <AlertTriangle size={16} className="text-amber-600" />
             <span className="hidden md:inline">Alertas DIGEMID</span>
           </button>
+        </div>
+
+        {/* Reloj del sistema: centrado, oculto en pantallas muy angostas */}
+        <div
+          className="hidden lg:flex items-center gap-2 mx-auto px-3 py-1.5 rounded-xl bg-zinc-50 border border-zinc-200 shrink-0"
+          title={fechaFormateada}
+        >
+          <Clock size={15} className="text-primary" />
+          <span className="font-mono tabular-nums text-sm font-semibold text-zinc-700">{horaFormateada}</span>
+          <span className="text-xs text-zinc-400 capitalize border-l border-zinc-200 pl-2 ml-0.5">{fechaFormateada}</span>
         </div>
 
         {/* Sección con Usuario y Botón Logout */}

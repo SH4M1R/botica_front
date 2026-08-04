@@ -8,6 +8,7 @@ import type { Compra } from "@/api/compra";
 import { useSession } from "@/hooks/useSession";
 import CompraDetalleModal from "./components/CompraDetalleModal";
 import Paginacion from "@/components/Paginacion";
+import AnularModal from '@/components/AnularModal';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
@@ -36,6 +37,7 @@ export default function ComprasPage() {
   const [compras, setCompras] = useState<Compra[]>([]);
   const [loading, setLoading] = useState(true);
   const [compraDetalle, setCompraDetalle] = useState<Compra | null>(null);
+  const [compraAAnular, setCompraAAnular] = useState<Compra | null>(null);
 
   // Paginación por días
   const [paginaDia, setPaginaDia] = useState(0);
@@ -62,10 +64,13 @@ export default function ComprasPage() {
     cargarCompras();
   }, []);
 
-  const handleAnular = async (compra: Compra) => {
-    if (!confirm(`¿Anular la compra #${String(compra.id).padStart(6, "0")}? El stock se revertirá.`))
-      return;
-    await comprasApi.anular(compra.id);
+  const handleAnular = (compra: Compra) => {
+    setCompraAAnular(compra);
+  };
+
+  const confirmarAnulacion = async () => {
+    if (!compraAAnular) return;
+    await comprasApi.anular(compraAAnular.id);
     await cargarCompras();
   };
 
@@ -299,6 +304,15 @@ export default function ComprasPage() {
       )}
 
       <CompraDetalleModal compra={compraDetalle} onClose={() => setCompraDetalle(null)} />
+
+      <AnularModal
+        isOpen={!!compraAAnular}
+        onClose={() => setCompraAAnular(null)}
+        onConfirm={confirmarAnulacion}
+        titulo="Anular compra"
+        mensaje={`¿Anular la compra #${String(compraAAnular?.id ?? '').padStart(6, '0')}? El stock se revertirá.`}
+        errorMensajeDefault="Ocurrió un error al intentar anular esta compra."
+      />
     </div>
   );
 }

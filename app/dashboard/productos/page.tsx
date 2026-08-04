@@ -42,14 +42,14 @@ const productoToPayload = (p: Producto): ProductoPayload => ({
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
 const COL_WIDTHS = {
-  producto: '38%',
+  producto: '34%',
   laboratorio: '10%',
   categoria: '10%',
   pVenta: '9%',
   pCompra: '9%',
-  stock: '8%',
-  estado: '6%',
-  acciones: '10%',
+  stock: '6%',
+  estado: '10%',
+  acciones: '12%',
 };
 
 function StatCard({
@@ -353,28 +353,28 @@ export default function ProductosPage() {
             </colgroup>
             <thead>
               <tr className="bg-primary/10 border-b border-zinc-200 text-left text-xs font-bold text-primary uppercase tracking-wider">
-                <th className="px-5 py-3">Producto</th>
-                <th className="px-5 py-3">Laboratorio</th>
-                <th className="px-5 py-3">Categoría</th>
-                <th className="px-5 py-3 text-right">P.Venta</th>
-                <th className="px-5 py-3 text-right">P.Compra</th>
-                <th className="px-5 py-3 text-right">Stock</th>
-                <th className="px-5 py-3">Estado</th>
-                <th className="px-5 py-3 text-right">Acciones</th>
+                <th className="px-4 py-3 text-left">Producto</th>
+                <th className="px-4 py-3 text-left">Laboratorio</th>
+                <th className="px-4 py-3 text-left">Categoría</th>
+                <th className="px-4 py-3 text-left">P.Venta</th>
+                <th className="px-4 py-3 text-left">P.Compra</th>
+                <th className="px-4 py-3 text-left">Stock</th>
+                <th className="px-4 py-3 text-left">Estado</th>
+                <th className="px-4 py-3 text-left">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
               {productosPagina.map((p) => (
-                <tr key={p.id} className="hover:bg-zinc-50/60 transition-colors">
-                  <td className="px-5 py-3 text-zinc-800 break-words whitespace-normal" title={p.nombre}>{p.nombre}</td>
-                  <td className="px-5 py-3 text-zinc-800 break-words whitespace-normal" title={p.laboratorio?.nombre}>{p.laboratorio?.nombre}</td>
-                  <td className="px-5 py-3 text-primary font-semibold break-words whitespace-normal" title={p.categoria?.nombre}>{p.categoria?.nombre}</td>
-                  <td className="px-5 py-3 text-right font-medium text-zinc-800">S/ {p.precio_venta.toFixed(2)}</td>
-                  <td className="px-5 py-3 text-right text-zinc-600">S/ {p.precio_costo.toFixed(2)}</td>
-                  <td className="px-5 py-3 text-right">
+                <tr key={p.id} className="hover:bg-zinc-50/60 transition-colors font-bold text-xs">
+                  <td className="px-4 py-3 text-zinc-800 whitespace-normal text-left" title={p.nombre}>{p.nombre}</td>
+                  <td className="px-4 py-3 text-zinc-800 whitespace-normal text-left" title={p.laboratorio?.nombre}>{p.laboratorio?.nombre}</td>
+                  <td className="px-4 py-3 text-primary font-semibold break-words whitespace-normal text-left" title={p.categoria?.nombre}>{p.categoria?.nombre}</td>
+                  <td className="px-4 py-3 font-medium text-zinc-800 text-left">S/ {p.precio_venta.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-zinc-600 text-left">S/ {p.precio_costo.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-left">
                     <span className={p.stock <= (p.stock_minimo ?? 10) ? 'text-red-500 font-semibold' : 'text-zinc-600'}>{p.stock}</span>
                   </td>
-                  <td className="px-5 py-3">
+                  <td className="px-4 py-3 text-left">
                     <div className="flex flex-col items-center gap-1">
                       <ToggleSwitch checked={p.estado} onChange={() => handleToggleEstado(p)} />
                       <span className={`text-xs font-semibold ${p.estado ? 'text-primary' : 'text-zinc-400'}`}>
@@ -382,7 +382,7 @@ export default function ProductosPage() {
                       </span>
                     </div>
                   </td>
-                  <td className="px-5 py-3">
+                  <td className="px-4 py-3 text-left">
                     <div className="flex justify-end gap-1">
                       <button
                         onClick={() => { setProductoParaStock(p); setStockModalOpen(true); }}

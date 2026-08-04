@@ -71,8 +71,8 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm, vuelt
   // Cabecera de la tabla de productos
   altoCalculado += 8;
 
-  docSimulado.setFont('arial', 'normal');
-  docSimulado.setFontSize(9);
+  docSimulado.setFont('helvetica', 'normal');
+  docSimulado.setFontSize(10);
   venta.detalles.forEach((d) => {
     const nombre = d.producto.nombre + (labelTipo[d.tipoVenta] ? ` (${labelTipo[d.tipoVenta]})` : '');
     const lineas = docSimulado.splitTextToSize(nombre, COL_PROD);
@@ -80,12 +80,12 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm, vuelt
   });
 
   // Calcular líneas de Monto en Letras
-  docSimulado.setFontSize(7);
+  docSimulado.setFontSize(8);
   const lineasMontoSim = docSimulado.splitTextToSize(`SON: ${montoEnLetras(venta.total)}`, ANCHO_UTIL);
   altoCalculado += lineasMontoSim.length * 3.5 + 4;
 
   // Calcular líneas de Método de Pago
-  docSimulado.setFontSize(8);
+  docSimulado.setFontSize(9);
   const lineasMetodoPagoSim = docSimulado.splitTextToSize(`Metodo Pago: ${venta.metodoPago}`, ANCHO_UTIL);
   altoCalculado += lineasMetodoPagoSim.length * 3.8 + 6;
 
@@ -110,8 +110,8 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm, vuelt
     contenido: string,
     opts: { align?: 'left' | 'center' | 'right'; size?: number; bold?: boolean; x?: number } = {}
   ) => {
-    const { align = 'left', size = 10, bold = false, x } = opts;
-    doc.setFont('arial', bold ? 'bold' : 'normal');
+    const { align = 'left', size = 11, bold = false, x } = opts;
+    doc.setFont('helvetica', bold ? 'bold' : 'normal');
     doc.setFontSize(size);
     const posX = x ?? (align === 'center' ? centerX : align === 'right' ? ANCHO - MARGEN : MARGEN);
     doc.text(contenido, posX, y, { align });
@@ -122,8 +122,8 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm, vuelt
     contenido: string,
     opts: { size?: number; bold?: boolean } = {}
   ) => {
-    const { size = 8, bold = false } = opts;
-    doc.setFont('arial', bold ? 'bold' : 'normal');
+    const { size = 9, bold = false } = opts;
+    doc.setFont('helvetica', bold ? 'bold' : 'normal');
     doc.setFontSize(size);
     const lineas = doc.splitTextToSize(contenido, ANCHO_UTIL);
     doc.text(lineas, MARGEN, y);
@@ -139,31 +139,31 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm, vuelt
 
   texto(empresa.nombreComercial || empresa.razonSocial, { align: 'center', size: 10, bold: true });
   if (empresa.razonSocial && empresa.nombreComercial && empresa.razonSocial !== empresa.nombreComercial) {
-    texto(empresa.razonSocial, { align: 'center', size: 8 });
+    texto(empresa.razonSocial, { align: 'center', size: 9 });
   }
-  if (empresa.ruc) texto(`RUC: ${empresa.ruc}`, { align: 'center', size: 8 });
-  if (empresa.direccion) texto(empresa.direccion, { align: 'center', size: 7.5 });
+  if (empresa.ruc) texto(`RUC: ${empresa.ruc}`, { align: 'center', size: 9 });
+  if (empresa.direccion) texto(empresa.direccion, { align: 'center', size: 9 });
   if (empresa.departamento || empresa.ciudad) {
-    texto([empresa.departamento, empresa.ciudad].filter(Boolean).join(' - '), { align: 'center', size: 7.5 });
+    texto([empresa.departamento, empresa.ciudad].filter(Boolean).join(' - '), { align: 'center', size: 9 });
   }
-  if (empresa.telefono) texto(`Telf: ${empresa.telefono}`, { align: 'center', size: 7.5 });
+  if (empresa.telefono) texto(`Telf: ${empresa.telefono}`, { align: 'center', size: 9 });
 
   linea();
-  texto(`NOTA DE VENTA NV01 - ${String(venta.id).padStart(8, '0')}`, { align: 'center', bold: true, size: 9 });
+  texto(`NOTA DE VENTA NV01 - ${String(venta.id).padStart(8, '0')}`, { align: 'center', bold: true, size: 10 });
   linea();
 
   const fecha = new Date(venta.fecha).toLocaleString('es-PE', {
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
-  texto(`Fecha: ${fecha}`, { size: 8 });
+  texto(`Fecha: ${fecha}`, { size: 9 });
   // --- CAMBIO: usa getNombreCompleto ---
-  texto(`Cliente: ${venta.cliente ? getNombreCompleto(venta.cliente) : 'CLIENTES VARIOS'}`, { size: 8 });
-  if (venta.cliente?.dni) texto(`DNI: ${venta.cliente.dni}`, { size: 8 });
+  texto(`Cliente: ${venta.cliente ? getNombreCompleto(venta.cliente) : 'CLIENTES VARIOS'}`, { size: 9 });
+  if (venta.cliente?.dni) texto(`DNI: ${venta.cliente.dni}`, { size: 9 });
 
   linea();
 
-  doc.setFont('arial', 'bold');
-  doc.setFontSize(8);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
   doc.text('Producto', X_PROD, y);
   doc.text('Cant.', X_CANT_R, y, { align: 'right' });
   doc.text('P.Unit', X_PUNIT_R, y, { align: 'right' });
@@ -175,8 +175,8 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm, vuelt
   venta.detalles.forEach((d) => {
     const nombre = d.producto.nombre + (labelTipo[d.tipoVenta] ? ` (${labelTipo[d.tipoVenta]})` : '');
 
-    doc.setFont('arial', 'normal');
-    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
     const lineasNombre: string[] = doc.splitTextToSize(nombre, COL_PROD);
 
     const yInicialFila = y;
@@ -191,8 +191,8 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm, vuelt
 
   // Totales
   linea(false);
-  doc.setFont('arial', 'bold');
-  doc.setFontSize(8);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
   doc.text('TOTAL:', MARGEN, y);
   doc.text(`S/ ${venta.total.toFixed(2)}`, ANCHO - MARGEN, y, { align: 'right' });
   y += 5;
@@ -205,14 +205,14 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm, vuelt
   }
 
   // Monto en Letras Multilinea
-  textoMultilinea(`SON: ${montoEnLetras(venta.total)}`, { size: 7 });
+  textoMultilinea(`SON: ${montoEnLetras(venta.total)}`, { size: 8 });
 
   linea();
   // Método de Pago Multilinea (evita desbordamiento)
-  textoMultilinea(`Metodo Pago: ${venta.metodoPago}`, { size: 8 });
+  textoMultilinea(`Metodo Pago: ${venta.metodoPago}`, { size: 9 });
   linea();
 
-  texto('¡Gracias por su compra!', { align: 'center', bold: true, size: 9 });
+  texto('¡Gracias por su compra!', { align: 'center', bold: true, size: 10 });
 
   return doc.output('blob');
 }

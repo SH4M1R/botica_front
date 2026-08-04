@@ -15,7 +15,15 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   }
 
   if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
+
+  const text = await res.text();
+  if (!text) return undefined as T;
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return undefined as T;
+  }
 }
 
 export interface Proveedor {

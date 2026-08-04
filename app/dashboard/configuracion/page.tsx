@@ -114,7 +114,7 @@ export default function ConfiguracionPage() {
   };
 
   return (
-    <div className="space-y-6 w-full max-w-7xl mx-auto px-4 lg:px-6 pb-12">
+    <div className="space-y-6 w-full max-w-full mx-auto px-4 lg:px-6 pb-12">
       {/* Cabecera */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-zinc-200 pb-5">
         <div>

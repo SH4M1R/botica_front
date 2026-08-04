@@ -8,6 +8,7 @@ import type { Venta } from '@/api/ventas';
 import { useSession } from '@/hooks/useSession';
 import VentaDetalleModal from './components/VentaDetalleModal';
 import Paginacion from '@/components/Paginacion';
+import AnularModal from '@/components/AnularModal';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
@@ -43,6 +44,7 @@ export default function VentasPage() {
   const [ventas, setVentas] = useState<Venta[]>([]);
   const [loading, setLoading] = useState(true);
   const [ventaDetalle, setVentaDetalle] = useState<Venta | null>(null);
+  const [ventaAAnular, setVentaAAnular] = useState<Venta | null>(null);
 
   // Paginación por días
   const [paginaDia, setPaginaDia] = useState(0);
@@ -63,9 +65,13 @@ export default function VentasPage() {
 
   useEffect(() => { cargarVentas(); }, []);
 
-  const handleAnular = async (venta: Venta) => {
-    if (!confirm(`¿Anular la venta #${String(venta.id).padStart(6, '0')}? El stock se devolverá.`)) return;
-    await ventasApi.anular(venta.id);
+  const handleAnular = (venta: Venta) => {
+    setVentaAAnular(venta);
+  };
+
+  const confirmarAnulacion = async () => {
+    if (!ventaAAnular) return;
+    await ventasApi.anular(ventaAAnular.id);
     await cargarVentas();
   };
 
@@ -305,6 +311,15 @@ export default function VentasPage() {
       )}
 
       <VentaDetalleModal venta={ventaDetalle} onClose={() => setVentaDetalle(null)} />
+
+      <AnularModal
+        isOpen={!!ventaAAnular}
+        onClose={() => setVentaAAnular(null)}
+        onConfirm={confirmarAnulacion}
+        titulo="Anular venta"
+        mensaje={`¿Anular la venta #${String(ventaAAnular?.id ?? '').padStart(6, '0')}? El stock se devolverá.`}
+        errorMensajeDefault="Ocurrió un error al intentar anular esta venta."
+      />
     </div>
   );
 }

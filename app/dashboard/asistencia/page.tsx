@@ -10,6 +10,18 @@ import Paginacion from '@/components/Paginacion';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
+function fechaLocalYYYYMMDD(fecha: Date): string {
+  const anio = fecha.getFullYear();
+  const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+  const dia = String(fecha.getDate()).padStart(2, '0');
+  return `${anio}-${mes}-${dia}`;
+}
+
+function normalizarFecha(fecha: string | null | undefined): string {
+  if (!fecha) return '';
+  return fecha.slice(0, 10);
+}
+
 export default function AsistenciaPage() {
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [username, setUsername] = useState('');
@@ -30,8 +42,8 @@ export default function AsistenciaPage() {
   }, []);
 
   const registrosHoy = useMemo(() => {
-    const hoy = new Date().toISOString().slice(0, 10);
-    return registros.filter((r) => r.fecha === hoy);
+    const hoy = fechaLocalYYYYMMDD(new Date());
+    return registros.filter((r) => normalizarFecha(r.fecha) === hoy);
   }, [registros]);
 
   // Cálculos de paginación
@@ -74,7 +86,7 @@ export default function AsistenciaPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-2xl mx-auto">
+    <div className="space-y-6 max-w-full mx-auto">
       <div>
         <h1 className="text-2xl font-bold text-primary tracking-tight">Registro de asistencia</h1>
         <p className="text-sm text-zinc-500 mt-1">Selecciona tu usuario e ingresa tu contraseña para marcar tu entrada o salida.</p>

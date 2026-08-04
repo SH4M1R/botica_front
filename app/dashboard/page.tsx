@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Package, TrendingUp, ShoppingBag, ArrowUpRight, ArrowDownRight, Minus, Clock, Wallet, CalendarDays, AlertTriangle, Bell, Pill, Receipt, ShoppingCart} from 'lucide-react';
+import { Package, TrendingUp, ShoppingBag, ArrowUpRight, ArrowDownRight, Minus, Wallet, CalendarDays, AlertTriangle, Bell, Pill, Receipt, ShoppingCart} from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, AreaChart, Area, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { productosApi, type Producto as ProductoCatalogo } from '@/api/productos';
 import { empleadosCrudApi } from '@/api/empleados';
@@ -49,6 +49,20 @@ function esMismoDia(fechaIso: string, referencia: Date) {
 
 function esMismoMes(fechaIso: string, referencia: Date) {
   return new Date(fechaIso).getMonth() === referencia.getMonth() && new Date(fechaIso).getFullYear() === referencia.getFullYear();
+}
+
+// Clave "YYYY-MM" a partir de una fecha ISO, para agrupar/filtrar por mes.
+function claveMes(fechaIso: string): string {
+  const f = new Date(fechaIso);
+  return `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}`;
+}
+
+// Convierte una clave "YYYY-MM" en una etiqueta legible: "Agosto 2026".
+function formatMesLabel(clave: string): string {
+  const [anio, mes] = clave.split('-').map(Number);
+  const fecha = new Date(anio, mes - 1, 1);
+  const texto = fecha.toLocaleDateString('es-PE', { month: 'long', year: 'numeric' });
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
 }
 
 function variacionPorcentual(actual: number, anterior: number): number | null {
@@ -126,6 +140,10 @@ export default function DashboardPage() {
   const [evolucionRangoDias, setEvolucionRangoDias] = useState(7);
   const [comprasVentasRangoMeses, setComprasVentasRangoMeses] = useState(6);
   const [horario, setHorario] = useState<{ apertura: number; cierre: number }>({ apertura: 0, cierre: 23 });
+
+  // Mes seleccionado para segmentar: Ventas por categoría, Ranking de
+  // empleados, Top productos y Compras por proveedor.
+  const [mesSeleccionado, setMesSeleccionado] = useState<string>(() => claveMes(new Date().toISOString()));
 
   const [horaActual, setHoraActual] = useState(new Date());
 
@@ -380,16 +398,42 @@ export default function DashboardPage() {
     return mapa;
   }, [productosCatalogo]);
 
+  // Meses disponibles para el selector: unión de fechas de ventas y
+  // compras (siempre con al menos el mes actual), más recientes primero.
+  const mesesDisponibles = useMemo(() => {
+    const claves = new Set<string>();
+    claves.add(claveMes(new Date().toISOString()));
+    ventas.forEach((v) => claves.add(claveMes(v.fecha)));
+    compras.forEach((c) => claves.add(claveMes(c.fechaEmision)));
+    return Array.from(claves).sort((a, b) => (a < b ? 1 : -1));
+  }, [ventas, compras]);
+
+  // Si el mes seleccionado deja de estar disponible (por ejemplo, al
+  // recargar datos), volvemos al mes más reciente disponible.
+  useEffect(() => {
+    if (mesesDisponibles.length > 0 && !mesesDisponibles.includes(mesSeleccionado)) {
+      setMesSeleccionado(mesesDisponibles[0]);
+    }
+  }, [mesesDisponibles, mesSeleccionado]);
+
+  const ventasDelMes = useMemo(
+    () => ventas.filter((v) => v.estado && claveMes(v.fecha) === mesSeleccionado),
+    [ventas, mesSeleccionado]
+  );
+
+  const comprasDelMes = useMemo(
+    () => compras.filter((c) => c.estado && claveMes(c.fechaEmision) === mesSeleccionado),
+    [compras, mesSeleccionado]
+  );
+
   const ventasPorCategoria = useMemo(() => {
     const acumulado = new Map<string, number>();
-    ventas
-      .filter((v) => v.estado)
-      .forEach((v) => {
-        v.detalles.forEach((d) => {
-          const categoria = categoriaPorProductoId.get(d.producto.id) ?? 'Sin categoría';
-          acumulado.set(categoria, (acumulado.get(categoria) ?? 0) + d.subtotal);
-        });
+    ventasDelMes.forEach((v) => {
+      v.detalles.forEach((d) => {
+        const categoria = categoriaPorProductoId.get(d.producto.id) ?? 'Sin categoría';
+        acumulado.set(categoria, (acumulado.get(categoria) ?? 0) + d.subtotal);
       });
+    });
     const total = Array.from(acumulado.values()).reduce((a, b) => a + b, 0);
     return Array.from(acumulado.entries())
       .map(([categoria, total_]) => ({
@@ -398,50 +442,44 @@ export default function DashboardPage() {
         porcentaje: total > 0 ? Math.round((total_ / total) * 100) : 0,
       }))
       .sort((a, b) => b.total - a.total);
-  }, [ventas, categoriaPorProductoId]);
+  }, [ventasDelMes, categoriaPorProductoId]);
 
   const rankingEmpleados = useMemo(() => {
     const acumulado = new Map<string, number>();
-    ventas
-      .filter((v) => v.estado)
-      .forEach((v) => {
-        acumulado.set(v.empleado.nombre, (acumulado.get(v.empleado.nombre) ?? 0) + v.total);
-      });
+    ventasDelMes.forEach((v) => {
+      acumulado.set(v.empleado.nombre, (acumulado.get(v.empleado.nombre) ?? 0) + v.total);
+    });
     return Array.from(acumulado.entries())
       .map(([empleado, total]) => ({ empleado, total: Number(total.toFixed(2)) }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 6);
-  }, [ventas]);
+  }, [ventasDelMes]);
 
   const comprasPorProveedor = useMemo(() => {
     const acumulado = new Map<string, number>();
-    compras
-      .filter((c) => c.estado)
-      .forEach((c) => {
-        acumulado.set(c.proveedor.nombres, (acumulado.get(c.proveedor.nombres) ?? 0) + c.total);
-      });
+    comprasDelMes.forEach((c) => {
+      acumulado.set(c.proveedor.nombres, (acumulado.get(c.proveedor.nombres) ?? 0) + c.total);
+    });
     return Array.from(acumulado.entries())
       .map(([proveedor, total]) => ({ proveedor, total: Number(total.toFixed(2)) }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 6);
-  }, [compras]);
+  }, [comprasDelMes]);
 
   const topProductos = useMemo(() => {
     const acumulado = new Map<string, number>();
-    ventas
-      .filter((v) => v.estado)
-      .forEach((v) => {
-        v.detalles.forEach((d: any) => {
-          const nombre = d.producto?.nombre ?? 'Producto';
-          const cantidad = typeof d.cantidad === 'number' ? d.cantidad : 1;
-          acumulado.set(nombre, (acumulado.get(nombre) ?? 0) + cantidad);
-        });
+    ventasDelMes.forEach((v) => {
+      v.detalles.forEach((d: any) => {
+        const nombre = d.producto?.nombre ?? 'Producto';
+        const cantidad = typeof d.cantidad === 'number' ? d.cantidad : 1;
+        acumulado.set(nombre, (acumulado.get(nombre) ?? 0) + cantidad);
       });
+    });
     return Array.from(acumulado.entries())
       .map(([nombre, unidades]) => ({ nombre, unidades }))
       .sort((a, b) => b.unidades - a.unidades)
       .slice(0, 5);
-  }, [ventas]);
+  }, [ventasDelMes]);
 
   const alertasStock = useMemo(() => {
     return productosCatalogo.filter((p: any) => {
@@ -473,7 +511,6 @@ export default function DashboardPage() {
     return items.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
   }, [ventas, compras]);
 
-  const horaFormateada = horaActual.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const fechaFormateada = horaActual.toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' });
   const rangoFechasEncabezado = (() => {
     const hoy = new Date();
@@ -499,8 +536,8 @@ export default function DashboardPage() {
       </div>
     </div>
 
-    {/* Tarjetas de resumen + Tarjeta de Hora */}
-    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-6">
+    {/* Tarjetas de resumen */}
+    <div className="grid grid-cols-2 xl:grid-cols-4 gap-6">
       {stats.map((stat, index) => {
         const Icon = stat.icon;
         const tono = TONOS[stat.tono];
@@ -536,18 +573,6 @@ export default function DashboardPage() {
             </button>
           );
         })}
-
-        {/* Card independiente para la Hora del Sistema */}
-        <div className="w-full bg-white p-6 rounded-2xl border border-zinc-200 shadow-xs flex flex-col justify-between">
-          <div className="flex items-start justify-between mb-3">
-            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Hora del Sistema</span>
-            <div className="p-2 bg-rose-500/10 text-rose-500 rounded-xl">
-              <Clock size={18} />
-            </div>
-          </div>
-          <div className="text-xl font-extrabold text-zinc-800 font-mono tabular-nums">{horaFormateada}</div>
-          <span className="text-xs font-medium text-zinc-500 capitalize block truncate mt-2">{fechaFormateada}</span>
-        </div>
       </div>
 
       {/* Gráficos y Secciones del Dashboard */}
@@ -681,70 +706,95 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* SECCIÓN 3: Categorías + Ranking Empleados */}
+        {/* Selector de mes: aplica a las 4 secciones siguientes */}
+        <div className="flex items-center justify-between bg-white px-5 py-3 rounded-2xl border border-zinc-200 shadow-xs">
+          <div>
+            <h2 className="text-sm font-bold text-zinc-800">Análisis mensual</h2>
+            <p className="text-xs text-zinc-400">Categorías, empleados, productos y proveedores del mes seleccionado</p>
+          </div>
+          <select
+            value={mesSeleccionado}
+            onChange={(e) => setMesSeleccionado(e.target.value)}
+            className="text-xs font-semibold text-zinc-600 border border-zinc-200 rounded-lg px-3 py-1.5 outline-none focus:border-primary cursor-pointer"
+          >
+            {mesesDisponibles.map((m) => (
+              <option key={m} value={m}>{formatMesLabel(m)}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* SECCIÓN 3: Categorías + Ranking Empleados (del mes seleccionado) */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           <div className="bg-white p-6 rounded-2xl border border-zinc-200 shadow-xs">
             <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider mb-4">
               Ventas por categoría de producto
             </h2>
-            <div className="flex items-center gap-4">
-              <div className="relative w-40 h-40 shrink-0">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={ventasPorCategoria}
-                      dataKey="total"
-                      nameKey="categoria"
-                      innerRadius={45}
-                      outerRadius={70}
-                      paddingAngle={2}
-                    >
-                      {ventasPorCategoria.map((_, i) => (
-                        <Cell key={i} fill={i === 0 ? primaryColor : PALETA_APOYO[(i - 1) % PALETA_APOYO.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value) => formatMoneda(Number(value ?? 0))} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <span className="text-[10px] text-zinc-400">Total</span>
-                  <span className="text-sm font-bold text-zinc-700">100%</span>
+            {ventasPorCategoria.length === 0 ? (
+              <p className="text-xs text-zinc-400">Sin ventas registradas en {formatMesLabel(mesSeleccionado)}.</p>
+            ) : (
+              <div className="flex items-center gap-4">
+                <div className="relative w-40 h-40 shrink-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={ventasPorCategoria}
+                        dataKey="total"
+                        nameKey="categoria"
+                        innerRadius={45}
+                        outerRadius={70}
+                        paddingAngle={2}
+                      >
+                        {ventasPorCategoria.map((_, i) => (
+                          <Cell key={i} fill={i === 0 ? primaryColor : PALETA_APOYO[(i - 1) % PALETA_APOYO.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value) => formatMoneda(Number(value ?? 0))} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <span className="text-[10px] text-zinc-400">Total</span>
+                    <span className="text-sm font-bold text-zinc-700">100%</span>
+                  </div>
+                </div>
+                <div className="flex-1 space-y-2">
+                  {ventasPorCategoria.slice(0, 4).map((c, i) => (
+                    <div key={c.categoria} className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: i === 0 ? primaryColor : PALETA_APOYO[(i - 1) % PALETA_APOYO.length] }}
+                        />
+                        <span className="text-zinc-600 truncate">{c.categoria}</span>
+                      </div>
+                      <span className="font-semibold text-zinc-500 shrink-0">{c.porcentaje}%</span>
+                    </div>
+                  ))}
                 </div>
               </div>
-              <div className="flex-1 space-y-2">
-                {ventasPorCategoria.slice(0, 4).map((c, i) => (
-                  <div key={c.categoria} className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span
-                        className="w-2.5 h-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: i === 0 ? primaryColor : PALETA_APOYO[(i - 1) % PALETA_APOYO.length] }}
-                      />
-                      <span className="text-zinc-600 truncate">{c.categoria}</span>
-                    </div>
-                    <span className="font-semibold text-zinc-500 shrink-0">{c.porcentaje}%</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            )}
           </div>
 
           <div className="bg-white p-6 rounded-2xl border border-zinc-200 shadow-xs">
             <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider mb-4">
               Ranking de ventas por empleado
             </h2>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={rankingEmpleados} layout="vertical" margin={{ left: 24 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
-                <XAxis type="number" tick={{ fontSize: 12 }} stroke="#a1a1aa" />
-                <YAxis type="category" dataKey="empleado" tick={{ fontSize: 12 }} stroke="#a1a1aa" width={120} />
-                <Tooltip formatter={(value) => formatMoneda(Number(value ?? 0))} />
-                <Bar dataKey="total" fill={primaryColor} radius={[0, 6, 6, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {rankingEmpleados.length === 0 ? (
+              <p className="text-xs text-zinc-400">Sin ventas registradas en {formatMesLabel(mesSeleccionado)}.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={rankingEmpleados} layout="vertical" margin={{ left: 24 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
+                  <XAxis type="number" tick={{ fontSize: 12 }} stroke="#a1a1aa" />
+                  <YAxis type="category" dataKey="empleado" tick={{ fontSize: 12 }} stroke="#a1a1aa" width={120} />
+                  <Tooltip formatter={(value) => formatMoneda(Number(value ?? 0))} />
+                  <Bar dataKey="total" fill={primaryColor} radius={[0, 6, 6, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
-        {/* SECCIÓN 4: Top Productos + Compras por Proveedor */}
+        {/* SECCIÓN 4: Top Productos + Compras por Proveedor (del mes seleccionado) */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           <div className="bg-white p-6 rounded-2xl border border-zinc-200 shadow-xs">
             <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider mb-4">
@@ -752,7 +802,7 @@ export default function DashboardPage() {
             </h2>
             <div className="space-y-3">
               {topProductos.length === 0 && (
-                <p className="text-xs text-zinc-400">Aún no hay ventas registradas.</p>
+                <p className="text-xs text-zinc-400">Sin ventas registradas en {formatMesLabel(mesSeleccionado)}.</p>
               )}
               {topProductos.map((p) => (
                 <div key={p.nombre} className="flex items-center justify-between">
@@ -774,15 +824,19 @@ export default function DashboardPage() {
             <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider mb-4">
               Compras por proveedor
             </h2>
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={comprasPorProveedor}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
-                <XAxis dataKey="proveedor" tick={{ fontSize: 12 }} stroke="#a1a1aa" />
-                <YAxis tick={{ fontSize: 12 }} stroke="#a1a1aa" />
-                <Tooltip formatter={(value) => formatMoneda(Number(value ?? 0))} />
-                <Bar dataKey="total" fill={primaryColor} radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {comprasPorProveedor.length === 0 ? (
+              <p className="text-xs text-zinc-400">Sin compras registradas en {formatMesLabel(mesSeleccionado)}.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={comprasPorProveedor}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f4f4f5" />
+                  <XAxis dataKey="proveedor" tick={{ fontSize: 12 }} stroke="#a1a1aa" />
+                  <YAxis tick={{ fontSize: 12 }} stroke="#a1a1aa" />
+                  <Tooltip formatter={(value) => formatMoneda(Number(value ?? 0))} />
+                  <Bar dataKey="total" fill={primaryColor} radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
