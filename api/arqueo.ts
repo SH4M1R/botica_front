@@ -3,17 +3,24 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL;
 export interface ArqueoCaja {
   id: number;
   numero: string;
+  empleadoId: number;
   empleadoNombre: string;
   fechaInicio: string;
   montoInicial: number;
   fechaFin: string | null;
   montoFinal: number | null;
+  montoDejado: number | null;
   estado: boolean;
 }
 
 export interface AbrirCajaPayload {
   empleadoId: number;
   montoInicial: number;
+}
+
+export interface CerrarCajaPayload {
+  empleadoId: number;
+  montoDejado: number;
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -40,8 +47,8 @@ export const arqueoApi = {
   pendientes: () => request<ArqueoCaja[]>('/arqueos/pendientes'),
   abrir: (data: AbrirCajaPayload) =>
     request<ArqueoCaja>('/arqueos/abrir', { method: 'POST', body: JSON.stringify(data) }),
-  cerrar: (id: number) =>
-    request<ArqueoCaja>(`/arqueos/${id}/cerrar`, { method: 'PUT' }),
+  cerrar: (id: number, data: CerrarCajaPayload) =>
+    request<ArqueoCaja>(`/arqueos/${id}/cerrar`, { method: 'PUT', body: JSON.stringify(data) }),
   cajaActual: (empleadoId: number) =>
     request<ArqueoCaja | undefined>(`/arqueos/empleado/${empleadoId}/actual`),
 };

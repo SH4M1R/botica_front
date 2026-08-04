@@ -9,6 +9,7 @@ import type { TipoMovimiento, CategoriaMovimiento } from '@/api/movimientoCaja';
 import { useSession } from '@/hooks/useSession';
 import AbrirCajaModal from './components/AbrirCajaModal';
 import RegistrarMovimientoModal from './components/RegistrarMovimientoModal';
+import CerrarCajaModal from './components/CerrarCajaModal';
 import { generarReporteCajaPdf } from '@/utils/generarReporteCajaPdf';
 
 function formatFecha(fecha: string | null) {
@@ -45,6 +46,8 @@ export default function ArqueoPage() {
   const [cajaAbiertaPropia, setCajaAbiertaPropia] = useState<ArqueoCaja | null | undefined>(undefined);
   const [modalAbrirOpen, setModalAbrirOpen] = useState(false);
   const [modalMovimientoOpen, setModalMovimientoOpen] = useState(false);
+  const [modalCerrarOpen, setModalCerrarOpen] = useState(false);
+  const [arqueoACerrar, setArqueoACerrar] = useState<ArqueoCaja | null>(null);
   const [error, setError] = useState('');
 
   const cargarDatos = async () => {
@@ -90,15 +93,22 @@ export default function ArqueoPage() {
     await cargarDatos();
   };
 
-  const handleCerrarCaja = async (arqueo: ArqueoCaja) => {
-    if (!confirm(`¿Cerrar la ${arqueo.numero}? Se calculará el monto final con las ventas registradas.`)) return;
+  const handleCerrarCaja = (arqueo: ArqueoCaja) => {
+    setArqueoACerrar(arqueo);
+    setModalCerrarOpen(true);
+  };
+
+  const handleConfirmarCierre = async (montoDejado: number) => {
+    if (!arqueoACerrar || !empleadoId) throw new Error('No se pudo identificar al empleado actual.');
     setError('');
     try {
-      await arqueoApi.cerrar(arqueo.id);
+      await arqueoApi.cerrar(arqueoACerrar.id, { empleadoId, montoDejado });
       await cargarCajaPropia();
       await cargarDatos();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo cerrar la caja.');
+      const mensaje = err instanceof Error ? err.message : 'No se pudo cerrar la caja.';
+      setError(mensaje);
+      throw new Error(mensaje);
     }
   };
 
@@ -121,22 +131,16 @@ export default function ArqueoPage() {
   };
 
   const handleImprimir = async (arqueo: ArqueoCaja) => {
-  try {
-    setError('');
-
-    // Extraemos las ventas del arqueo o asignamos un array vacío de respaldo
-    const ventas = (arqueo as any).ventas ?? [];
-
-    // 1. Usamos AWAIT porque la función ahora es asíncrona (Promise<Blob>)
-    const pdfBlob = await generarReporteCajaPdf(arqueo, ventas);
-
-    // 2. Ahora pdfBlob sí es un Blob válido
-    const pdfUrl = URL.createObjectURL(pdfBlob);
-    window.open(pdfUrl, '_blank');
-  } catch (err) {
-    setError(err instanceof Error ? err.message : 'Error al generar el reporte en PDF.');
-  }
-};
+    try {
+      setError('');
+      const ventas = (arqueo as any).ventas ?? [];
+      const pdfBlob = await generarReporteCajaPdf(arqueo, ventas);
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      window.open(pdfUrl, '_blank');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al generar el reporte en PDF.');
+    }
+  };
 
   const filtrados = useMemo(() => {
     const lista = Array.isArray(arqueos) ? arqueos : [];
@@ -250,7 +254,6 @@ export default function ArqueoPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs font-bold uppercase tracking-wide text-zinc-400 border-b border-zinc-200">
-                <th className="py-2 px-2">#</th>
                 <th className="py-2 px-2">Numero</th>
                 <th className="py-2 px-2">Empleado</th>
                 <th className="py-2 px-2">Fecha Inicial</th>
@@ -262,14 +265,13 @@ export default function ArqueoPage() {
             </thead>
             <tbody>
               {cargando && (
-                <tr><td colSpan={8} className="py-6 text-center text-zinc-400">Cargando...</td></tr>
+                <tr><td colSpan={7} className="py-6 text-center text-zinc-400">Cargando...</td></tr>
               )}
               {!cargando && paginados.length === 0 && (
-                <tr><td colSpan={8} className="py-6 text-center text-zinc-400">Sin registros.</td></tr>
+                <tr><td colSpan={7} className="py-6 text-center text-zinc-400">Sin registros.</td></tr>
               )}
-              {!cargando && paginados.map((a, i) => (
+              {!cargando && paginados.map((a) => (
                 <tr key={a.id} className="border-b border-zinc-100 hover:bg-zinc-50">
-                  <td className="py-2 px-2">{(paginaSegura - 1) * registrosPorPagina + i + 1}</td>
                   <td className="py-2 px-2 font-semibold text-primary">{a.numero}</td>
                   <td className="py-2 px-2 font-semibold text-primary">{a.empleadoNombre}</td>
                   <td className="py-2 px-2">{formatFecha(a.fechaInicio)}</td>
@@ -278,18 +280,27 @@ export default function ArqueoPage() {
                   <td className="py-2 px-2">{a.montoFinal !== null && a.montoFinal !== undefined ? a.montoFinal.toFixed(2) : ''}</td>
                   <td className="py-2 px-2">
                     {a.estado ? (
-                      <button
-                        onClick={() => handleCerrarCaja(a)}
-                        title="Cerrar caja"
-                        className="w-8 h-8 flex items-center justify-center rounded-full bg-red-500 hover:bg-red-600 text-white transition-colors cursor-pointer"
-                      >
-                        <Lock size={14} />
-                      </button>
+                      a.empleadoId === empleadoId ? (
+                        <button
+                          onClick={() => handleCerrarCaja(a)}
+                          title="Cerrar caja"
+                          className="p-2 text-red-500 hover:text-red-600 hover:bg-red-100 rounded-lg transition-colors border-2"
+                        >
+                          <Lock size={14} />
+                        </button>
+                      ) : (
+                        <span
+                          className="text-xs text-zinc-400"
+                          title="Solo el empleado que abrió esta caja puede cerrarla"
+                        >
+                          —
+                        </span>
+                      )
                     ) : (
                       <button
                         onClick={() => handleImprimir(a)}
                         title="Imprimir"
-                        className="w-8 h-8 flex items-center justify-center rounded-full bg-green-500 hover:bg-green-600 text-white transition-colors cursor-pointer"
+                        className="p-2 text-green-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors border-2"
                       >
                         <Printer size={14} />
                       </button>
@@ -336,6 +347,13 @@ export default function ArqueoPage() {
         open={modalMovimientoOpen}
         onClose={() => setModalMovimientoOpen(false)}
         onConfirm={handleRegistrarMovimiento}
+      />
+
+      <CerrarCajaModal
+        open={modalCerrarOpen}
+        numeroArqueo={arqueoACerrar?.numero}
+        onClose={() => setModalCerrarOpen(false)}
+        onConfirm={handleConfirmarCierre}
       />
     </div>
   );

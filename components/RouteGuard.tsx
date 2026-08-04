@@ -46,10 +46,15 @@ export default function RouteGuard({ children }: Props) {
     );
   }
 
+  // Un permiso sobre un módulo (ej. /dashboard/ventas) también habilita
+  // sus sub-rutas (ej. /dashboard/ventas/boleta), no solo la coincidencia exacta.
+  const tieneAccesoARuta = (rutaPermitida: string) =>
+    pathname === rutaPermitida || pathname.startsWith(rutaPermitida + '/');
+
   const tieneAcceso =
     esAdmin ||
     RUTAS_SIEMPRE_PERMITIDAS.includes(pathname) ||
-    (permisos?.has(pathname) ?? false);
+    Array.from(permisos ?? []).some(tieneAccesoARuta);
 
   if (!tieneAcceso) {
     return (
