@@ -21,10 +21,8 @@ interface ProductoModalProps {
 }
 
 type ProductoExtendido = Producto & {
-  // Indica si este producto puede comprarse "Por Caja" (factor > 1).
-  // OJO: esto se basa en `factor`, el campo de conversión específico para
-  // COMPRAS. No usar `unidades_caja`/`unidades_blister`, que son de venta.
   compraPorCajas: boolean;
+  laboratorio?: string;
   _original: ProductoAPI;
 };
 
@@ -37,9 +35,6 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
 
   const [tipoPrecio, setTipoPrecio] = useState<TipoPrecio>("MAYORISTA");
   const [cantidad, setCantidad] = useState<number | "">("");
-  // Precio de compra e importe arrancan vacíos: el usuario los completa (o
-  // se autocompletan entre sí), en vez de forzar un "0" o el precio
-  // registrado del producto apenas se selecciona.
   const [precioCompra, setPrecioCompra] = useState<number | "">("");
   const [importe, setImporte] = useState<number | "">("");
   const [precioVenta, setPrecioVenta] = useState<number>(0);
@@ -68,14 +63,14 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
       .filter((p) => {
         const nombreMatch = p.nombre?.toLowerCase().includes(q);
         const barraMatch = p.barras?.toLowerCase().includes(q) || p.codigoBarra?.toLowerCase().includes(q);
-        return nombreMatch || barraMatch;
+        const labMatch = p.laboratorio?.nombre?.toLowerCase().includes(q);
+        return nombreMatch || barraMatch || labMatch;
       })
       .slice(0, 8)
       .map((p) => {
-        // `factor` es EXCLUSIVO de compras (unidades por caja al comprar).
-        // No confundir con `unidades_caja`/`unidades_blister`, que son la
-        // presentación de VENTA y no deben usarse aquí.
         const factorCompra = p.factor ?? 1;
+        const nombreLab = typeof p.laboratorio === "object" ? p.laboratorio?.nombre : p.laboratorio;
+
         return {
           id: p.id,
           nombre: p.nombre,
@@ -88,6 +83,7 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
           stockActual: p.stock ?? 0,
           unidadesPorPresentacion: factorCompra,
           compraPorCajas: factorCompra > 1,
+          laboratorio: nombreLab || "",
           _original: p as ProductoAPI,
         };
       });
@@ -95,9 +91,6 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
     setOpciones(filtrados);
   }, [query, listaProductos, producto]);
 
-  // Al elegir producto: solo ajustamos el tipo de ingreso disponible y
-  // precargamos el precio de venta sugerido. Precio de compra e importe
-  // quedan en blanco a propósito (el usuario los ingresa).
   useEffect(() => {
     if (!producto) return;
 
@@ -111,21 +104,14 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
     setImporte("");
     setPrecioVenta(producto.precioUnitario);
     setErrorPrecio(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [producto]);
 
-  // Si cambia el tipo de ingreso (por caja / por unidad), limpiamos precio
-  // de compra e importe para que el usuario ingrese el valor correcto para
-  // esa unidad de medida, en vez de arrastrar un cálculo de la anterior.
   useEffect(() => {
     if (!producto) return;
     setPrecioCompra("");
     setImporte("");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tipoPrecio]);
 
-  // Precio sugerido (solo como referencia visual en el placeholder, no se
-  // fuerza como valor del campo).
   const precioSugerido = producto
     ? tipoPrecio === "MAYORISTA"
       ? producto.precioMayorista
@@ -140,8 +126,6 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
     return cant * factorConversion;
   }, [cantidad, factorConversion]);
 
-  // --- Handlers de edición cruzada Cantidad / Precio Compra / Importe ---
-
   function handleCantidadChange(valor: string) {
     if (valor === "") {
       setCantidad("");
@@ -149,7 +133,6 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
       setImporte(precio > 0 ? 0 : "");
       return;
     }
-    // Solo enteros: sin decimales en cantidad de ingreso
     const nuevaCantidad = Math.max(0, Math.floor(Number(valor)));
     setCantidad(nuevaCantidad);
     const precio = typeof precioCompra === "number" ? precioCompra : 0;
@@ -215,10 +198,6 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
     const payload: ProductoPayload = {
       nombre: original.nombre,
       codigo_digemid: original.codigo_digemid,
-      // Antes se reenviaba `original.precio_costo` (el costo viejo, sin
-      // cambios), por eso el precio de compra que el usuario ingresaba
-      // nunca quedaba guardado. Ahora se persiste el costo unitario que
-      // realmente se calculó a partir de lo ingresado en este formulario.
       precio_costo: precioCompraUnitario,
       precio_venta: precioVenta,
       stock: original.stock,
@@ -298,14 +277,18 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
               <div className="relative">
                 <input
                   autoFocus
-                  value={producto ? producto.nombre : query}
+                  value={
+                    producto
+                      ? `${producto.nombre}${producto.laboratorio ? ` (${producto.laboratorio})` : ""}`
+                      : query
+                  }
                   onChange={(e) => {
                     setProducto(null);
                     setQuery(e.target.value);
                     setMostrarOpciones(true);
                   }}
                   onFocus={() => setMostrarOpciones(true)}
-                  placeholder="Escribe el nombre o código de barras..."
+                  placeholder="Escribe el nombre, laboratorio o código..."
                   className={`${inputClass} pl-9 pr-8 font-medium`}
                 />
                 <Search className="absolute left-3 top-2.5 text-zinc-400" size={16} />
@@ -324,7 +307,7 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
               </div>
 
               {mostrarOpciones && opciones.length > 0 && !producto && (
-                <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-zinc-200 bg-white shadow-lg divide-y divide-zinc-100">
+                <ul className="absolute z-20 mt-1 max-h-56 w-[700px] overflow-auto rounded-xl border border-zinc-200 bg-white shadow-lg divide-y divide-zinc-100">
                   {opciones.map((p) => (
                     <li
                       key={p.id}
@@ -332,15 +315,22 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
                         setProducto(p);
                         setMostrarOpciones(false);
                       }}
-                      className="cursor-pointer px-4 py-2.5 text-sm hover:bg-zinc-50 transition-colors flex items-center justify-between"
+                      className="cursor-pointer px-4 py-2.5 text-sm hover:bg-zinc-50 transition-colors flex items-center justify-between gap-3"
                     >
-                      <div>
-                        <p className="font-semibold text-zinc-800">{p.nombre}</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-zinc-800 truncate">
+                          {p.nombre}
+                          {p.laboratorio && (
+                            <span className="ml-1 text-zinc-500 font-normal">
+                              ({p.laboratorio})
+                            </span>
+                          )}
+                        </p>
                         {p.codigoBarra && (
                           <p className="text-xs text-zinc-400 font-mono">{p.codigoBarra}</p>
                         )}
                       </div>
-                      <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-1 rounded-md">
+                      <span className="shrink-0 text-xs font-semibold text-primary bg-primary/10 px-2 py-1 rounded-md">
                         Stock: {p.stockActual}
                       </span>
                     </li>
@@ -371,7 +361,7 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
             <div className="space-y-1">
-              <label className={labelClass}>Cantidad de Ingreso *</label>
+              <label className={labelClass}>Unid/Cajas Ingresadas</label>
               <div className="relative">
                 <input
                   type="number"
@@ -381,7 +371,6 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
                   value={cantidad}
                   onChange={(e) => handleCantidadChange(e.target.value)}
                   onKeyDown={(e) => {
-                    // Bloquea el punto/coma decimal al escribir
                     if (e.key === "." || e.key === ",") e.preventDefault();
                   }}
                   className={`${inputClass} pl-8`}
@@ -393,7 +382,7 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
 
             <div className="space-y-1">
               <label className={labelClass}>
-                Unidades Ingresadas
+                Unidades Netas Ingresadas
                 {tipoPrecio === "MAYORISTA" && producto && (
                   <span className="ml-1 font-normal text-zinc-400">(x{factorConversion})</span>
                 )}

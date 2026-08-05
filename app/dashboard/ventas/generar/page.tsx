@@ -125,7 +125,7 @@ export default function GenerarVentaPage() {
   const [cajaAbierta, setCajaAbierta] = useState<ArqueoCaja | null | undefined>(undefined);
 
   const fechaHoy = useMemo(
-    () => new Date().toLocaleDateString('es-PE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }),
+    () => new Date().toLocaleDateString('es-PE', { weekday: 'long', day: '2-digit', month: 'long'}),
     []
   );
 
@@ -222,15 +222,35 @@ export default function GenerarVentaPage() {
     rowRefs.current[selectedIndex]?.scrollIntoView({ block: 'nearest' });
   }, [selectedIndex]);
 
-  // --- CAMBIO: usa getNombreCompleto para buscar y mostrar ---
+  // --- BUSQUEDA MEJORADA: Filtra sugerencias por Nombre O por DNI/RUC ---
   const sugerenciasCliente = useMemo(() => {
     if (idClienteSeleccionado) return [];
-    const q = nombreCliente.trim().toLowerCase();
-    if (!q) return [];
+    
+    // Unificamos las búsquedas de ambos campos
+    const qNombre = nombreCliente.trim().toLowerCase();
+    const qDni = dniCliente.trim().toLowerCase();
+    
+    // Si ambos están vacíos, no mostrar nada
+    if (!qNombre && !qDni) return [];
+
     return clientes
-      .filter((c) => getNombreCompleto(c).toLowerCase().includes(q) || c.dni?.includes(q))
+      .filter((c) => {
+        const nombreCompleto = getNombreCompleto(c).toLowerCase();
+        const dni = c.dni?.toLowerCase() ?? '';
+
+        // Coincidencia si el texto coincide con el nombre O con el DNI
+        const coincideConNombreInput = qNombre
+          ? nombreCompleto.includes(qNombre) || dni.includes(qNombre)
+          : true;
+
+        const coincideConDniInput = qDni
+          ? dni.includes(qDni) || nombreCompleto.includes(qDni)
+          : true;
+
+        return coincideConNombreInput && coincideConDniInput;
+      })
       .slice(0, 5);
-  }, [nombreCliente, clientes, idClienteSeleccionado]);
+  }, [nombreCliente, dniCliente, clientes, idClienteSeleccionado]);
 
   const total = useMemo(
     () => carrito.reduce((sum, item) => sum + item.precioUnitario * item.cantidad, 0),
@@ -639,13 +659,6 @@ export default function GenerarVentaPage() {
                 <span>Modo Sin Mouse</span>
               </button>
             </div>
-
-            <div className="flex items-center gap-2 mt-1.5">
-              <span className="text-xs text-zinc-500">Atendido por:</span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-100 text-zinc-700 border border-zinc-200">
-                {empleado?.nombre}
-              </span>
-            </div>
           </div>
         </div>
 
@@ -654,7 +667,7 @@ export default function GenerarVentaPage() {
           <span className="text-xs font-semibold text-zinc-700 capitalize">{fechaHoy}</span>
         </div>
 
-        <div className="w-full md:w-auto md:min-w-[340px] md:max-w-[480px] md:flex-1 xl:flex-none space-y-1">
+        <div className="w-full md:w-auto md:min-w-[250px] md:max-w-[350px] md:flex-1 xl:flex-none space-y-1">
           <div className="flex items-center justify-between text-xs">
             <div className="flex items-center gap-1.5 font-medium text-zinc-700">
               <UserPlus size={14} className="text-primary" />
@@ -673,6 +686,7 @@ export default function GenerarVentaPage() {
           </div>
 
           <div className="grid grid-cols-12 gap-1.5">
+            {/* INPUT DE NOMBRE */}
             <div className="col-span-7 relative">
               <input
                 value={nombreCliente}
@@ -682,7 +696,7 @@ export default function GenerarVentaPage() {
                   setMostrarSugerencias(true);
                 }}
                 onFocus={() => setMostrarSugerencias(true)}
-                onBlur={() => setTimeout(() => setMostrarSugerencias(false), 150)}
+                onBlur={() => setTimeout(() => setMostrarSugerencias(false), 200)}
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') {
                     e.preventDefault();
@@ -690,15 +704,16 @@ export default function GenerarVentaPage() {
                     (e.target as HTMLInputElement).blur();
                   }
                 }}
-                placeholder="Nombre del cliente"
+                placeholder="Nombre o DNI del cliente"
                 readOnly={!!idClienteSeleccionado}
                 className={`${inputClass} text-xs py-1.5 ${
                   idClienteSeleccionado ? 'bg-zinc-100 text-zinc-800 font-medium border-zinc-300' : ''
                 }`}
               />
 
+              {/* MENÚ DE SUGERENCIAS UNIFICADO */}
               {mostrarSugerencias && sugerenciasCliente.length > 0 && (
-                <div className="absolute left-0 right-0 z-30 mt-1 max-h-48 overflow-y-auto bg-white border border-zinc-200 rounded-lg shadow-lg divide-y divide-zinc-100">
+                <div className="absolute left-0 right-0 z-30 mt-1 max-h-48 w-[350px] overflow-y-auto bg-white border border-zinc-200 rounded-lg shadow-lg divide-y divide-zinc-100">
                   {sugerenciasCliente.map((c) => (
                     <button
                       key={c.id}
@@ -706,18 +721,29 @@ export default function GenerarVentaPage() {
                       onMouseDown={() => seleccionarCliente(c)}
                       className="w-full flex items-center justify-between px-3 py-2 text-xs text-left hover:bg-zinc-50 transition-colors"
                     >
-                      <span className="font-medium text-zinc-800 truncate mr-2">{getNombreCompleto(c)}</span>
-                      <span className="font-mono text-zinc-400 shrink-0">{c.dni ?? '—'}</span>
+                      <span className="font-medium text-zinc-800 truncate mr-2">
+                        {getNombreCompleto(c)}
+                      </span>
+                      <span className="font-mono text-zinc-400 shrink-0">
+                        {c.dni ?? '—'}
+                      </span>
                     </button>
                   ))}
                 </div>
               )}
             </div>
 
+            {/* INPUT DE DNI / RUC */}
             <div className="col-span-4">
               <input
                 value={dniCliente}
-                onChange={(e) => setDniCliente(e.target.value)}
+                onChange={(e) => {
+                  setDniCliente(e.target.value);
+                  setIdClienteSeleccionado(null);
+                  setMostrarSugerencias(true);
+                }}
+                onFocus={() => setMostrarSugerencias(true)}
+                onBlur={() => setTimeout(() => setMostrarSugerencias(false), 200)}
                 placeholder="DNI / RUC"
                 maxLength={11}
                 readOnly={!!idClienteSeleccionado}
@@ -727,6 +753,7 @@ export default function GenerarVentaPage() {
               />
             </div>
 
+            {/* BOTÓN NUEVO CLIENTE */}
             <div className="col-span-1">
               <button
                 type="button"
