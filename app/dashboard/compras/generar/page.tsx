@@ -39,9 +39,13 @@ export default function GenerarCompraPage() {
   const [comprobante, setComprobante] = useState("");
   const [serie, setSerie] = useState("");
   const [numero, setNumero] = useState("");
-  const [fechaEmision, setFechaEmision] = useState(() =>
-    new Date().toISOString().slice(0, 10)
-  );
+  const [fechaEmision, setFechaEmision] = useState(() => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+});
 
   // Proveedores
   const [proveedoresDB, setProveedoresDB] = useState<Proveedor[]>([]);

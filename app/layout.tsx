@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Panel de Administración",
-  description: "Panel de administración dinámico",
+  title: "JPFarma - Panel de Administración",
+  description: "Panel de administración para la Botica",
 };
 
 const INIT_SCRIPT = `
@@ -29,7 +29,7 @@ const INIT_SCRIPT = `
 
     // Nombre de la empresa
     var savedName = localStorage.getItem('app-company-name');
-    document.title = savedName || 'Panel de Administración';
+    document.title = savedName || 'JPFarma - Panel de Administración';
 
     // Favicon
     var savedIcon = localStorage.getItem('app-company-icon');

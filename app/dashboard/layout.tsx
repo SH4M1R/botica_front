@@ -7,9 +7,12 @@ import Navbar from '@/components/Navbar';
 import RouteGuard from '@/components/RouteGuard';
 import { CajaCerradaModal } from '@/components/CajaCerradaModal';
 
-const RUTAS_PANTALLA_COMPLETA = ['/dashboard/ventas/generar', '/dashboard/compras/generar'];
+const RUTAS_PANTALLA_COMPLETA = [
+  '/dashboard/ventas/generar',
+  '/dashboard/compras/generar',
+  '/dashboard/ventas/cotizacion',
+];
 
-// Componente interno: aquí vive el useSearchParams(), por eso necesita Suspense.
 function DashboardLayoutContent({
   children,
 }: {

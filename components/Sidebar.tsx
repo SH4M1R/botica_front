@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Package, Settings, ShoppingCart, Contact, ChevronDown,
   List, Plus, Users, Tags, Lock, Repeat, ArrowDownToLine, ArrowUpFromLine,
   CreditCard, Receipt, ArrowRightLeft, ShieldCheck, UserCheck,
-  BarChart3, CalendarCheck, ShoppingBag, Wallet, ChevronsLeft, ChevronsRight,
+  BarChart3, CalendarCheck, ShoppingBag, Wallet, ChevronsLeft, ChevronsRight, FileText,
 } from 'lucide-react';
 import { useSession } from '@/hooks/useSession';
 import { arqueoApi } from '@/api/arqueo';
@@ -46,6 +46,7 @@ const bottomLinks = [
 
 const EVENTO_CAJA_ACTUALIZADA = 'caja:actualizada';
 const RUTA_GENERAR_VENTA = '/dashboard/ventas/generar';
+const RUTA_GENERAR_COTIZACION = '/dashboard/ventas/cotizacion';
 const RUTA_GENERAR_COMPRA = '/dashboard/compras/generar';
 
 type MenuId = 'caja' | 'ventas' | 'compras' | 'productos' | 'empleados' | 'traslados' | null;
@@ -97,6 +98,7 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
   const ventasLinksVisibles = {
     listado: tienePermiso('/dashboard/ventas'),
     generar: tienePermiso(RUTA_GENERAR_VENTA),
+    cotizacion: tienePermiso(RUTA_GENERAR_COTIZACION),
     clientes: tienePermiso('/dashboard/clientes'),
   };
   const ventasModuloVisible = Object.values(ventasLinksVisibles).some(Boolean);
@@ -185,6 +187,8 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
 
   const puedeVender = !!cajaAbierta;
 
+  // Abre "Generar venta" en una ventana emergente, apuntando SIEMPRE a esa
+  // ruta (sin importar en qué página del dashboard estés parado).
   const abrirVentanaFlotanteVenta = useCallback(() => {
     const width = 1280;
     const height = 800;
@@ -199,6 +203,10 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
     );
   }, []);
 
+  // Atajo global F4: abre la ventana flotante de "Generar venta" desde
+  // cualquier ruta del dashboard. Respeta permisos (no hace nada si el
+  // empleado no tiene acceso a esa ruta) y el estado de caja (si está
+  // cerrada, muestra el mismo modal que ya usa el link del menú).
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'F4') return;
@@ -224,6 +232,8 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [ventasLinksVisibles.generar, puedeVender, onCajaCerrada, abrirVentanaFlotanteVenta]);
 
+  // Abre "Ingresar Compra" en una ventana emergente, apuntando SIEMPRE a
+  // esa ruta (sin importar en qué página del dashboard estés parado).
   const abrirVentanaFlotanteCompra = useCallback(() => {
     const width = 1280;
     const height = 800;
@@ -238,6 +248,10 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
     );
   }, []);
 
+  // Atajo global F6: abre la ventana flotante de "Ingresar Compra" desde
+  // cualquier ruta del dashboard. Respeta permisos (no hace nada si el
+  // empleado no tiene acceso a esa ruta). A diferencia de ventas, compras
+  // no depende del estado de caja.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'F6') return;
@@ -383,6 +397,18 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
                     {!collapsed && puedeVender && (
                       <span className="text-[10px] font-semibold text-white/60 border border-white/30 rounded px-1">F4</span>
                     )}
+                  </Link>
+                )}
+
+                {ventasLinksVisibles.cotizacion && (
+                  <Link
+                    href={RUTA_GENERAR_COTIZACION}
+                    onClick={handleLinkClick}
+                    title="Generar cotización (no requiere caja abierta)"
+                    className={linkClass(pathname === RUTA_GENERAR_COTIZACION)}
+                  >
+                    <FileText size={16} />
+                    <span className="text-sm flex-1">Generar cotización</span>
                   </Link>
                 )}
 

@@ -13,18 +13,24 @@ export default function CompraDetalleModal({ compra, onClose }: CompraDetalleMod
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-xl">
-        <div className="flex items-center justify-between rounded-t-2xl bg-primary px-5 py-4">
+      <div className="flex max-h-[85vh] w-full max-w-4xl flex-col rounded-2xl bg-white shadow-xl overflow-hidden">
+        
+        {/* Header Estático (Arriba) */}
+        <div className="flex shrink-0 items-center justify-between bg-primary px-6 py-4">
           <h2 className="text-lg font-semibold text-white">
             Compra #{String(compra.id).padStart(6, "0")}
           </h2>
-          <button onClick={onClose} className="text-white hover:text-white/80">
+          <button 
+            onClick={onClose} 
+            className="text-white hover:text-white/80 transition-colors"
+          >
             <X size={20} />
           </button>
         </div>
 
-        <div className="space-y-4 p-5">
-          <div className="grid grid-cols-2 gap-4 text-sm">
+        <div className="flex-1 overflow-y-auto space-y-6 p-6">
+          {/* Información General */}
+          <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
             <div>
               <p className="text-zinc-400">Proveedor</p>
               <p className="font-medium text-zinc-800">{compra.proveedor?.nombres}</p>
@@ -49,43 +55,45 @@ export default function CompraDetalleModal({ compra, onClose }: CompraDetalleMod
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-zinc-50 text-left text-xs font-bold uppercase text-zinc-400">
-                  <th className="px-3 py-2">Producto</th>
-                  <th className="px-3 py-2">Lote</th>
-                  <th className="px-3 py-2">Cant</th>
-                  <th className="px-3 py-2">P.U</th>
-                  <th className="px-3 py-2">Importe</th>
+                  <th className="px-4 py-3">Producto</th>
+                  <th className="px-4 py-3">Lote</th>
+                  <th className="px-4 py-3">Cant</th>
+                  <th className="px-4 py-3">P.U</th>
+                  <th className="px-4 py-3">Importe</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
                 {compra.detalles.map((d) => (
-                  <tr key={d.id}>
-                    <td className="px-3 py-2">{d.producto?.nombre}</td>
-                    <td className="px-3 py-2">{d.lote ?? "-"}</td>
-                    <td className="px-3 py-2">{d.cantidad}</td>
-                    <td className="px-3 py-2">{d.precioUnitario.toFixed(2)}</td>
-                    <td className="px-3 py-2">{d.importe.toFixed(2)}</td>
+                  <tr key={d.id} className="hover:bg-zinc-50/50">
+                    <td className="px-4 py-3 font-medium text-zinc-700">{d.producto?.nombre}</td>
+                    <td className="px-4 py-3 text-zinc-600">{d.lote ?? "-"}</td>
+                    <td className="px-4 py-3 text-zinc-600">{d.cantidad}</td>
+                    <td className="px-4 py-3 text-zinc-600">S/ {d.precioUnitario.toFixed(2)}</td>
+                    <td className="px-4 py-3 font-medium text-zinc-800">S/ {d.importe.toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        </div>
 
-          <div className="grid grid-cols-4 gap-4 text-sm">
+        <div className="shrink-0 border-t border-zinc-100 bg-white p-6 pt-4">
+          <div className="grid grid-cols-2 gap-4 rounded-xl bg-zinc-50 p-4 text-sm md:grid-cols-4">
             <div>
               <p className="text-zinc-400">Subtotal</p>
-              <p className="font-bold text-zinc-800">S/ {compra.subtotal.toFixed(2)}</p>
+              <p className="text-base font-bold text-zinc-800">S/ {compra.subtotal.toFixed(2)}</p>
             </div>
             <div>
               <p className="text-zinc-400">IGV</p>
-              <p className="font-bold text-zinc-800">S/ {compra.igv.toFixed(2)}</p>
+              <p className="text-base font-bold text-zinc-800">S/ {compra.igv.toFixed(2)}</p>
             </div>
             <div>
               <p className="text-zinc-400">Percepción</p>
-              <p className="font-bold text-zinc-800">S/ {(compra.percepcion ?? 0).toFixed(2)}</p>
+              <p className="text-base font-bold text-zinc-800">S/ {(compra.percepcion ?? 0).toFixed(2)}</p>
             </div>
             <div>
               <p className="text-zinc-400">Pagar</p>
-              <p className="font-bold text-primary">S/ {compra.pagar.toFixed(2)}</p>
+              <p className="text-base font-bold text-primary">S/ {compra.pagar.toFixed(2)}</p>
             </div>
           </div>
         </div>

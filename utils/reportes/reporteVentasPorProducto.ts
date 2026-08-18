@@ -10,8 +10,8 @@ import {
 } from './pdfBase';
 
 const columnas: ColumnaReporte<VentaDetalleProducto>[] = [
-  { header: 'Fecha', align: 'left', widthA4: 35, render: (f) => formatFechaHora(f.fecha) },
-  { header: 'Cliente', align: 'left', widthA4: 45, render: (f) => f.cliente },
+  { header: 'Fecha', align: 'left', widthA4: 50, render: (f) => formatFechaHora(f.fecha) },
+  { header: 'Cliente', align: 'left', widthA4: 30, render: (f) => f.cliente },
   { header: 'Cant.', align: 'right', widthA4: 20, render: (f) => String(f.cantidad) },
   { header: 'P. Unit.', align: 'right', widthA4: 30, render: (f) => formatMoneda(f.precioUnitario) },
   { header: 'Subtotal', align: 'right', widthA4: 40, render: (f) => formatMoneda(f.subtotal) },

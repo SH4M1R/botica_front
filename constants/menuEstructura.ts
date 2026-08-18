@@ -1,3 +1,5 @@
+import { PERMISO_EDITAR_PRECIO_VENTA } from './permisos';
+
 export interface ItemMenu {
   ruta: string;
   label: string;
@@ -29,7 +31,9 @@ export const ESTRUCTURA_MENU: ModuloMenu[] = [
     items: [
       { ruta: '/dashboard/ventas', label: 'Listado de ventas' },
       { ruta: '/dashboard/ventas/generar', label: 'Generar venta' },
+      { ruta: '/dashboard/ventas/cotizacion', label: 'Generar cotización' },
       { ruta: '/dashboard/clientes', label: 'Clientes' },
+      { ruta: PERMISO_EDITAR_PRECIO_VENTA, label: 'Modificar precio de venta' },
     ],
   },
   {
@@ -61,3 +65,18 @@ export const ESTRUCTURA_MENU: ModuloMenu[] = [
     ],
   },
 ];
+
+export const RUTAS_IMPLICITAS: Record<string, string[]> = {
+  '/dashboard/ventas/generar': ['/dashboard/ventas/boleta'],
+};
+
+export function rutaEstaPermitida(rutaActual: string, rutasPermitidas: Set<string>): boolean {
+  if (rutasPermitidas.has(rutaActual)) return true;
+ 
+  for (const ruta of rutasPermitidas) {
+    const implicitas = RUTAS_IMPLICITAS[ruta];
+    if (implicitas?.includes(rutaActual)) return true;
+  }
+ 
+  return false;
+}

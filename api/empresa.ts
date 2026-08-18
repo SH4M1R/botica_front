@@ -71,3 +71,8 @@ export async function guardarEmpresa(data: EmpresaForm): Promise<EmpresaForm> {
   
   return response.json();
 }
+
+export const empresaApi = {
+  obtener: obtenerEmpresa,
+  guardar: guardarEmpresa,
+};

@@ -2,20 +2,19 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Trash2, Wallet, ShoppingCart, UserPlus, Plus, X as XIcon, FileText, AlertTriangle, ExternalLink, Barcode, MousePointerClick } from 'lucide-react';
+import { Search, Trash2, FileText, ShoppingCart, UserPlus, Plus, X as XIcon, AlertTriangle, ExternalLink, Barcode, MousePointerClick } from 'lucide-react';
 import { productosApi } from '@/api/productos';
 import type { Producto } from '@/api/productos';
-import { ventasApi, clientesApi, getNombreCompleto, splitNombreCompleto } from '@/api/ventas';
-import type { Venta, Cliente } from '@/api/ventas';
-import { arqueoApi } from '@/api/arqueo';
-import type { ArqueoCaja } from '@/api/arqueo';
+import { clientesApi, getNombreCompleto } from '@/api/ventas';
+import type { Cliente } from '@/api/ventas';
 import { permisosApi } from '@/api/permisos';
+import { empresaApi } from '@/api/empresa';
+import type { EmpresaForm } from '@/api/empresa';
 import { PERMISO_EDITAR_PRECIO_VENTA } from '@/constants/permisos';
 import { useSession } from '@/hooks/useSession';
-import MetodoPagoModal, { PagoParte } from '../components/MetodoPagoModal';
 import ClienteModal from '@/app/dashboard/clientes/components/ClienteModal';
-import { CajaCerradaModal } from '@/components/CajaCerradaModal';
-import VentaNoMouse from './VentaNoMouse';
+import VentaNoMouse from '../generar/VentaNoMouse';
+import { generarCotizacionPdf } from '@/utils/generarCotizacionPdf';
 import {
   type TipoVenta,
   type CarritoItem,
@@ -26,25 +25,7 @@ import {
   PrecioInput,
 } from '@/components/ventaShared';
 
-// Re-exportados por compatibilidad, por si algún otro archivo los importaba
-// directamente desde esta página (antes vivían acá).
-export type { TipoVenta, CarritoItem, ProductoConCodigo };
-export { tiposDisponibles, precioPorTipo, unidadesBasePorTipo };
-
-// Tipo de comprobante a emitir. Por ahora solo "Nota de Venta" está
-// disponible; Boleta y Factura Electrónica quedan bloqueadas en el
-// selector hasta que se implemente la facturación electrónica. La
-// "Cotización de Venta" ahora vive en su propia página:
-// /dashboard/ventas/cotizacion
-export type TipoComprobante = 'nota' | 'boleta' | 'factura';
-
-const COMPROBANTE_OPTIONS: { value: TipoComprobante; label: string; disabled?: boolean }[] = [
-  { value: 'nota', label: 'Nota de Venta' },
-  { value: 'boleta', label: 'Boleta Electrónica (próximamente)', disabled: true },
-  { value: 'factura', label: 'Factura Electrónica (próximamente)', disabled: true },
-];
-
-export default function GenerarVentaPage() {
+export default function GenerarCotizacionPage() {
   const router = useRouter();
   const { empleado, cargando } = useSession();
 
@@ -63,24 +44,18 @@ export default function GenerarVentaPage() {
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
   const [clienteModalAbierto, setClienteModalAbierto] = useState(false);
 
-  const [modalPagoAbierto, setModalPagoAbierto] = useState(false);
   const [error, setError] = useState('');
-  const [, setVentaConfirmada] = useState<Venta | null>(null);
-
   const [mostrarConfirmVaciar, setMostrarConfirmVaciar] = useState(false);
-
   const [modoSinMouse, setModoSinMouse] = useState(false);
+  const [generandoCotizacion, setGenerandoCotizacion] = useState(false);
 
-  const [cajaAbierta, setCajaAbierta] = useState<ArqueoCaja | null | undefined>(undefined);
-
-  // Permiso: si el empleado puede modificar manualmente el precio unitario / subtotal
-  // en el detalle de venta. Los Administradores siempre lo tienen habilitado.
+  // Permiso: si el empleado puede modificar manualmente el precio unitario /
+  // subtotal en el detalle (mismo permiso que en Generar Venta, para que el
+  // precio mostrado en la cotización sea consistente con el de una venta real).
   const [puedeEditarPrecio, setPuedeEditarPrecio] = useState(false);
 
-  const [tipoComprobante, setTipoComprobante] = useState<TipoComprobante>('nota');
-
   const fechaHoy = useMemo(
-    () => new Date().toLocaleDateString('es-PE', { weekday: 'long', day: '2-digit', month: 'long'}),
+    () => new Date().toLocaleDateString('es-PE', { weekday: 'long', day: '2-digit', month: 'long' }),
     []
   );
 
@@ -102,20 +77,8 @@ export default function GenerarVentaPage() {
     clientesApi.listar().then(setClientes).catch(() => setClientes([]));
   };
 
-  const verificarCaja = async () => {
-    if (!empleado) return;
-    try {
-      const actual = await arqueoApi.cajaActual(empleado.id);
-      setCajaAbierta(actual ?? null);
-    } catch {
-      setCajaAbierta(null);
-    }
-  };
-
   const verificarPermisoEditarPrecio = async () => {
     if (!empleado) return;
-    // Los administradores no tienen registros de permisos individuales
-    // (se excluyen en la pantalla de asignación), así que siempre pueden.
     if (empleado.rol === 'Administrador') {
       setPuedeEditarPrecio(true);
       return;
@@ -128,10 +91,6 @@ export default function GenerarVentaPage() {
     }
   };
 
-  const abrirBoletaImprimible = (idVenta: number, vuelto: number) => {
-    window.open(`/dashboard/ventas/boleta?id=${idVenta}&vuelto=${vuelto.toFixed(2)}`, '_blank');
-  };
-
   const abrirVentanaFlotante = () => {
     const width = 1280;
     const height = 800;
@@ -142,7 +101,7 @@ export default function GenerarVentaPage() {
 
     window.open(
       popupUrl,
-      'GenerarVentaPOS',
+      'GenerarCotizacionPOS',
       `width=${width},height=${height},top=${top},left=${left},resizable=yes,scrollbars=yes,status=no,toolbar=no,menubar=no,location=no`
     );
   };
@@ -155,16 +114,18 @@ export default function GenerarVentaPage() {
     }
     cargarProductos();
     cargarClientes();
-    verificarCaja();
     verificarPermisoEditarPrecio();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empleado, cargando, router]);
 
+  // A diferencia de "Generar venta", esta página NO depende de la caja: una
+  // cotización no cobra ni descuenta stock, así que el buscador se enfoca
+  // apenas la página está lista.
   useEffect(() => {
-    if (cajaAbierta && !modoSinMouse) {
+    if (!cargando && empleado && !modoSinMouse) {
       searchInputRef.current?.focus();
     }
-  }, [cajaAbierta, modoSinMouse]);
+  }, [cargando, empleado, modoSinMouse]);
 
   const productosVisibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -223,8 +184,6 @@ export default function GenerarVentaPage() {
     () => carrito.reduce((sum, item) => sum + item.precioUnitario * item.cantidad, 0),
     [carrito]
   );
-
-  const tieneCliente = !!(idClienteSeleccionado || nombreCliente.trim());
 
   const agregarProducto = (producto: Producto) => {
     const existente = carrito.find((c) => c.idProducto === producto.id && c.tipoVenta === 'unidad');
@@ -357,69 +316,49 @@ export default function GenerarVentaPage() {
     seleccionarCliente(nuevo);
   };
 
-  const handleAbrirPago = () => {
+  // Genera la cotización directamente desde el carrito en memoria: NO se
+  // persiste nada ni se descuenta stock. Trae los datos de la empresa
+  // (logo, RUC, dirección, etc.) para la cabecera del PDF.
+  const handleGenerarCotizacion = async () => {
     setError('');
-    if (carrito.length === 0) return setError('Agrega al menos un producto.');
-
-    // Boleta y Factura Electrónica aún no están implementadas.
-    if (tipoComprobante === 'boleta' || tipoComprobante === 'factura') {
-      setError('Este tipo de comprobante todavía no está disponible.');
+    if (carrito.length === 0) {
+      setError('Agrega al menos un producto.');
       return;
     }
 
-    const excedeStock = carrito.find(
-      (item) => item.cantidad * unidadesBasePorTipo(item.producto, item.tipoVenta) > item.producto.stock
-    );
-    if (excedeStock) return setError(`Stock insuficiente para "${excedeStock.producto.nombre}".`);
-
-    setModalPagoAbierto(true);
-  };
-
-  const handleConfirmarVenta = async (pagos: PagoParte[], metodoPagoFormateado: string, vuelto: number) => {
-    if (!empleado) throw new Error('Sesión expirada. Vuelve a iniciar sesión.');
-
+    setGenerandoCotizacion(true);
     try {
-      const pestanaBoleta = window.open('', '_blank');
-
-      let idCliente: number | null = idClienteSeleccionado;
-      if (!idCliente && nombreCliente.trim()) {
-        const { nombres, apellidoPaterno, apellidoMaterno } = splitNombreCompleto(nombreCliente.trim());
-        const nuevoCliente = await clientesApi.crear({
-          nombres,
-          apellidoPaterno: apellidoPaterno || undefined,
-          apellidoMaterno: apellidoMaterno || undefined,
-          dni: dniCliente.trim() || undefined,
-        });
-        idCliente = nuevoCliente.id;
+      let empresa: EmpresaForm | undefined;
+      try {
+        empresa = await empresaApi.obtener();
+      } catch {
+        empresa = undefined; // si no se puede cargar, se genera sin logo/datos de empresa
       }
 
-      const venta = await ventasApi.crear({
-        idEmpleado: empleado.id,
-        idCliente,
-        metodoPago: metodoPagoFormateado,
-        items: carrito.map(({ idProducto, cantidad, tipoVenta, precioUnitario }) => ({
-          idProducto, cantidad, tipoVenta, precioUnitario,
-        })),
-      });
+      const blob = await generarCotizacionPdf(
+        {
+          items: carrito.map((item) => ({
+            nombre: item.producto.nombre,
+            tipoVenta: item.tipoVenta,
+            cantidad: item.cantidad,
+            precioUnitario: item.precioUnitario,
+            subtotal: item.precioUnitario * item.cantidad,
+          })),
+          clienteNombre: nombreCliente.trim() || 'Clientes Varios',
+          clienteDni: dniCliente.trim() || undefined,
+          empleadoNombre: empleado?.nombre ?? '',
+          total,
+        },
+        empresa
+      );
 
-      if (pestanaBoleta) pestanaBoleta.location.href = `/dashboard/ventas/boleta?id=${venta.id}&vuelto=${vuelto.toFixed(2)}`;
-      else abrirBoletaImprimible(venta.id, vuelto);
-
-      setModalPagoAbierto(false);
-      setVentaConfirmada(venta);
-
-      setCarrito([]);
-      limpiarClienteSeleccionado();
-      setBusqueda('');
-      setError('');
-
-      cargarProductos();
-      cargarClientes();
-      searchInputRef.current?.focus();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
     } catch (err) {
       console.error(err);
-      setError('Ocurrió un error al procesar la venta. Inténtalo nuevamente.');
-      throw err;
+      setError('Ocurrió un error al generar la cotización.');
+    } finally {
+      setGenerandoCotizacion(false);
     }
   };
 
@@ -476,7 +415,7 @@ export default function GenerarVentaPage() {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'F2') {
         e.preventDefault();
-        if (!modalPagoAbierto) handleAbrirPago();
+        if (!generandoCotizacion) handleGenerarCotizacion();
       } else if (e.key === 'F3') {
         e.preventDefault();
         searchInputRef.current?.focus();
@@ -488,30 +427,15 @@ export default function GenerarVentaPage() {
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [carrito, modalPagoAbierto, mostrarConfirmVaciar, modoSinMouse, tipoComprobante]);
+  }, [carrito, generandoCotizacion, mostrarConfirmVaciar, modoSinMouse, nombreCliente, dniCliente]);
 
   const inputClass = "w-full px-3 py-2 rounded-lg border border-zinc-300 bg-zinc-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all";
 
-  if (cargando || cajaAbierta === undefined) {
+  if (cargando) {
     return (
       <div className="h-full flex items-center justify-center">
-        <p className="text-sm text-zinc-400">Verificando caja...</p>
+        <p className="text-sm text-zinc-400">Cargando...</p>
       </div>
-    );
-  }
-
-  if (cajaAbierta === null) {
-    return (
-      <>
-        <div className="h-full flex items-center justify-center">
-          <p className="text-sm text-zinc-400">Debes abrir tu caja para generar ventas.</p>
-        </div>
-        <CajaCerradaModal
-          open
-          onClose={() => router.push('/dashboard/ventas')}
-          onIrAArqueo={() => router.push('/dashboard/caja')}
-        />
-      </>
     );
   }
 
@@ -541,16 +465,8 @@ export default function GenerarVentaPage() {
           agregarProductoConDetalle={agregarProductoConDetalle}
           quitarProducto={quitarProducto}
           onVaciarCarrito={solicitarVaciarDetalle}
-          onAbrirPago={handleAbrirPago}
+          onAbrirPago={handleGenerarCotizacion}
           onVolverModoNormal={() => setModoSinMouse(false)}
-        />
-
-        <MetodoPagoModal
-          open={modalPagoAbierto}
-          total={total}
-          tieneCliente={tieneCliente}
-          onClose={() => setModalPagoAbierto(false)}
-          onConfirmarVenta={handleConfirmarVenta}
         />
 
         <ClienteModal
@@ -574,7 +490,7 @@ export default function GenerarVentaPage() {
               </div>
               <div className="p-6 space-y-4">
                 <p className="text-sm text-zinc-600">
-                  ¿Seguro que quieres vaciar todo el detalle de venta? Se eliminarán los {carrito.length} producto(s) agregados.
+                  ¿Seguro que quieres vaciar todo el detalle de la cotización? Se eliminarán los {carrito.length} producto(s) agregados.
                 </p>
                 <div className="flex justify-end gap-2">
                   <button
@@ -606,7 +522,7 @@ export default function GenerarVentaPage() {
           <div className="min-w-0">
             <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
               <h1 className="text-lg sm:text-xl font-bold text-primary tracking-tight whitespace-nowrap">
-                Generar Venta
+                Generar Cotización
               </h1>
 
               <button
@@ -623,7 +539,7 @@ export default function GenerarVentaPage() {
                 type="button"
                 onClick={() => setModoSinMouse(true)}
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary text-white hover:bg-primary/90 text-xs font-semibold transition-colors cursor-pointer"
-                title="Cambiar a pantalla de venta operable solo con teclado"
+                title="Cambiar a pantalla de cotización operable solo con teclado"
               >
                 <MousePointerClick size={13} />
                 <span>Modo Sin Mouse</span>
@@ -632,21 +548,11 @@ export default function GenerarVentaPage() {
           </div>
         </div>
 
-        {/* Selector de tipo de comprobante (Boleta/Factura llegan luego) */}
+        {/* Aviso: esta cotización es solo un documento de referencia */}
         <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-50 border border-zinc-200 shrink-0">
           <FileText size={15} className="text-primary shrink-0" />
-          <select
-            value={tipoComprobante}
-            onChange={(e) => setTipoComprobante(e.target.value as TipoComprobante)}
-            className="text-xs font-semibold text-zinc-700 bg-transparent outline-none cursor-pointer"
-            title="Tipo de comprobante a emitir"
-          >
-            {COMPROBANTE_OPTIONS.map((op) => (
-              <option key={op.value} value={op.value} disabled={op.disabled}>
-                {op.label}
-              </option>
-            ))}
-          </select>
+          <span className="text-xs font-semibold text-zinc-700">Cotización de Venta</span>
+          <span className="text-[10px] text-zinc-400">(no descuenta stock)</span>
         </div>
 
         <div className="w-full md:w-auto md:min-w-[250px] md:max-w-[350px] md:flex-1 xl:flex-none space-y-1">
@@ -765,7 +671,7 @@ export default function GenerarVentaPage() {
               </span>
             </div>
             <p className="hidden sm:block text-[10px] text-zinc-400 pl-1">
-              ↑ ↓ para navegar &nbsp;•&nbsp; Enter para agregar &nbsp;•&nbsp; Esc para limpiar &nbsp;•&nbsp; F2 para cobrar &nbsp;•&nbsp; F3 para buscar
+              ↑ ↓ para navegar &nbsp;•&nbsp; Enter para agregar &nbsp;•&nbsp; Esc para limpiar &nbsp;•&nbsp; F2 para generar &nbsp;•&nbsp; F3 para buscar
             </p>
           </div>
 
@@ -831,7 +737,7 @@ export default function GenerarVentaPage() {
           <div className="flex items-center justify-between gap-2 px-4 py-2.5 sm:py-3 border-b border-zinc-200 shrink-0">
             <div className="flex items-center gap-2">
               <ShoppingCart size={16} className="text-primary transition-colors duration-300" />
-              <span className="text-sm font-bold text-zinc-700">Detalle de venta</span>
+              <span className="text-sm font-bold text-zinc-700">Detalle de cotización</span>
             </div>
             {carrito.length > 0 && (
               <button
@@ -940,13 +846,13 @@ export default function GenerarVentaPage() {
 
           <div className="border-t border-zinc-200 p-3 sm:p-4 space-y-2 sm:space-y-3 shrink-0 bg-zinc-50/50">
             <button
-              onClick={handleAbrirPago}
-              disabled={carrito.length === 0}
+              onClick={handleGenerarCotizacion}
+              disabled={carrito.length === 0 || generandoCotizacion}
               className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-primary text-sm font-semibold text-white hover:bg-primary/90 transition-all disabled:opacity-40 cursor-pointer"
             >
               <span className="flex items-center gap-2">
-                <Wallet size={16} />
-                Realizar Venta
+                <FileText size={16} />
+                {generandoCotizacion ? 'Generando cotización...' : 'Generar Cotización'}
               </span>
               <span className="text-xs font-normal">F2</span>
             </button>
@@ -960,14 +866,6 @@ export default function GenerarVentaPage() {
           </div>
         </div>
       </div>
-
-      <MetodoPagoModal
-        open={modalPagoAbierto}
-        total={total}
-        tieneCliente={tieneCliente}
-        onClose={() => setModalPagoAbierto(false)}
-        onConfirmarVenta={handleConfirmarVenta}
-      />
 
       <ClienteModal
         open={clienteModalAbierto}
@@ -990,7 +888,7 @@ export default function GenerarVentaPage() {
             </div>
             <div className="p-6 space-y-4">
               <p className="text-sm text-zinc-600">
-                ¿Seguro que quieres vaciar todo el detalle de venta? Se eliminarán los {carrito.length} producto(s) agregados.
+                ¿Seguro que quieres vaciar todo el detalle de la cotización? Se eliminarán los {carrito.length} producto(s) agregados.
               </p>
               <div className="flex justify-end gap-2">
                 <button
