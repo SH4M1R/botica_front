@@ -1,4 +1,5 @@
 import { delay, nextId } from './_mockUtils';
+import { productos as catalogoProductos } from './productos';
 
 // apiFetch se deja disponible por si algún componente lo importa directamente,
 // pero comprasApi/proveedorApi ya NO lo usan: todo corre en memoria.
@@ -175,11 +176,21 @@ let proveedores: Proveedor[] = [
   { id: 2, tipoDocumento: 'RUC', numeroDocumento: '20567891234', nombres: 'Química Suiza Perú S.A.', departamento: 'Lima', provincia: 'Lima', distrito: 'Callao', direccion: 'Av. Argentina 789', telefono: '014123456', correo: 'contacto@quimicasuiza.pe' },
 ];
 
-const productosCompra: Producto[] = [
-  { id: 1, nombre: 'Paracetamol 500mg', codigoBarra: '7751271000019', unidadMedida: 'CAJA', gravada: true, precioUnitario: 2.5, precioMayorista: 2.1, costoUnitario: 1.2, stockActual: 320, unidadesPorPresentacion: 100 },
-  { id: 2, nombre: 'Amoxicilina 500mg', codigoBarra: '7751271000026', unidadMedida: 'CAJA', gravada: true, precioUnitario: 6.0, precioMayorista: 5.2, costoUnitario: 4.5, stockActual: 18, unidadesPorPresentacion: 50 },
-  { id: 3, nombre: 'Ibuprofeno 400mg', codigoBarra: '7751271000033', unidadMedida: 'CAJA', gravada: true, precioUnitario: 2.8, precioMayorista: 2.3, costoUnitario: 1.5, stockActual: 150, unidadesPorPresentacion: 100 },
-];
+// Catálogo de productos visto desde "Compras": se deriva del catálogo completo
+// de productos.ts, traduciendo los nombres de campo al DTO que espera este módulo
+// (codigoBarra, precioMayorista, costoUnitario, etc.).
+const productosCompra: Producto[] = catalogoProductos.map((p) => ({
+  id: p.id,
+  nombre: p.nombre,
+  codigoBarra: p.barras,
+  unidadMedida: p.caja_habilitado ? 'CAJA' : p.blister_habilitado ? 'BLISTER' : 'UNIDAD',
+  gravada: true,
+  precioUnitario: p.precio_venta,
+  precioMayorista: p.precio_caja ?? p.precio_blister ?? p.precio_venta,
+  costoUnitario: p.precio_costo,
+  stockActual: p.stock,
+  unidadesPorPresentacion: p.unidades_caja ?? p.unidades_blister ?? undefined,
+}));
 
 let compras: Compra[] = [
   { id: 1, comprobante: 'FACTURA', serie: 'F001', numero: '000123', fechaEmision: new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10), fechaRegistro: new Date(Date.now() - 5 * 86400000).toISOString(), regularizar: false, proveedor: proveedores[0], empleado: { id: 1, nombre: 'Administrador', rol: 'Administrador' }, precioIncluyeIgv: true, descripcion: 'Compra mensual de antibióticos y analgésicos', subtotal: 1200, igv: 216, total: 1416, percepcion: 0, pagar: 1416, tipoPago: 'CONTADO', medioPago: 'TRANSFERENCIA', estado: true, estadoPago: true, detalles: [
@@ -279,5 +290,18 @@ export const proveedorApi = {
     if (!proveedor) throw new Error('Proveedor no encontrado');
     Object.assign(proveedor, data);
     return proveedor;
+  },
+};
+
+// Catálogo de productos para el flujo de "Generar compra"
+// (búsqueda por nombre y por código de barras).
+export const productosCompraApi = {
+  listar: async () => {
+    await delay();
+    return [...productosCompra];
+  },
+  buscarPorCodigoBarra: async (codigo: string) => {
+    await delay();
+    return productosCompra.find((p) => p.codigoBarra === codigo.trim()) ?? null;
   },
 };

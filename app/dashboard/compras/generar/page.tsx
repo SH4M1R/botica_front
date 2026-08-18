@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Plus, ShoppingCart, Barcode, Trash2, PackagePlus, ExternalLink } from "lucide-react";
 import { productosApi } from "@/api/productos";
 import type { ProductoPayload } from "@/api/productos";
+import { productosCompraApi, type Producto } from '@/api/compra';
+
 
 // Modales
 import CompraProductoModal from "../components/CompraProductoModal";
@@ -19,7 +21,6 @@ import {
   DetalleCompraItem,
   ItemCompraRequestDTO,
   IGV_RATE,
-  Producto,
   Proveedor,
 } from "@/api/compra";
 
@@ -57,6 +58,8 @@ export default function GenerarCompraPage() {
   const [precioIncluyeIgv, setPrecioIncluyeIgv] = useState(true);
   const [codigoBarra, setCodigoBarra] = useState("");
   const [descripcion, setDescripcion] = useState("");
+  const [productos, setProductos] = useState<Producto[]>([]);
+
 
   const [detalles, setDetalles] = useState<DetalleCompraItem[]>([]);
 
@@ -163,31 +166,31 @@ export default function GenerarCompraPage() {
   }
 
   const handleBuscarPorCodigoBarra = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key !== "Enter" || !codigoBarra.trim()) return;
-    
-    setError(null);
-    const prod = PRODUCTOS_MOCK.find((p) => p.codigoBarra === codigoBarra.trim());
+  if (e.key !== "Enter" || !codigoBarra.trim()) return;
 
-    if (prod) {
-      setDetalles((prev) => [
-        ...prev,
-        {
-          key: crypto.randomUUID(),
-          idProducto: prod.id,
-          nombreProducto: prod.nombre,
-          tipoPrecio: "MAYORISTA",
-          afectacionIgv: prod.gravada ? "GRAVADO_ONEROSO" : "INAFECTO",
-          unidadMedida: prod.unidadMedida,
-          cantidad: 1,
-          precioUnitario: prod.costoUnitario ?? prod.precioMayorista,
-          importe: prod.costoUnitario ?? prod.precioMayorista,
-        },
-      ]);
-      setCodigoBarra("");
-    } else {
-      setError("No se encontró producto con ese código de barras.");
-    }
-  };
+  setError(null);
+  const prod = productos.find((p) => p.codigoBarra === codigoBarra.trim());
+
+  if (prod) {
+    setDetalles((prev) => [
+      ...prev,
+      {
+        key: crypto.randomUUID(),
+        idProducto: prod.id,
+        nombreProducto: prod.nombre,
+        tipoPrecio: "MAYORISTA",
+        afectacionIgv: prod.gravada ? "GRAVADO_ONEROSO" : "INAFECTO",
+        unidadMedida: prod.unidadMedida,
+        cantidad: 1,
+        precioUnitario: prod.costoUnitario ?? prod.precioMayorista,
+        importe: prod.costoUnitario ?? prod.precioMayorista,
+      },
+    ]);
+    setCodigoBarra("");
+  } else {
+    setError("No se encontró producto con ese código de barras.");
+  }
+};
 
   async function handleGuardar() {
     setError(null);
