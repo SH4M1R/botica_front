@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Search, Plus, ShoppingCart, Barcode, Trash2, ArrowLeft, PackagePlus } from "lucide-react";
+import { Plus, ShoppingCart, Barcode, Trash2, PackagePlus, ExternalLink } from "lucide-react";
+import { productosApi } from "@/api/productos";
+import type { ProductoPayload } from "@/api/productos";
 
 // Modales
 import CompraProductoModal from "../components/CompraProductoModal";
@@ -26,14 +27,7 @@ const COMPROBANTES = [
   { value: "FACTURA", label: "Factura" },
   { value: "BOLETA", label: "Boleta" },
   { value: "GUIA", label: "Guía de Remisión" },
-  { value: "OTROS", label: "Otros" },
-];
-
-// Productos referenciales para la simulación de escaneo local
-const PRODUCTOS_MOCK: Producto[] = [
-  { id: 1, nombre: 'Paracetamol 500mg', codigoBarra: '7751271000019', unidadMedida: 'CAJA', gravada: true, precioUnitario: 2.5, precioMayorista: 2.1, costoUnitario: 1.2, stockActual: 320, unidadesPorPresentacion: 100 },
-  { id: 2, nombre: 'Amoxicilina 500mg', codigoBarra: '7751271000026', unidadMedida: 'CAJA', gravada: true, precioUnitario: 6.0, precioMayorista: 5.2, costoUnitario: 4.5, stockActual: 18, unidadesPorPresentacion: 50 },
-  { id: 3, nombre: 'Ibuprofeno 400mg', codigoBarra: '7751271000033', unidadMedida: 'CAJA', gravada: true, precioUnitario: 2.8, precioMayorista: 2.3, costoUnitario: 1.5, stockActual: 150, unidadesPorPresentacion: 100 },
+  { value: "NOTA_VENTA", label: "Nota de Venta" },
 ];
 
 export default function GenerarCompraPage() {
@@ -44,9 +38,13 @@ export default function GenerarCompraPage() {
   const [comprobante, setComprobante] = useState("");
   const [serie, setSerie] = useState("");
   const [numero, setNumero] = useState("");
-  const [fechaEmision, setFechaEmision] = useState(() =>
-    new Date().toISOString().slice(0, 10)
-  );
+  const [fechaEmision, setFechaEmision] = useState(() => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+});
 
   // Proveedores
   const [proveedoresDB, setProveedoresDB] = useState<Proveedor[]>([]);
@@ -71,6 +69,32 @@ export default function GenerarCompraPage() {
 
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const esNotaVenta = comprobante === "NOTA_VENTA";
+
+  useEffect(() => {
+    const esPopup = window.opener !== null || new URLSearchParams(window.location.search).get("popup") === "true";
+    if (esPopup) {
+      document.body.classList.add("is-pos-popup");
+    }
+    return () => {
+      document.body.classList.remove("is-pos-popup");
+    };
+  }, []);
+
+  const abrirVentanaFlotante = () => {
+    const width = 1280;
+    const height = 800;
+    const left = (window.screen.width - width) / 2;
+    const top = (window.screen.height - height) / 2;
+
+    const popupUrl = `${window.location.origin}${window.location.pathname}?popup=true`;
+
+    window.open(
+      popupUrl,
+      "GenerarCompraPOS",
+      `width=${width},height=${height},top=${top},left=${left},resizable=yes,scrollbars=yes,status=no,toolbar=no,menubar=no,location=no`
+    );
+  };
 
   const cargarProveedores = async () => {
     try {
@@ -168,8 +192,12 @@ export default function GenerarCompraPage() {
   async function handleGuardar() {
     setError(null);
 
-    if (!comprobante || !serie || !numero || !fechaEmision) {
-      setError("Completa comprobante, serie, número y fecha de emisión");
+    if (!comprobante || !fechaEmision) {
+      setError("Completa comprobante y fecha de emisión");
+      return;
+    }
+    if (!esNotaVenta && (!serie || !numero)) {
+      setError("Completa serie y número");
       return;
     }
     if (!proveedor) {
@@ -192,8 +220,8 @@ export default function GenerarCompraPage() {
 
     const payload: CompraRequestDTO = {
       comprobante,
-      serie,
-      numero,
+      serie: esNotaVenta ? (serie || "S/N") : serie,
+      numero: esNotaVenta ? (numero || "S/N") : numero,
       fechaEmision,
       regularizar: false,
       idProveedor: proveedor.id,
@@ -218,17 +246,21 @@ export default function GenerarCompraPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-5rem)] gap-3 overflow-hidden">
+    <div className="flex flex-col h-full gap-3 overflow-hidden p-4 md:p-6">
       {/* Header Fijo superior */}
       <div className="flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
-          <Link
-            href="/dashboard/compras"
-            className="p-1.5 rounded-xl text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 transition-colors"
-          >
-            <ArrowLeft size={18} />
-          </Link>
           <h1 className="text-xl font-bold text-primary tracking-tight">Ingresar Compra</h1>
+
+          <button
+            type="button"
+            onClick={abrirVentanaFlotante}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-semibold border border-zinc-200 transition-colors cursor-pointer"
+            title="Abrir en ventana emergente (F6 desde cualquier página)"
+          >
+            <ExternalLink size={13} />
+            <span className="hidden sm:inline">Ventana flotante</span>
+          </button>
         </div>
       </div>
 
@@ -259,20 +291,24 @@ export default function GenerarCompraPage() {
               </select>
             </div>
             <div className="col-span-6 sm:col-span-2">
-              <label className="mb-1 block text-xs font-semibold text-zinc-600">Serie*</label>
+              <label className="mb-1 block text-xs font-semibold text-zinc-600">
+                Serie{!esNotaVenta && "*"}
+              </label>
               <input
                 value={serie}
                 onChange={(e) => setSerie(e.target.value)}
-                placeholder="F001"
+                placeholder={esNotaVenta ? "Opcional" : "F001"}
                 className="w-full rounded-xl border border-zinc-200 py-1.5 px-3 text-sm focus:border-primary focus:outline-none"
               />
             </div>
             <div className="col-span-6 sm:col-span-2">
-              <label className="mb-1 block text-xs font-semibold text-zinc-600">Número*</label>
+              <label className="mb-1 block text-xs font-semibold text-zinc-600">
+                Número{!esNotaVenta && "*"}
+              </label>
               <input
                 value={numero}
                 onChange={(e) => setNumero(e.target.value)}
-                placeholder="00000001"
+                placeholder={esNotaVenta ? "Opcional" : "00000001"}
                 className="w-full rounded-xl border border-zinc-200 py-1.5 px-3 text-sm focus:border-primary focus:outline-none"
               />
             </div>
@@ -310,7 +346,7 @@ export default function GenerarCompraPage() {
           </div>
 
           {/* Fila 2 - Proveedor & Acciones de Producto */}
-          <div className="grid grid-cols-12 items-end gap-3">
+          <div className="grid grid-cols-12 items-end gap-4">
             <div className="relative col-span-12 lg:col-span-4">
               <label className="mb-1 block text-xs font-semibold text-zinc-600">Proveedor*</label>
               <div className="flex gap-1.5">
@@ -371,16 +407,6 @@ export default function GenerarCompraPage() {
             </div>
 
             <div className="col-span-6 lg:col-span-2">
-              <div className="relative">
-                <input
-                  value={codigoBarra}
-                  onChange={(e) => setCodigoBarra(e.target.value)}
-                  onKeyDown={handleBuscarPorCodigoBarra}
-                  placeholder="Código Barra"
-                  className="w-full rounded-xl border border-zinc-200 py-1.5 pl-8 pr-2 text-sm focus:border-primary focus:outline-none"
-                />
-                <Barcode className="absolute left-2 top-2 text-zinc-400" size={16} />
-              </div>
             </div>
 
             {/* BOTONES DE AGREGAR Y CREAR PRODUCTO */}
@@ -400,16 +426,6 @@ export default function GenerarCompraPage() {
                 <PackagePlus size={15} /> NUEVO PROD
               </button>
             </div>
-          </div>
-
-          {/* Fila 3 - Descripción */}
-          <div>
-            <input
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-              placeholder="Observación o detalle general de la compra..."
-              className="w-full rounded-xl border border-zinc-200 py-1.5 px-3 text-sm focus:border-primary focus:outline-none"
-            />
           </div>
 
           {/* TABLA CON TAMAÑO FIJO Y SCROLL INTERNO */}
@@ -508,9 +524,10 @@ export default function GenerarCompraPage() {
 
       <CrearProductoModal
         open={modalCrearProductoAbierto}
-        producto={null}
+        producto={null} 
         onClose={() => setModalCrearProductoAbierto(false)}
-        onSave={async () => {
+        onSave={async (data: ProductoPayload) => {
+          await productosApi.crear(data);
           setModalCrearProductoAbierto(false);
         }}
       />

@@ -1,3 +1,4 @@
+// reporteInventarioValorado.ts
 import type { ReporteInventarioValorado, InventarioValoradoItem } from '@/api/reportes';
 import { crearPos80Builder, crearA4Builder, formatEmision, formatMoneda, ColumnaReporte } from './pdfBase';
 
@@ -9,9 +10,10 @@ const columnas: ColumnaReporte<InventarioValoradoItem>[] = [
   { header: 'Valor Venta', align: 'right', widthA4: 30, render: (f) => formatMoneda(f.valorVenta) },
 ];
 
-export function generarInventarioValoradoPos80(data: ReporteInventarioValorado): Blob {
-  const altura = 55 + data.productos.length * 24 + 25;
+export async function generarInventarioValoradoPos80(data: ReporteInventarioValorado, logo?: string): Promise<Blob> {
+  const altura = 65 + data.productos.length * 24 + 25;
   const b = crearPos80Builder(altura);
+  await b.encabezadoEmpresa(logo);
 
   b.texto('STOCK E INVENTARIO', { align: 'center', size: 9.5, bold: true });
   b.texto('Valorado', { align: 'center', size: 8 });
@@ -38,8 +40,9 @@ export function generarInventarioValoradoPos80(data: ReporteInventarioValorado):
   return b.finalizar();
 }
 
-export function generarInventarioValoradoA4(data: ReporteInventarioValorado): Blob {
+export async function generarInventarioValoradoA4(data: ReporteInventarioValorado, logo?: string): Promise<Blob> {
   const b = crearA4Builder();
+  await b.encabezadoEmpresa(logo);
 
   b.titulo('Stock Actual e Inventario Valorado');
   b.subtitulo([`Fecha de emisión: ${formatEmision()}`]);

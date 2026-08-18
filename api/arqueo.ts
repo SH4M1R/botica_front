@@ -3,22 +3,62 @@ import { delay, nextId } from './_mockUtils';
 export interface ArqueoCaja {
   id: number;
   numero: string;
+  empleadoId: number;
   empleadoNombre: string;
   fechaInicio: string;
   montoInicial: number;
   fechaFin: string | null;
   montoFinal: number | null;
+  montoDejado: number | null;
   estado: boolean;
 }
 
-export interface AbrirCajaPayload { empleadoId: number; montoInicial: number; }
+export interface AbrirCajaPayload {
+  empleadoId: number;
+  montoInicial: number;
+}
 
-let arqueos: (ArqueoCaja & { empleadoId: number })[] = [
-  { id: 1, numero: 'ARQ-0001', empleadoNombre: 'Administrador', empleadoId: 1, fechaInicio: new Date(new Date().setHours(8, 0, 0, 0)).toISOString(), montoInicial: 100, fechaFin: null, montoFinal: null, estado: true },
-  { id: 2, numero: 'ARQ-0000', empleadoNombre: 'Ana Torres', empleadoId: 2, fechaInicio: new Date(Date.now() - 86400000).toISOString(), montoInicial: 150, fechaFin: new Date(Date.now() - 86400000 + 8 * 3600000).toISOString(), montoFinal: 780.5, estado: false },
+export interface CerrarCajaPayload {
+  empleadoId: number;
+  montoDejado: number;
+}
+
+const NOMBRES_EMPLEADO: Record<number, string> = {
+  1: 'Administrador',
+  2: 'Ana Torres',
+  3: 'Juan Pérez',
+  4: 'Luis Gómez',
+};
+
+let arqueos: ArqueoCaja[] = [
+  {
+    id: 1,
+    numero: 'ARQ-0001',
+    empleadoId: 1,
+    empleadoNombre: 'Administrador',
+    fechaInicio: new Date(new Date().setHours(8, 0, 0, 0)).toISOString(),
+    montoInicial: 100,
+    fechaFin: null,
+    montoFinal: null,
+    montoDejado: null,
+    estado: true,
+  },
+  {
+    id: 2,
+    numero: 'ARQ-0000',
+    empleadoId: 2,
+    empleadoNombre: 'Ana Torres',
+    fechaInicio: new Date(Date.now() - 86400000).toISOString(),
+    montoInicial: 100,
+    fechaFin: new Date(Date.now() - 86400000 + 8 * 3600000).toISOString(),
+    montoFinal: 345.5,
+    montoDejado: 100,
+    estado: false,
+  },
 ];
 
-function sinEmpleadoId(a: ArqueoCaja & { empleadoId: number }): ArqueoCaja {
+// Oculta el empleadoId "interno" en las respuestas, igual que hacía el backend
+function sinEmpleadoId(a: ArqueoCaja): Omit<ArqueoCaja, 'empleadoId'> {
   const { empleadoId, ...rest } = a;
   return rest;
 }
@@ -31,26 +71,51 @@ export const arqueoApi = {
     if (hasta) resultado = resultado.filter((a) => a.fechaInicio <= hasta);
     return resultado.map(sinEmpleadoId);
   },
-  pendientes: async () => { await delay(); return arqueos.filter((a) => a.estado).map(sinEmpleadoId); },
+
+  pendientes: async () => {
+    await delay();
+    return arqueos.filter((a) => a.estado).map(sinEmpleadoId);
+  },
+
   abrir: async (data: AbrirCajaPayload) => {
     await delay();
+    const yaAbierto = arqueos.find((a) => a.empleadoId === data.empleadoId && a.estado);
+    if (yaAbierto) throw new Error('Este empleado ya tiene una caja abierta.');
+
     const id = nextId(arqueos);
-    const nuevo = { id, numero: `ARQ-${String(id).padStart(4, '0')}`, empleadoNombre: 'Empleado Demo', empleadoId: data.empleadoId, fechaInicio: new Date().toISOString(), montoInicial: data.montoInicial, fechaFin: null, montoFinal: null, estado: true };
+    const nuevo: ArqueoCaja = {
+      id,
+      numero: `ARQ-${String(id).padStart(4, '0')}`,
+      empleadoId: data.empleadoId,
+      empleadoNombre: NOMBRES_EMPLEADO[data.empleadoId] ?? 'Empleado Demo',
+      fechaInicio: new Date().toISOString(),
+      montoInicial: data.montoInicial,
+      fechaFin: null,
+      montoFinal: null,
+      montoDejado: null,
+      estado: true,
+    };
     arqueos.push(nuevo);
     return sinEmpleadoId(nuevo);
   },
-  cerrar: async (id: number) => {
+
+  cerrar: async (id: number, data: CerrarCajaPayload) => {
     await delay();
     const arqueo = arqueos.find((a) => a.id === id);
     if (!arqueo) throw new Error('Arqueo no encontrado');
-    arqueo.estado = false;
+    if (!arqueo.estado) throw new Error('Este arqueo ya fue cerrado.');
+    if (arqueo.empleadoId !== data.empleadoId) throw new Error('Este arqueo no pertenece a este empleado.');
+
     arqueo.fechaFin = new Date().toISOString();
-    arqueo.montoFinal = arqueo.montoInicial + 250;
+    arqueo.montoDejado = data.montoDejado;
+    arqueo.montoFinal = arqueo.montoInicial + data.montoDejado;
+    arqueo.estado = false;
     return sinEmpleadoId(arqueo);
   },
+
   cajaActual: async (empleadoId: number) => {
     await delay();
-    const actual = arqueos.find((a) => a.empleadoId === empleadoId && a.estado);
-    return actual ? sinEmpleadoId(actual) : undefined;
+    const arqueo = arqueos.find((a) => a.empleadoId === empleadoId && a.estado);
+    return arqueo ? sinEmpleadoId(arqueo) : undefined;
   },
 };

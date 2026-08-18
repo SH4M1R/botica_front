@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Pencil, HandCoins } from 'lucide-react';
-import { clientesApi } from '@/api/ventas';
+import { Search, Pencil, HandCoins, Plus, Wallet } from 'lucide-react';
+import { clientesApi, getNombreCompleto } from '@/api/ventas';
 import type { Cliente } from '@/api/ventas';
 import ClienteModal from './components/ClienteModal';
 import PagoDeudaModal from './components/PagoDeudaModal';
+import SaldoModal from './components/SaldoModal';
 import Paginacion from '@/components/Paginacion';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
@@ -19,7 +20,10 @@ export default function ClientesPage() {
   const [pagoModalOpen, setPagoModalOpen] = useState(false);
   const [clienteParaPago, setClienteParaPago] = useState<Cliente | null>(null);
 
-  // Estados de paginación
+  // --- NUEVO: estado del modal de saldo ---
+  const [saldoModalOpen, setSaldoModalOpen] = useState(false);
+  const [clienteParaSaldo, setClienteParaSaldo] = useState<Cliente | null>(null);
+
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
 
@@ -37,15 +41,11 @@ export default function ClientesPage() {
   const clientesFiltrados = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return clientes;
-    return clientes.filter((c) => c.nombre.toLowerCase().includes(q) || c.dni?.includes(q));
+    return clientes.filter((c) =>
+      getNombreCompleto(c).toLowerCase().includes(q) || c.dni?.includes(q)
+    );
   }, [clientes, search]);
 
-  // Resetear a la página 1 cuando cambia la búsqueda
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [search]);
-
-  // Cálculos de paginación
   const totalItems = clientesFiltrados.length;
   const totalPaginas = Math.ceil(totalItems / pageSize) || 1;
   const paginaSegura = Math.min(Math.max(currentPage, 1), totalPaginas);
@@ -57,29 +57,51 @@ export default function ClientesPage() {
     );
   }, [clientesFiltrados, paginaSegura, pageSize]);
 
-  const handleGuardar = async (data: { nombre: string; dni?: string; telefono?: string }) => {
-    if (clienteActivo) await clientesApi.actualizar(clienteActivo.id, data);
+  const handleGuardar = async (data: { nombres: string; apellidoPaterno?: string; apellidoMaterno?: string; dni?: string; telefono?: string }) => {
+    if (clienteActivo) {
+      await clientesApi.actualizar(clienteActivo.id, data);
+    } else {
+      await clientesApi.crear(data);
+    }
     await cargarClientes();
   };
 
   const handleRegistrarPago = async (id: number, monto: number) => {
-    // actualización optimista: descuenta el monto del saldo en pantalla al instante
     setClientes((prev) => prev.map((c) =>
       c.id === id ? { ...c, saldo: Math.max(0, (c.saldo ?? 0) - monto) } : c
     ));
     try {
       await clientesApi.registrarPago(id, monto);
     } finally {
-      // recargamos igual desde el servidor para tener el saldo real y consistente
+      await cargarClientes();
+    }
+  };
+
+  // --- NUEVO: guardar el nuevo saldo fijado manualmente ---
+  const handleModificarSaldo = async (id: number, saldo: number) => {
+    setClientes((prev) => prev.map((c) => (c.id === id ? { ...c, saldo } : c)));
+    try {
+      await clientesApi.actualizarSaldo(id, saldo);
+    } finally {
       await cargarClientes();
     }
   };
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-primary tracking-tight">Clientes</h1>
-        <p className="text-sm text-zinc-500 mt-1">Historial y datos de los clientes registrados.</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-primary tracking-tight">Clientes</h1>
+          <p className="text-sm text-zinc-500 mt-1">Historial y datos de los clientes registrados.</p>
+        </div>
+        {/* --- NUEVO: botón crear cliente --- */}
+        <button
+          onClick={() => { setClienteActivo(null); setModalOpen(true); }}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-primary hover:bg-primary-dark rounded-lg shadow-xs transition-all"
+        >
+          <Plus size={16} />
+          Nuevo cliente
+        </button>
       </div>
 
       <div className="relative max-w-sm">
@@ -101,10 +123,10 @@ export default function ClientesPage() {
           <>
             <table className="w-full text-sm">
               <colgroup>
-                <col style={{ width: '20%' }} />
-                <col style={{ width: '20%' }} />
-                <col style={{ width: '20%' }} />
-                <col style={{ width: '20%' }} />
+                <col style={{ width: '40%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '14%' }} />
                 <col style={{ width: '20%' }} />
               </colgroup>
               <thead>
@@ -119,7 +141,7 @@ export default function ClientesPage() {
               <tbody className="divide-y divide-zinc-100">
                 {itemsPaginados.map((c) => (
                   <tr key={c.id} className="hover:bg-zinc-50/60 transition-colors">
-                    <td className="px-5 py-3 font-semibold text-zinc-800">{c.nombre}</td>
+                    <td className="px-5 py-3 font-semibold text-zinc-800">{getNombreCompleto(c)}</td>
                     <td className="px-5 py-3 text-zinc-600 font-mono text-xs">{c.dni ?? '—'}</td>
                     <td className="px-5 py-3 text-zinc-600">{c.telefono ?? '—'}</td>
                     <td className="px-5 py-3">
@@ -137,11 +159,19 @@ export default function ClientesPage() {
                         <button
                           onClick={() => { setClienteParaPago(c); setPagoModalOpen(true); }}
                           title="Registrar pago de deuda"
-                          className="p-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors border-2"
+                          className="p-2 text-primary hover:text-primary/70 hover:bg-primary/10 rounded-lg transition-colors border-2"
                         >
                           <HandCoins size={16} />
                         </button>
                       )}
+                        {/* --- NUEVO: botón modificar saldo --- */}
+                        <button
+                          onClick={() => { setClienteParaSaldo(c); setSaldoModalOpen(true); }}
+                          title="Modificar saldo"
+                          className="p-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors border-2"
+                        >
+                          <Wallet size={16} />
+                        </button>
                         <button 
                           onClick={() => { setClienteActivo(c); setModalOpen(true); }} 
                           title="Editar" 
@@ -187,6 +217,14 @@ export default function ClientesPage() {
         cliente={clienteParaPago}
         onClose={() => setPagoModalOpen(false)}
         onSave={handleRegistrarPago}
+      />
+
+      {/* --- NUEVO --- */}
+      <SaldoModal
+        open={saldoModalOpen}
+        cliente={clienteParaSaldo}
+        onClose={() => setSaldoModalOpen(false)}
+        onSave={handleModificarSaldo}
       />
     </div>
   );

@@ -8,6 +8,9 @@ import ProductoModal from "./components/ProductoModal";
 import { ToggleSwitch } from "./components/ProductoModal";
 import StockModal from "./components/StockModal";
 import Paginacion from "@/components/Paginacion";
+import ModalEliminar from "@/components/ModalEliminar";
+import { ModalAlertaStock } from "./components/ModalStockBajo";
+import { ModalProductosPorVencer } from "./components/ModalProductoPorVencer";
 
 const productoToPayload = (p: Producto): ProductoPayload => ({
   nombre: p.nombre,
@@ -39,13 +42,14 @@ const productoToPayload = (p: Producto): ProductoPayload => ({
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
 const COL_WIDTHS = {
-  producto: '33.34%',
-  categoria: '11.11%',
-  pVenta: '11.11%',
-  pCompra: '11.11%',
-  stock: '11.11%',
-  estado: '11.11%',
-  acciones: '11.11%',
+  producto: '34%',
+  laboratorio: '10%',
+  categoria: '10%',
+  pVenta: '9%',
+  pCompra: '9%',
+  stock: '6%',
+  estado: '10%',
+  acciones: '12%',
 };
 
 function StatCard({
@@ -55,6 +59,7 @@ function StatCard({
   label,
   value,
   sublabel,
+  onClick,
 }: {
   icon: typeof Package;
   iconBg: string;
@@ -62,9 +67,15 @@ function StatCard({
   label: string;
   value: string;
   sublabel: string;
+  onClick?: () => void;
 }) {
   return (
-    <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs p-5 flex items-center gap-4">
+    <div 
+      onClick={onClick} 
+      className={`bg-white rounded-2xl border border-zinc-200 shadow-xs p-5 flex items-center gap-4 ${
+        onClick ? 'cursor-pointer hover:border-zinc-300 hover:shadow-md transition-all' : ''
+      }`}
+    >
       <div className={`p-3 rounded-xl ${iconBg} ${iconColor} shrink-0`}>
         <Icon size={35} />
       </div>
@@ -86,6 +97,10 @@ export default function ProductosPage() {
   const [stockModalOpen, setStockModalOpen] = useState(false);
   const [productoParaStock, setProductoParaStock] = useState<Producto | null>(null);
 
+  // Modales de Alertas
+  const [modalStockBajoOpen, setModalStockBajoOpen] = useState(false);
+  const [modalPorVencerOpen, setModalPorVencerOpen] = useState(false);
+
   // vista: productos activos o inactivos
   const [vista, setVista] = useState<'activos' | 'inactivos'>('activos');
   // filtro por categoria ('todas' = sin filtro)
@@ -105,7 +120,6 @@ export default function ProductosPage() {
 
   useEffect(() => { cargarProductos(); }, []);
 
-  // lista de categorias unicas presentes en los productos, para el select de filtro
   const categorias = useMemo(() => {
     const mapa = new Map<number, string>();
     productos.forEach((p) => {
@@ -127,13 +141,26 @@ export default function ProductosPage() {
     });
   }, [productos, search, vista, categoriaFiltro]);
 
-  // si cambia busqueda, vista, categoria o tamaño de pagina, volver a la pagina 1
   useEffect(() => {
     setCurrentPage(1);
   }, [search, vista, categoriaFiltro, pageSize]);
 
   const totalPaginas = Math.max(1, Math.ceil(productosFiltrados.length / pageSize));
   const paginaSegura = Math.min(currentPage, totalPaginas);
+
+  const [modalConfig, setModalConfig] = useState<{
+    isOpen: boolean;
+    mensaje: string;
+    errorMensaje?: string;
+    onConfirm: () => Promise<void>;
+  }>({
+    isOpen: false,
+    mensaje: '',
+    onConfirm: async () => {},
+  });
+
+  const cerrarModal = () =>
+    setModalConfig((prev) => ({ ...prev, isOpen: false }));
 
   const productosPagina = useMemo(() => {
     const inicio = (paginaSegura - 1) * pageSize;
@@ -143,23 +170,31 @@ export default function ProductosPage() {
   const conteoActivos = useMemo(() => productos.filter((p) => p.estado).length, [productos]);
   const conteoInactivos = useMemo(() => productos.filter((p) => !p.estado).length, [productos]);
 
-  // ---- Estadísticas para las tarjetas ----
+  // ---- Estadísticas y Contadores para Tarjetas ----
   const stats = useMemo(() => {
     const totalProductosActivos = productos.filter((p) => p.estado).length;
-    const stockBajo = productos.filter((p) => p.stock <= (p.stock_minimo ?? 10)).length;
+    const stockBajoCount = productos.filter((p) => p.stock <= (p.stock_minimo ?? 10)).length;
 
     const hoy = new Date();
-    const en30Dias = new Date();
-    en30Dias.setDate(hoy.getDate() + 90);
-    const porVencer = productos.filter((p) => {
+    const en90Dias = new Date();
+    en90Dias.setDate(hoy.getDate() + 90);
+    
+    const porVencerCount = productos.filter((p) => {
       if (!p.fecha_vencimiento) return false;
       const fechaVenc = new Date(p.fecha_vencimiento);
-      return fechaVenc >= hoy && fechaVenc <= en30Dias;
+      return fechaVenc >= hoy && fechaVenc <= en90Dias;
     }).length;
 
-    const valorTotalInventario = productos.reduce((sum, p) => sum + p.stock * p.precio_costo, 0);
+    const valorTotalInventario = productos
+      .filter((p) => p.estado)
+      .reduce((sum, p) => sum + p.stock * p.precio_costo, 0);
 
-    return { totalProductosActivos, stockBajo, porVencer, valorTotalInventario };
+    return {
+      totalProductosActivos,
+      stockBajo: stockBajoCount,
+      porVencer: porVencerCount,
+      valorTotalInventario,
+    };
   }, [productos]);
 
   const handleGuardar = async (data: ProductoPayload) => {
@@ -168,20 +203,24 @@ export default function ProductosPage() {
     await cargarProductos();
   };
 
-  const handleEliminar = async (producto: Producto) => {
-    if (!confirm(`¿Eliminar "${producto.nombre}"?`)) return;
-    await productosApi.eliminar(producto.id);
-    await cargarProductos();
+  const handleEliminar = (producto: Producto) => {
+    setModalConfig({
+      isOpen: true,
+      mensaje: `¿Deseas eliminar "${producto.nombre}"?`,
+      errorMensaje: 'No se pudo eliminar el producto - Porque ya está registrado en una venta, pero si puede desactivarlo.',
+      onConfirm: async () => {
+        await productosApi.eliminar(producto.id);
+        await cargarProductos();
+      },
+    });
   };
 
   const handleToggleEstado = async (producto: Producto) => {
     const payload = { ...productoToPayload(producto), estado: !producto.estado };
-    // actualización optimista para que el switch responda al instante
     setProductos((prev) => prev.map((p) => p.id === producto.id ? { ...p, estado: !p.estado } : p));
     try {
       await productosApi.actualizar(producto.id, payload);
     } catch {
-      // si falla, revertimos
       setProductos((prev) => prev.map((p) => p.id === producto.id ? { ...p, estado: producto.estado } : p));
     }
   };
@@ -226,6 +265,7 @@ export default function ProductosPage() {
           label="Stock Bajo"
           value={stats.stockBajo.toLocaleString('es-PE')}
           sublabel="Productos"
+          onClick={() => setModalStockBajoOpen(true)}
         />
         <StatCard
           icon={CalendarClock}
@@ -234,6 +274,7 @@ export default function ProductosPage() {
           label="Por Vencer (90 días)"
           value={stats.porVencer.toLocaleString('es-PE')}
           sublabel="Productos"
+          onClick={() => setModalPorVencerOpen(true)}
         />
         <StatCard
           icon={Database}
@@ -241,11 +282,11 @@ export default function ProductosPage() {
           iconColor="text-blue-500"
           label="Valor Total Inventario"
           value={`S/ ${stats.valorTotalInventario.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          sublabel="Valor de compra"
+          sublabel="Solo productos activos"
         />
       </div>
 
-      {/* Tabs: activos / inactivos */}
+      {/* Tabs */}
       <div className="flex items-center gap-1 border-b border-zinc-200">
         <button
           onClick={() => setVista('activos')}
@@ -269,7 +310,7 @@ export default function ProductosPage() {
         </button>
       </div>
 
-      {/* Buscador + filtro de categoria */}
+      {/* Buscador + filtro de categoría */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative max-w-sm w-full sm:w-auto flex-1">
           <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400"><Search size={16} /></span>
@@ -302,6 +343,7 @@ export default function ProductosPage() {
           <table className="w-full text-sm table-fixed">
             <colgroup>
               <col style={{ width: COL_WIDTHS.producto }} />
+              <col style={{ width: COL_WIDTHS.laboratorio }} />
               <col style={{ width: COL_WIDTHS.categoria }} />
               <col style={{ width: COL_WIDTHS.pVenta }} />
               <col style={{ width: COL_WIDTHS.pCompra }} />
@@ -311,34 +353,36 @@ export default function ProductosPage() {
             </colgroup>
             <thead>
               <tr className="bg-primary/10 border-b border-zinc-200 text-left text-xs font-bold text-primary uppercase tracking-wider">
-                <th className="px-5 py-3">Producto</th>
-                <th className="px-5 py-3">Categoría</th>
-                <th className="px-5 py-3 text-right">P. Venta</th>
-                <th className="px-5 py-3 text-right">P. Compra</th>
-                <th className="px-5 py-3 text-right">Stock</th>
-                <th className="px-5 py-3">Estado</th>
-                <th className="px-5 py-3 text-right">Acciones</th>
+                <th className="px-4 py-3 text-left">Producto</th>
+                <th className="px-4 py-3 text-left">Laboratorio</th>
+                <th className="px-4 py-3 text-left">Categoría</th>
+                <th className="px-4 py-3 text-left">P.Venta</th>
+                <th className="px-4 py-3 text-left">P.Compra</th>
+                <th className="px-4 py-3 text-left">Stock</th>
+                <th className="px-4 py-3 text-left">Estado</th>
+                <th className="px-4 py-3 text-left">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
               {productosPagina.map((p) => (
-                <tr key={p.id} className="hover:bg-zinc-50/60 transition-colors">
-                  <td className="px-5 py-3 font-semibold text-zinc-800 truncate" title={p.nombre}>{p.nombre}</td>
-                  <td className="px-5 py-3 text-primary font-semibold truncate" title={p.categoria?.nombre}>{p.categoria?.nombre}</td>
-                  <td className="px-5 py-3 text-right font-medium text-zinc-800">S/ {p.precio_venta.toFixed(2)}</td>
-                  <td className="px-5 py-3 text-right text-zinc-600">S/ {p.precio_costo.toFixed(2)}</td>
-                  <td className="px-5 py-3 text-right">
+                <tr key={p.id} className="hover:bg-zinc-50/60 transition-colors font-bold text-xs">
+                  <td className="px-4 py-3 text-zinc-800 whitespace-normal text-left" title={p.nombre}>{p.nombre}</td>
+                  <td className="px-4 py-3 text-zinc-800 whitespace-normal text-left" title={p.laboratorio?.nombre}>{p.laboratorio?.nombre}</td>
+                  <td className="px-4 py-3 text-primary font-semibold break-words whitespace-normal text-left" title={p.categoria?.nombre}>{p.categoria?.nombre}</td>
+                  <td className="px-4 py-3 font-medium text-zinc-800 text-left">S/ {p.precio_venta.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-zinc-600 text-left">S/ {p.precio_costo.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-left">
                     <span className={p.stock <= (p.stock_minimo ?? 10) ? 'text-red-500 font-semibold' : 'text-zinc-600'}>{p.stock}</span>
                   </td>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-2">
+                  <td className="px-4 py-3 text-left">
+                    <div className="flex flex-col items-center gap-1">
                       <ToggleSwitch checked={p.estado} onChange={() => handleToggleEstado(p)} />
                       <span className={`text-xs font-semibold ${p.estado ? 'text-primary' : 'text-zinc-400'}`}>
                         {p.estado ? 'Activo' : 'Inactivo'}
                       </span>
                     </div>
                   </td>
-                  <td className="px-5 py-3">
+                  <td className="px-4 py-3 text-left">
                     <div className="flex justify-end gap-1">
                       <button
                         onClick={() => { setProductoParaStock(p); setStockModalOpen(true); }}
@@ -387,6 +431,26 @@ export default function ProductosPage() {
         producto={productoParaStock}
         onClose={() => setStockModalOpen(false)}
         onSave={handleGuardarStock}
+      />
+
+      <ModalEliminar
+        isOpen={modalConfig.isOpen}
+        onClose={cerrarModal}
+        mensaje={modalConfig.mensaje}
+        errorMensajeDefault={modalConfig.errorMensaje}
+        onConfirm={modalConfig.onConfirm}
+      />
+
+      <ModalAlertaStock
+        isOpen={modalStockBajoOpen}
+        onClose={() => setModalStockBajoOpen(false)}
+        productos={productos}
+      />
+
+      <ModalProductosPorVencer
+        isOpen={modalPorVencerOpen}
+        onClose={() => setModalPorVencerOpen(false)}
+        productos={productos}
       />
     </div>
   );

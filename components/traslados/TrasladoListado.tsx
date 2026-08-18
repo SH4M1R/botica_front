@@ -124,8 +124,8 @@ export default function TrasladoListado({ tipo }: Props) {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <colgroup>
-                  <col style={{ width: '20%' }} />
-                  <col style={{ width: '35%' }} />
+                  <col style={{ width: '30%' }} />
+                  <col style={{ width: '25%' }} />
                   <col style={{ width: '15%' }} />
                   <col style={{ width: '15%' }} />
                   <col style={{ width: '15%' }} />

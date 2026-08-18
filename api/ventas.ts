@@ -4,9 +4,73 @@ import { productos as productosSeed } from './productos';
 
 export type TipoVenta = 'unidad' | 'blister' | 'caja';
 
-export interface Producto { id: number; nombre: string; precio_venta: number; stock: number; }
-export interface Cliente { id: number; nombre: string; dni?: string; telefono?: string; saldo?: number; }
-export interface Empleado { id: number; nombre: string; username: string; rol: string; estado: boolean; }
+export interface Producto {
+  id: number;
+  nombre: string;
+  precio_venta: number;
+  stock: number;
+}
+
+export interface Cliente {
+  id: number;
+  nombres: string;
+  apellidoPaterno?: string;
+  apellidoMaterno?: string;
+  dni?: string;
+  telefono?: string;
+  saldo?: number;
+}
+
+export interface ReniecResponse {
+  success: boolean;
+  dni: string;
+  nombres: string;
+  apellidoPaterno: string;
+  apellidoMaterno: string;
+  codVerifica?: string;
+}
+
+// --- helpers de nombre completo ---
+export function getNombreCompleto(c: Pick<Cliente, 'nombres' | 'apellidoPaterno' | 'apellidoMaterno'>): string {
+  return [c.nombres, c.apellidoPaterno, c.apellidoMaterno].filter(Boolean).join(' ');
+}
+
+// Divide "Juan Carlos Pérez García" en { nombres, apellidoPaterno, apellidoMaterno }
+export function splitNombreCompleto(nombreCompleto: string): {
+  nombres: string;
+  apellidoPaterno: string;
+  apellidoMaterno: string;
+} {
+  const partes = nombreCompleto.trim().split(/\s+/).filter(Boolean);
+
+  if (partes.length >= 3) {
+    return {
+      nombres: partes.slice(0, partes.length - 2).join(' '),
+      apellidoPaterno: partes[partes.length - 2],
+      apellidoMaterno: partes[partes.length - 1],
+    };
+  }
+  if (partes.length === 2) {
+    return { nombres: partes[0], apellidoPaterno: partes[1], apellidoMaterno: '' };
+  }
+  return { nombres: partes[0] ?? '', apellidoPaterno: '', apellidoMaterno: '' };
+}
+
+interface ClientePayload {
+  nombres: string;
+  apellidoPaterno?: string;
+  apellidoMaterno?: string;
+  dni?: string;
+  telefono?: string;
+}
+
+export interface Empleado {
+  id: number;
+  nombre: string;
+  username: string;
+  rol: string;
+  estado: boolean;
+}
 
 export interface DetalleVenta {
   id: number;
@@ -34,13 +98,13 @@ export interface VentaRequest { idEmpleado: number; idCliente?: number | null; m
 export const METODOS_PAGO = ['Efectivo', 'Izipay', 'Transferencia', 'Yape/Plin'];
 
 let clientes: Cliente[] = [
-  { id: 1, nombre: 'María López', dni: '45678912', telefono: '987654321', saldo: 0 },
-  { id: 2, nombre: 'Carlos Ramírez', dni: '41234567', telefono: '956123478', saldo: 45.5 },
-  { id: 3, nombre: 'Rosa Fernández', dni: '48889977', telefono: '', saldo: 0 },
-  { id: 4, nombre: 'Juan Pérez', dni: '47123899', telefono: '912345678', saldo: 0 },
-  { id: 5, nombre: 'Lucía Gómez', dni: '40987654', telefono: '934567891', saldo: 12.0 },
-  { id: 6, nombre: 'Jorge Mendoza', dni: '43567123', telefono: '923456789', saldo: 0 },
-  { id: 7, nombre: 'Elena Castillo', dni: '46781234', telefono: '', saldo: 25.0 },
+  { id: 1, nombres: 'María', apellidoPaterno: 'López', apellidoMaterno: '', dni: '45678912', telefono: '987654321', saldo: 0 },
+  { id: 2, nombres: 'Carlos', apellidoPaterno: 'Ramírez', apellidoMaterno: '', dni: '41234567', telefono: '956123478', saldo: 45.5 },
+  { id: 3, nombres: 'Rosa', apellidoPaterno: 'Fernández', apellidoMaterno: '', dni: '48889977', telefono: '', saldo: 0 },
+  { id: 4, nombres: 'Juan', apellidoPaterno: 'Pérez', apellidoMaterno: '', dni: '47123899', telefono: '912345678', saldo: 0 },
+  { id: 5, nombres: 'Lucía', apellidoPaterno: 'Gómez', apellidoMaterno: '', dni: '40987654', telefono: '934567891', saldo: 12.0 },
+  { id: 6, nombres: 'Jorge', apellidoPaterno: 'Mendoza', apellidoMaterno: '', dni: '43567123', telefono: '923456789', saldo: 0 },
+  { id: 7, nombres: 'Elena', apellidoPaterno: 'Castillo', apellidoMaterno: '', dni: '46781234', telefono: '', saldo: 25.0 },
 ];
 
 function productoSimple(id: number): Producto {
@@ -52,277 +116,277 @@ const empleadoDemo1: Empleado = { id: 1, nombre: 'Administrador', username: 'adm
 const empleadoDemo2: Empleado = { id: 2, nombre: 'Ana Torres', username: 'atorres', rol: 'Cajero', estado: true };
 
 let ventas: Venta[] = [
-  { 
-    id: 1, 
-    fecha: new Date(Date.now() - 3 * 3600000).toISOString(), 
-    total: 21.6, 
-    estado: true, 
-    metodoPago: 'Efectivo', 
-    empleado: empleadoDemo2, 
-    cliente: clientes[0], 
+  {
+    id: 1,
+    fecha: new Date(Date.now() - 3 * 3600000).toISOString(),
+    total: 21.6,
+    estado: true,
+    metodoPago: 'Efectivo',
+    empleado: empleadoDemo2,
+    cliente: clientes[0],
     detalles: [
       { id: 1, producto: productoSimple(1), cantidad: 2, tipoVenta: 'unidad', precioUnitario: 2.5, subtotal: 5.0 },
       { id: 2, producto: productoSimple(3), cantidad: 2, tipoVenta: 'unidad', precioUnitario: 2.8, subtotal: 5.6 },
       { id: 3, producto: productoSimple(6), cantidad: 1, tipoVenta: 'unidad', precioUnitario: 11.0, subtotal: 11.0 },
-    ] 
+    ],
   },
-  { 
-    id: 2, 
-    fecha: new Date(Date.now() - 26 * 3600000).toISOString(), 
-    total: 60.0, 
-    estado: true, 
-    metodoPago: 'Yape/Plin', 
-    empleado: empleadoDemo1, 
-    cliente: null, 
+  {
+    id: 2,
+    fecha: new Date(Date.now() - 26 * 3600000).toISOString(),
+    total: 60.0,
+    estado: true,
+    metodoPago: 'Yape/Plin',
+    empleado: empleadoDemo1,
+    cliente: null,
     detalles: [
       { id: 4, producto: productoSimple(4), cantidad: 3, tipoVenta: 'unidad', precioUnitario: 14.0, subtotal: 42.0 },
       { id: 5, producto: productoSimple(2), cantidad: 3, tipoVenta: 'unidad', precioUnitario: 6.0, subtotal: 18.0 },
-    ] 
+    ],
   },
-  { 
-    id: 3, 
-    fecha: new Date(Date.now() - 2 * 3600000).toISOString(), 
-    total: 28.0, 
-    estado: true, 
-    metodoPago: 'Tarjetas', 
-    empleado: empleadoDemo2, 
-    cliente: clientes[1], 
+  {
+    id: 3,
+    fecha: new Date(Date.now() - 2 * 3600000).toISOString(),
+    total: 28.0,
+    estado: true,
+    metodoPago: 'Tarjetas',
+    empleado: empleadoDemo2,
+    cliente: clientes[1],
     detalles: [
       { id: 6, producto: productoSimple(11), cantidad: 1, tipoVenta: 'blister', precioUnitario: 28.0, subtotal: 28.0 },
-    ] 
+    ],
   },
-  { 
-    id: 4, 
-    fecha: new Date(Date.now() - 5 * 3600000).toISOString(), 
-    total: 16.5, 
-    estado: true, 
-    metodoPago: 'Efectivo', 
-    empleado: empleadoDemo2, 
-    cliente: clientes[3], 
+  {
+    id: 4,
+    fecha: new Date(Date.now() - 5 * 3600000).toISOString(),
+    total: 16.5,
+    estado: true,
+    metodoPago: 'Efectivo',
+    empleado: empleadoDemo2,
+    cliente: clientes[3],
     detalles: [
       { id: 7, producto: productoSimple(5), cantidad: 3, tipoVenta: 'unidad', precioUnitario: 5.5, subtotal: 16.5 },
-    ] 
+    ],
   },
-  { 
-    id: 5, 
-    fecha: new Date(Date.now() - 12 * 3600000).toISOString(), 
-    total: 45.0, 
-    estado: true, 
-    metodoPago: 'Yape/Plin', 
-    empleado: empleadoDemo1, 
-    cliente: clientes[4], 
+  {
+    id: 5,
+    fecha: new Date(Date.now() - 12 * 3600000).toISOString(),
+    total: 45.0,
+    estado: true,
+    metodoPago: 'Yape/Plin',
+    empleado: empleadoDemo1,
+    cliente: clientes[4],
     detalles: [
       { id: 8, producto: productoSimple(8), cantidad: 1, tipoVenta: 'blister', precioUnitario: 40.0, subtotal: 40.0 },
       { id: 9, producto: productoSimple(1), cantidad: 2, tipoVenta: 'unidad', precioUnitario: 2.5, subtotal: 5.0 },
-    ] 
+    ],
   },
-  { 
-    id: 6, 
-    fecha: new Date(Date.now() - 18 * 3600000).toISOString(), 
-    total: 12.0, 
-    estado: true, 
-    metodoPago: 'Efectivo', 
-    empleado: empleadoDemo2, 
-    cliente: null, 
+  {
+    id: 6,
+    fecha: new Date(Date.now() - 18 * 3600000).toISOString(),
+    total: 12.0,
+    estado: true,
+    metodoPago: 'Efectivo',
+    empleado: empleadoDemo2,
+    cliente: null,
     detalles: [
       { id: 10, producto: productoSimple(9), cantidad: 1, tipoVenta: 'unidad', precioUnitario: 12.0, subtotal: 12.0 },
-    ] 
+    ],
   },
-  { 
-    id: 7, 
-    fecha: new Date(Date.now() - 22 * 3600000).toISOString(), 
-    total: 35.5, 
-    estado: true, 
-    metodoPago: 'Yape/Plin', 
-    empleado: empleadoDemo2, 
-    cliente: clientes[5], 
+  {
+    id: 7,
+    fecha: new Date(Date.now() - 22 * 3600000).toISOString(),
+    total: 35.5,
+    estado: true,
+    metodoPago: 'Yape/Plin',
+    empleado: empleadoDemo2,
+    cliente: clientes[5],
     detalles: [
       { id: 11, producto: productoSimple(10), cantidad: 1, tipoVenta: 'blister', precioUnitario: 30.0, subtotal: 30.0 },
       { id: 12, producto: productoSimple(20), cantidad: 1, tipoVenta: 'unidad', precioUnitario: 8.5, subtotal: 5.5 },
-    ] 
+    ],
   },
-  { 
-    id: 8, 
-    fecha: new Date(Date.now() - 30 * 3600000).toISOString(), 
-    total: 22.0, 
-    estado: true, 
-    metodoPago: 'Efectivo', 
-    empleado: empleadoDemo1, 
-    cliente: null, 
+  {
+    id: 8,
+    fecha: new Date(Date.now() - 30 * 3600000).toISOString(),
+    total: 22.0,
+    estado: true,
+    metodoPago: 'Efectivo',
+    empleado: empleadoDemo1,
+    cliente: null,
     detalles: [
       { id: 13, producto: productoSimple(15), cantidad: 1, tipoVenta: 'unidad', precioUnitario: 22.0, subtotal: 22.0 },
-    ] 
+    ],
   },
-  { 
-    id: 9, 
-    fecha: new Date(Date.now() - 36 * 3600000).toISOString(), 
-    total: 200.0, 
-    estado: true, 
-    metodoPago: 'Tarjetas', 
-    empleado: empleadoDemo1, 
-    cliente: clientes[2], 
+  {
+    id: 9,
+    fecha: new Date(Date.now() - 36 * 3600000).toISOString(),
+    total: 200.0,
+    estado: true,
+    metodoPago: 'Tarjetas',
+    empleado: empleadoDemo1,
+    cliente: clientes[2],
     detalles: [
       { id: 14, producto: productoSimple(1), cantidad: 1, tipoVenta: 'caja', precioUnitario: 200.0, subtotal: 200.0 },
-    ] 
+    ],
   },
-  { 
-    id: 10, 
-    fecha: new Date(Date.now() - 42 * 3600000).toISOString(), 
-    total: 18.0, 
-    estado: true, 
-    metodoPago: 'Efectivo', 
-    empleado: empleadoDemo2, 
-    cliente: null, 
+  {
+    id: 10,
+    fecha: new Date(Date.now() - 42 * 3600000).toISOString(),
+    total: 18.0,
+    estado: true,
+    metodoPago: 'Efectivo',
+    empleado: empleadoDemo2,
+    cliente: null,
     detalles: [
       { id: 15, producto: productoSimple(17), cantidad: 1, tipoVenta: 'unidad', precioUnitario: 18.0, subtotal: 18.0 },
-    ] 
+    ],
   },
-  { 
-    id: 11, 
-    fecha: new Date(Date.now() - 48 * 3600000).toISOString(), 
-    total: 58.0, 
-    estado: true, 
-    metodoPago: 'Yape/Plin', 
-    empleado: empleadoDemo2, 
-    cliente: clientes[6], 
+  {
+    id: 11,
+    fecha: new Date(Date.now() - 48 * 3600000).toISOString(),
+    total: 58.0,
+    estado: true,
+    metodoPago: 'Yape/Plin',
+    empleado: empleadoDemo2,
+    cliente: clientes[6],
     detalles: [
       { id: 16, producto: productoSimple(26), cantidad: 1, tipoVenta: 'unidad', precioUnitario: 58.0, subtotal: 58.0 },
-    ] 
+    ],
   },
-  { 
-    id: 12, 
-    fecha: new Date(Date.now() - 52 * 3600000).toISOString(), 
-    total: 18.0, 
-    estado: true, 
-    metodoPago: 'Efectivo', 
-    empleado: empleadoDemo1, 
-    cliente: null, 
+  {
+    id: 12,
+    fecha: new Date(Date.now() - 52 * 3600000).toISOString(),
+    total: 18.0,
+    estado: true,
+    metodoPago: 'Efectivo',
+    empleado: empleadoDemo1,
+    cliente: null,
     detalles: [
       { id: 17, producto: productoSimple(7), cantidad: 1, tipoVenta: 'blister', precioUnitario: 18.0, subtotal: 18.0 },
-    ] 
+    ],
   },
-  { 
-    id: 13, 
-    fecha: new Date(Date.now() - 60 * 3600000).toISOString(), 
-    total: 49.8, 
-    estado: true, 
-    metodoPago: 'Tarjetas', 
-    empleado: empleadoDemo2, 
-    cliente: clientes[0], 
+  {
+    id: 13,
+    fecha: new Date(Date.now() - 60 * 3600000).toISOString(),
+    total: 49.8,
+    estado: true,
+    metodoPago: 'Tarjetas',
+    empleado: empleadoDemo2,
+    cliente: clientes[0],
     detalles: [
       { id: 18, producto: productoSimple(23), cantidad: 1, tipoVenta: 'blister', precioUnitario: 45.0, subtotal: 45.0 },
       { id: 19, producto: productoSimple(23), cantidad: 1, tipoVenta: 'unidad', precioUnitario: 4.8, subtotal: 4.8 },
-    ] 
+    ],
   },
-  { 
-    id: 14, 
-    fecha: new Date(Date.now() - 65 * 3600000).toISOString(), 
-    total: 15.0, 
-    estado: true, 
-    metodoPago: 'Efectivo', 
-    empleado: empleadoDemo2, 
-    cliente: null, 
+  {
+    id: 14,
+    fecha: new Date(Date.now() - 65 * 3600000).toISOString(),
+    total: 15.0,
+    estado: true,
+    metodoPago: 'Efectivo',
+    empleado: empleadoDemo2,
+    cliente: null,
     detalles: [
       { id: 20, producto: productoSimple(19), cantidad: 1, tipoVenta: 'unidad', precioUnitario: 15.0, subtotal: 15.0 },
-    ] 
+    ],
   },
-  { 
-    id: 15, 
-    fecha: new Date(Date.now() - 72 * 3600000).toISOString(), 
-    total: 25.0, 
-    estado: true, 
-    metodoPago: 'Yape/Plin', 
-    empleado: empleadoDemo1, 
-    cliente: clientes[3], 
+  {
+    id: 15,
+    fecha: new Date(Date.now() - 72 * 3600000).toISOString(),
+    total: 25.0,
+    estado: true,
+    metodoPago: 'Yape/Plin',
+    empleado: empleadoDemo1,
+    cliente: clientes[3],
     detalles: [
       { id: 21, producto: productoSimple(24), cantidad: 1, tipoVenta: 'unidad', precioUnitario: 25.0, subtotal: 25.0 },
-    ] 
+    ],
   },
-  { 
-    id: 16, 
-    fecha: new Date(Date.now() - 78 * 3600000).toISOString(), 
-    total: 18.5, 
-    estado: true, 
-    metodoPago: 'Efectivo', 
-    empleado: empleadoDemo2, 
-    cliente: null, 
+  {
+    id: 16,
+    fecha: new Date(Date.now() - 78 * 3600000).toISOString(),
+    total: 18.5,
+    estado: true,
+    metodoPago: 'Efectivo',
+    empleado: empleadoDemo2,
+    cliente: null,
     detalles: [
       { id: 22, producto: productoSimple(22), cantidad: 1, tipoVenta: 'unidad', precioUnitario: 18.5, subtotal: 18.5 },
-    ] 
+    ],
   },
-  { 
-    id: 17, 
-    fecha: new Date(Date.now() - 84 * 3600000).toISOString(), 
-    total: 32.0, 
-    estado: true, 
-    metodoPago: 'Tarjetas', 
-    empleado: empleadoDemo2, 
-    cliente: clientes[1], 
+  {
+    id: 17,
+    fecha: new Date(Date.now() - 84 * 3600000).toISOString(),
+    total: 32.0,
+    estado: true,
+    metodoPago: 'Tarjetas',
+    empleado: empleadoDemo2,
+    cliente: clientes[1],
     detalles: [
       { id: 23, producto: productoSimple(9), cantidad: 1, tipoVenta: 'blister', precioUnitario: 32.0, subtotal: 32.0 },
-    ] 
+    ],
   },
-  { 
-    id: 18, 
-    fecha: new Date(Date.now() - 90 * 3600000).toISOString(), 
-    total: 12.0, 
-    estado: true, 
-    metodoPago: 'Efectivo', 
-    empleado: empleadoDemo1, 
-    cliente: null, 
+  {
+    id: 18,
+    fecha: new Date(Date.now() - 90 * 3600000).toISOString(),
+    total: 12.0,
+    estado: true,
+    metodoPago: 'Efectivo',
+    empleado: empleadoDemo1,
+    cliente: null,
     detalles: [
       { id: 24, producto: productoSimple(28), cantidad: 1, tipoVenta: 'unidad', precioUnitario: 12.0, subtotal: 12.0 },
-    ] 
+    ],
   },
-  { 
-    id: 19, 
-    fecha: new Date(Date.now() - 96 * 3600000).toISOString(), 
-    total: 45.0, 
-    estado: true, 
-    metodoPago: 'Yape/Plin', 
-    empleado: empleadoDemo2, 
-    cliente: clientes[4], 
+  {
+    id: 19,
+    fecha: new Date(Date.now() - 96 * 3600000).toISOString(),
+    total: 45.0,
+    estado: true,
+    metodoPago: 'Yape/Plin',
+    empleado: empleadoDemo2,
+    cliente: clientes[4],
     detalles: [
       { id: 25, producto: productoSimple(14), cantidad: 1, tipoVenta: 'blister', precioUnitario: 45.0, subtotal: 45.0 },
-    ] 
+    ],
   },
-  { 
-    id: 20, 
-    fecha: new Date(Date.now() - 100 * 3600000).toISOString(), 
-    total: 8.0, 
-    estado: true, 
-    metodoPago: 'Efectivo', 
-    empleado: empleadoDemo2, 
-    cliente: null, 
+  {
+    id: 20,
+    fecha: new Date(Date.now() - 100 * 3600000).toISOString(),
+    total: 8.0,
+    estado: true,
+    metodoPago: 'Efectivo',
+    empleado: empleadoDemo2,
+    cliente: null,
     detalles: [
       { id: 26, producto: productoSimple(29), cantidad: 1, tipoVenta: 'unidad', precioUnitario: 8.0, subtotal: 8.0 },
-    ] 
+    ],
   },
-  { 
-    id: 21, 
-    fecha: new Date(Date.now() - 108 * 3600000).toISOString(), 
-    total: 16.0, 
-    estado: true, 
-    metodoPago: 'Yape/Plin', 
-    empleado: empleadoDemo1, 
-    cliente: clientes[5], 
+  {
+    id: 21,
+    fecha: new Date(Date.now() - 108 * 3600000).toISOString(),
+    total: 16.0,
+    estado: true,
+    metodoPago: 'Yape/Plin',
+    empleado: empleadoDemo1,
+    cliente: clientes[5],
     detalles: [
       { id: 27, producto: productoSimple(18), cantidad: 2, tipoVenta: 'blister', precioUnitario: 8.0, subtotal: 16.0 },
-    ] 
+    ],
   },
-  { 
-    id: 22, 
-    fecha: new Date(Date.now() - 115 * 3600000).toISOString(), 
-    total: 13.0, 
-    estado: true, 
-    metodoPago: 'Efectivo', 
-    empleado: empleadoDemo2, 
-    cliente: null, 
+  {
+    id: 22,
+    fecha: new Date(Date.now() - 115 * 3600000).toISOString(),
+    total: 13.0,
+    estado: true,
+    metodoPago: 'Efectivo',
+    empleado: empleadoDemo2,
+    cliente: null,
     detalles: [
       { id: 28, producto: productoSimple(16), cantidad: 1, tipoVenta: 'unidad', precioUnitario: 9.5, subtotal: 9.5 },
       { id: 29, producto: productoSimple(21), cantidad: 1, tipoVenta: 'unidad', precioUnitario: 3.0, subtotal: 3.0 },
       { id: 30, producto: productoSimple(27), cantidad: 1, tipoVenta: 'unidad', precioUnitario: 1.0, subtotal: 1.0 },
-    ] 
+    ],
   },
 ];
 
@@ -355,21 +419,79 @@ export const ventasApi = {
 };
 
 export const clientesApi = {
-  listar: async () => { await delay(); return [...clientes]; },
-  crear: async (data: { nombre: string; dni?: string; telefono?: string }) => { await delay(); const n: Cliente = { id: nextId(clientes), saldo: 0, ...data }; clientes.push(n); return n; },
-  actualizar: async (id: number, data: { nombre: string; dni?: string; telefono?: string }) => {
+  listar: async () => {
+    await delay();
+    return [...clientes];
+  },
+
+  crear: async (data: ClientePayload) => {
+    await delay();
+    const nuevo: Cliente = {
+      id: nextId(clientes),
+      nombres: data.nombres,
+      apellidoPaterno: data.apellidoPaterno ?? '',
+      apellidoMaterno: data.apellidoMaterno ?? '',
+      dni: data.dni,
+      telefono: data.telefono,
+      saldo: 0,
+    };
+    clientes.push(nuevo);
+    return nuevo;
+  },
+
+  actualizar: async (id: number, data: ClientePayload) => {
     await delay();
     const cliente = clientes.find((c) => c.id === id);
     if (!cliente) throw new Error('Cliente no encontrado');
-    Object.assign(cliente, data);
+    cliente.nombres = data.nombres;
+    cliente.apellidoPaterno = data.apellidoPaterno ?? '';
+    cliente.apellidoMaterno = data.apellidoMaterno ?? '';
+    cliente.dni = data.dni;
+    cliente.telefono = data.telefono;
     return cliente;
   },
+
   registrarPago: async (id: number, monto: number) => {
     await delay();
     const cliente = clientes.find((c) => c.id === id);
     if (!cliente) throw new Error('Cliente no encontrado');
-    cliente.saldo = Math.max(0, (cliente.saldo ?? 0) - monto);
+    cliente.saldo = Number(Math.max(0, (cliente.saldo ?? 0) - monto).toFixed(2));
     return cliente;
+  },
+
+  actualizarSaldo: async (id: number, saldo: number) => {
+    await delay();
+    const cliente = clientes.find((c) => c.id === id);
+    if (!cliente) throw new Error('Cliente no encontrado');
+    cliente.saldo = saldo;
+    return cliente;
+  },
+
+  // Ya no consulta RENIEC real: devuelve una respuesta simulada a partir del DNI.
+  // Si el DNI ya existe entre los clientes registrados, reutiliza sus datos.
+  consultarDni: async (dni: string): Promise<ReniecResponse> => {
+    await delay();
+    const existente = clientes.find((c) => c.dni === dni);
+    if (existente) {
+      return {
+        success: true,
+        dni,
+        nombres: existente.nombres,
+        apellidoPaterno: existente.apellidoPaterno ?? '',
+        apellidoMaterno: existente.apellidoMaterno ?? '',
+      };
+    }
+    if (!/^\d{8}$/.test(dni)) {
+      return { success: false, dni, nombres: '', apellidoPaterno: '', apellidoMaterno: '' };
+    }
+    return {
+      success: true,
+      dni,
+      nombres: 'Cliente',
+      apellidoPaterno: 'Demo',
+      apellidoMaterno: dni.slice(-2),
+      codVerifica: '0',
+    };
   },
 };
 

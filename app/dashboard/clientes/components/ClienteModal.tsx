@@ -1,45 +1,80 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { X, UserPlus } from 'lucide-react';
+import { X, UserPlus, Search, Loader2 } from 'lucide-react';
 import type { Cliente } from '@/api/ventas';
+import { clientesApi, getNombreCompleto, splitNombreCompleto } from '@/api/ventas';
 
 interface ClienteModalProps {
   open: boolean;
-  cliente: Cliente | null; // null = crear, objeto = editar
+  cliente: Cliente | null;
   onClose: () => void;
-  onSave: (data: { nombre: string; dni?: string; telefono?: string }) => Promise<void>;
+  onSave: (data: { nombres: string; apellidoPaterno?: string; apellidoMaterno?: string; dni?: string; telefono?: string }) => Promise<void>;
 }
 
 export default function ClienteModal({ open, cliente, onClose, onSave }: ClienteModalProps) {
-  const [nombre, setNombre] = useState('');
+  const [nombreCompleto, setNombreCompleto] = useState('');
   const [dni, setDni] = useState('');
   const [telefono, setTelefono] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const [buscandoDni, setBuscandoDni] = useState(false);
+  const [dniError, setDniError] = useState('');
+
   useEffect(() => {
-    setNombre(cliente?.nombre ?? '');
+    // --- CAMBIO: reconstruye el nombre completo a partir de los 3 campos del backend ---
+    setNombreCompleto(cliente ? getNombreCompleto(cliente) : '');
     setDni(cliente?.dni ?? '');
     setTelefono(cliente?.telefono ?? '');
     setError('');
+    setDniError('');
   }, [cliente, open]);
 
   if (!open) return null;
 
   const handleClose = () => {
-    setNombre(''); setDni(''); setTelefono(''); setError('');
+    setNombreCompleto(''); setDni(''); setTelefono(''); setError(''); setDniError('');
     onClose();
+  };
+
+  const handleBuscarDni = async () => {
+    const dniLimpio = dni.trim();
+    setDniError('');
+
+    if (dniLimpio.length !== 8) {
+      setDniError('El DNI debe tener 8 dígitos.');
+      return;
+    }
+
+    setBuscandoDni(true);
+    try {
+      const datos = await clientesApi.consultarDni(dniLimpio);
+      setNombreCompleto([datos.nombres, datos.apellidoPaterno, datos.apellidoMaterno].filter(Boolean).join(' '));
+    } catch {
+      setDniError('No se encontraron datos para ese DNI.');
+    } finally {
+      setBuscandoDni(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nombre.trim()) return setError('El nombre es obligatorio.');
+    if (!nombreCompleto.trim()) return setError('El nombre es obligatorio.');
+
+    // --- CAMBIO CLAVE: divide el nombre completo antes de enviarlo al backend ---
+    const { nombres, apellidoPaterno, apellidoMaterno } = splitNombreCompleto(nombreCompleto);
 
     setSaving(true);
     setError('');
     try {
-      await onSave({ nombre: nombre.trim(), dni: dni.trim() || undefined, telefono: telefono.trim() || undefined });
+      await onSave({
+        nombres,
+        apellidoPaterno: apellidoPaterno || undefined,
+        apellidoMaterno: apellidoMaterno || undefined,
+        dni: dni.trim() || undefined,
+        telefono: telefono.trim() || undefined,
+      });
       handleClose();
     } catch {
       setError('No se pudo guardar el cliente.');
@@ -64,18 +99,42 @@ export default function ClienteModal({ open, cliente, onClose, onSave }: Cliente
 
         <form onSubmit={handleSubmit} className="p-5 space-y-3">
           <div className="space-y-1">
-            <label className={labelClass}>Nombre</label>
-            <input autoFocus value={nombre} onChange={(e) => setNombre(e.target.value)} className={inputClass} />
+            <label className={labelClass}>DNI</label>
+            <div className="flex gap-2">
+              <input
+                value={dni}
+                onChange={(e) => setDni(e.target.value.replace(/\D/g, ''))}
+                maxLength={8}
+                placeholder="8 dígitos"
+                className={inputClass}
+              />
+              <button
+                type="button"
+                onClick={handleBuscarDni}
+                disabled={buscandoDni || dni.trim().length !== 8}
+                title="Buscar datos por DNI"
+                className="shrink-0 px-3 py-2 rounded-lg border-2 border-primary/30 text-primary hover:bg-primary/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {buscandoDni ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+              </button>
+            </div>
+            {dniError && <p className="text-xs text-red-500 font-medium">{dniError}</p>}
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className={labelClass}>DNI</label>
-              <input value={dni} onChange={(e) => setDni(e.target.value)} maxLength={8} className={inputClass} />
-            </div>
-            <div className="space-y-1">
-              <label className={labelClass}>Teléfono</label>
-              <input value={telefono} onChange={(e) => setTelefono(e.target.value)} className={inputClass} />
-            </div>
+
+          <div className="space-y-1">
+            <label className={labelClass}>Nombre completo</label>
+            <input
+              value={nombreCompleto}
+              onChange={(e) => setNombreCompleto(e.target.value)}
+              placeholder="Nombres Apellido Paterno Apellido Materno"
+              className={inputClass}
+            />
+            <p className="text-[11px] text-zinc-400">Se guardará separado en nombres y apellidos.</p>
+          </div>
+
+          <div className="space-y-1">
+            <label className={labelClass}>Teléfono</label>
+            <input value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="Ingreso manual" className={inputClass} />
           </div>
 
           {error && <p className="text-xs text-red-500 font-medium">{error}</p>}

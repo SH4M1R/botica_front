@@ -1,7 +1,7 @@
 import { delay } from './_mockUtils';
 import { ventasApi } from './ventas';
 import { comprasApi } from './compra';
-import { productos as productosSeed } from './productos';
+import { productos as productosSeed, laboratorios as laboratoriosSeed } from './productos';
 import { asistenciaApi } from './asistencia';
 
 const IGV = 0.18;
@@ -130,11 +130,46 @@ export async function obtenerCuentasPorPagar(fechaInicio: string, fechaFin: stri
   };
 }
 
-/* ============ INVENTARIO ============ */
-export interface InventarioValoradoItem { idProducto: number; nombreProducto: string; categoria: string; laboratorio: string; stock: number; precioCosto: number; precioVenta: number; valorCosto: number; valorVenta: number; }
-export interface ReporteInventarioValorado { totalProductos: number; valorTotalCosto: number; valorTotalVenta: number; productos: InventarioValoradoItem[]; }
-export interface AlertaStock { idProducto: number; nombreProducto: string; stock: number; stockMinimo: number; diferencia: number; }
-export interface CatalogoTerapeutico { idProducto: number; nombreProducto: string; principioActivo: string | null; accionTerapeutica: string | null; stock: number; precioVenta: number; }
+/* ============================================================
+   INVENTARIO
+   ============================================================ */
+
+export interface InventarioValoradoItem {
+  idProducto: number;
+  nombreProducto: string;
+  categoria: string;
+  laboratorio: string;
+  stock: number;
+  precioCosto: number;
+  precioVenta: number;
+  valorCosto: number;
+  valorVenta: number;
+}
+
+export interface ReporteInventarioValorado {
+  totalProductos: number;
+  valorTotalCosto: number;
+  valorTotalVenta: number;
+  productos: InventarioValoradoItem[];
+}
+
+export interface AlertaStock {
+  idProducto: number;
+  nombreProducto: string;
+  laboratorio: { idLaboratorio: number; nombre: string } | null;
+  stock: number;
+  stockMinimo: number;
+  diferencia: number;
+}
+
+export interface CatalogoTerapeutico {
+  idProducto: number;
+  nombreProducto: string;
+  principioActivo: string | null;
+  accionTerapeutica: string | null;
+  stock: number;
+  precioVenta: number;
+}
 
 export async function obtenerInventarioValorado(): Promise<ReporteInventarioValorado> {
   await delay();
@@ -149,7 +184,14 @@ export async function obtenerInventarioValorado(): Promise<ReporteInventarioValo
 export async function obtenerAlertaStockMinimo(): Promise<AlertaStock[]> {
   await delay();
   return productosSeed.filter((p) => p.stock_minimo != null && p.stock <= p.stock_minimo)
-    .map((p) => ({ idProducto: p.id, nombreProducto: p.nombre, stock: p.stock, stockMinimo: p.stock_minimo ?? 0, diferencia: p.stock - (p.stock_minimo ?? 0) }));
+    .map((p) => ({
+      idProducto: p.id,
+      nombreProducto: p.nombre,
+      laboratorio: { idLaboratorio: p.laboratorio.id, nombre: p.laboratorio.nombre },
+      stock: p.stock,
+      stockMinimo: p.stock_minimo ?? 0,
+      diferencia: p.stock - (p.stock_minimo ?? 0),
+    }));
 }
 
 export async function obtenerCatalogoTerapeutico(): Promise<CatalogoTerapeutico[]> {
@@ -175,4 +217,147 @@ export async function obtenerConsolidadoGeneral(fechaInicio: string, fechaFin: s
   const totalIngresosCaja = 200, totalEgresosCaja = 85.5;
   const utilidadBruta = totalVentas - totalCompras;
   return { fechaInicio, fechaFin, totalVentas: Number(totalVentas.toFixed(2)), totalCompras: Number(totalCompras.toFixed(2)), totalIngresosCaja, totalEgresosCaja, utilidadBruta: Number(utilidadBruta.toFixed(2)), utilidadNeta: Number((utilidadBruta + totalIngresosCaja - totalEgresosCaja).toFixed(2)) };
+}
+
+/* ============================================================
+   VENTAS POR PRODUCTO  (antes usaba getJson -> backend)
+   ============================================================ */
+
+export interface VentaDetalleProducto {
+  fecha: string;
+  cliente: string;
+  empleado: string;
+  cantidad: number;
+  precioUnitario: number;
+  subtotal: number;
+  tipoVenta: string;
+}
+
+export interface ReporteVentasPorProducto {
+  idProducto: number;
+  nombreProducto: string;
+  fechaInicio: string;
+  fechaFin: string;
+  totalUnidades: number;
+  totalVendido: number;
+  detalle: VentaDetalleProducto[];
+}
+
+export async function obtenerVentasPorProducto(idProducto: number, fechaInicio: string, fechaFin: string): Promise<ReporteVentasPorProducto> {
+  await delay();
+  const producto = productosSeed.find((p) => p.id === idProducto);
+  const ventas = (await ventasApi.listar()).filter(
+    (v) => v.estado && v.fecha.slice(0, 10) >= fechaInicio && v.fecha.slice(0, 10) <= fechaFin,
+  );
+
+  const detalle: VentaDetalleProducto[] = [];
+  ventas.forEach((v) => {
+    v.detalles.filter((d) => d.producto.id === idProducto).forEach((d) => {
+      detalle.push({
+        fecha: v.fecha,
+        cliente: v.cliente ? v.cliente.nombres ?? 'Cliente' : 'Sin cliente',
+        empleado: v.empleado.nombre,
+        cantidad: d.cantidad,
+        precioUnitario: d.precioUnitario,
+        subtotal: d.subtotal,
+        tipoVenta: d.tipoVenta,
+      });
+    });
+  });
+
+  return {
+    idProducto,
+    nombreProducto: producto?.nombre ?? `Producto #${idProducto}`,
+    fechaInicio,
+    fechaFin,
+    totalUnidades: detalle.reduce((s, d) => s + d.cantidad, 0),
+    totalVendido: Number(detalle.reduce((s, d) => s + d.subtotal, 0).toFixed(2)),
+    detalle,
+  };
+}
+
+/* ============================================================
+   PRODUCTOS POR VENCER  (antes usaba getJson -> backend)
+   ============================================================ */
+
+export interface ProductoPorVencer {
+  idProducto: number;
+  nombreProducto: string;
+  lote: string | null;
+  fechaVencimiento: string;
+  stock: number;
+  diasRestantes: number;
+}
+
+export async function obtenerProductosPorVencer(dias = 90): Promise<ProductoPorVencer[]> {
+  await delay();
+  const hoy = new Date();
+  return productosSeed
+    .filter((p) => p.fecha_vencimiento)
+    .map((p) => {
+      const vencimiento = new Date(p.fecha_vencimiento as string);
+      const diasRestantes = Math.round((vencimiento.getTime() - hoy.getTime()) / 86400000);
+      return {
+        idProducto: p.id,
+        nombreProducto: p.nombre,
+        lote: p.lote ?? null,
+        fechaVencimiento: p.fecha_vencimiento as string,
+        stock: p.stock,
+        diasRestantes,
+      };
+    })
+    .filter((p) => p.diasRestantes <= dias)
+    .sort((a, b) => a.diasRestantes - b.diasRestantes);
+}
+
+/* ============================================================
+   PRODUCTOS POR LABORATORIO  (antes usaba getJson -> backend)
+   ============================================================ */
+
+export interface LaboratorioResumen {
+  idLaboratorio: number;
+  nombreLaboratorio: string;
+  cantidadProductos: number;
+}
+
+export interface ProductoPorLaboratorio {
+  idProducto: number;
+  nombreProducto: string;
+  stock: number;
+  precioVenta: number;
+  fechaVencimiento: string | null;
+}
+
+export interface ReporteProductosPorLaboratorio {
+  idLaboratorio: number;
+  nombreLaboratorio: string;
+  totalProductos: number;
+  productos: ProductoPorLaboratorio[];
+}
+
+export async function listarLaboratorios(): Promise<LaboratorioResumen[]> {
+  await delay();
+  return laboratoriosSeed.map((lab) => ({
+    idLaboratorio: lab.id,
+    nombreLaboratorio: lab.nombre,
+    cantidadProductos: productosSeed.filter((p) => p.laboratorio.id === lab.id).length,
+  }));
+}
+
+export async function obtenerProductosPorLaboratorio(idLaboratorio: number): Promise<ReporteProductosPorLaboratorio> {
+  await delay();
+  const laboratorio = laboratoriosSeed.find((l) => l.id === idLaboratorio);
+  const productosDelLab = productosSeed.filter((p) => p.laboratorio.id === idLaboratorio);
+  return {
+    idLaboratorio,
+    nombreLaboratorio: laboratorio?.nombre ?? `Laboratorio #${idLaboratorio}`,
+    totalProductos: productosDelLab.length,
+    productos: productosDelLab.map((p) => ({
+      idProducto: p.id,
+      nombreProducto: p.nombre,
+      stock: p.stock,
+      precioVenta: p.precio_venta,
+      fechaVencimiento: p.fecha_vencimiento ?? null,
+    })),
+  };
 }

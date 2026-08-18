@@ -164,7 +164,7 @@ export default function RegistrarMovimientoModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className={labelClass}>Número</label>
+              <label className={labelClass}>Número de Transacción</label>
               <input autoFocus value={numero} onChange={(e) => setNumero(e.target.value)} className={inputClass} />
             </div>
             <div className="space-y-1">

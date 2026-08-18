@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { FileText, Printer, Loader2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { FileText, Printer, Loader2, Search, Check, ChevronDown } from 'lucide-react';
 
 import * as api from '@/api/reportes';
+import { productosApi, type Producto as ProductoAPI } from '@/api/productos';
 import { generarReporteAsistenciaPos80, generarReporteAsistenciaA4 } from '@/utils/reportes/reporteAsistencia';
 import { obtenerEmpresa } from '@/api/empresa';
 import { descargarPdf, abrirPdfEnNuevaPestana } from '@/utils/reportes/pdfBase';
@@ -21,7 +22,18 @@ import { generarAlertaStockPos80, generarAlertaStockA4 } from '@/utils/reportes/
 import { generarCatalogoTerapeuticoPos80, generarCatalogoTerapeuticoA4 } from '@/utils/reportes/reporteCatalogoTerapeutico';
 import { generarConsolidadoGeneralPos80, generarConsolidadoGeneralA4 } from '@/utils/reportes/reporteConsolidadoGeneral';
 
+import { generarProductosPorLaboratorioPos80, generarProductosPorLaboratorioA4 } from '@/utils/reportes/reporteProductosPorLaboratorio';
+import { generarProductosPorVencerPos80, generarProductosPorVencerA4 } from '@/utils/reportes/reporteProductosPorVencer';
+import { generarVentasPorProductoPos80, generarVentasPorProductoA4 } from '@/utils/reportes/reporteVentasPorProducto';
+
 type Modulo = 'ventas' | 'caja' | 'compras' | 'inventario' | 'gestion';
+
+interface Producto {
+  id: number;
+  nombre: string;
+  codigo?: string;
+  laboratorio?: string;
+}
 
 const MODULOS: { id: Modulo; label: string }[] = [
   { id: 'ventas', label: 'Ventas' },
@@ -39,7 +51,6 @@ function inicioDeMes() {
   const d = new Date();
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
 }
-
 
 function ReporteCard({
   titulo,
@@ -74,7 +85,7 @@ function ReporteCard({
         <button
           disabled={cargando}
           onClick={onPos80}
-          className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-zinc-300 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 transition-colors disabled:opacity-50"
+          className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-zinc-300 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 transition-colors disabled:opacity-50 cursor-pointer"
         >
           {cargando ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
           Ticket (POS80)
@@ -82,7 +93,7 @@ function ReporteCard({
         <button
           disabled={cargando}
           onClick={onA4}
-          className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
+          className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 cursor-pointer"
         >
           {cargando ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
           Documento (A4)
@@ -139,22 +150,235 @@ function InputNumero({
   );
 }
 
-/* ============================================================
-   Pagina principal
-   ============================================================ */
+function BuscadorProducto({
+  label,
+  productoSeleccionado,
+  onSeleccionarProducto,
+}: {
+  label: string;
+  productoSeleccionado: Producto | null;
+  onSeleccionarProducto: (prod: Producto | null) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [todosLosProductos, setTodosLosProductos] = useState<Producto[]>([]);
+  const [cargando, setCargando] = useState(false);
+  const [abierto, setAbierto] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setAbierto(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Carga la lista de productos activos una sola vez al montar el buscador
+  useEffect(() => {
+    setCargando(true);
+    productosApi
+      .listarActivos()
+      .then((data) =>
+        setTodosLosProductos(
+          data.map((p) => ({
+            id: p.id,
+            nombre: p.nombre,
+            codigo: p.codigo_digemid,
+            laboratorio: p.laboratorio?.nombre,
+          }))
+        )
+      )
+      .catch((err) => console.error('Error al cargar productos:', err))
+      .finally(() => setCargando(false));
+  }, []);
+
+  const productosFiltrados = query.trim()
+    ? todosLosProductos.filter((p) => {
+        const q = query.toLowerCase();
+        return (
+          p.nombre.toLowerCase().includes(q) ||
+          p.codigo?.toLowerCase().includes(q) ||
+          p.laboratorio?.toLowerCase().includes(q)
+        );
+      })
+    : todosLosProductos;
+
+  return (
+    <div className="flex flex-col gap-1 text-xs text-zinc-500 w-full relative" ref={dropdownRef}>
+      <span>{label}</span>
+      <div className="relative">
+        <input
+          type="text"
+          placeholder="Buscar producto por nombre o código..."
+          value={productoSeleccionado ? productoSeleccionado.nombre : query}
+          onFocus={() => {
+            setAbierto(true);
+            if (productoSeleccionado) {
+              setQuery('');
+              onSeleccionarProducto(null);
+            }
+          }}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            if (productoSeleccionado) onSeleccionarProducto(null);
+            setAbierto(true);
+          }}
+          className="w-full pl-8 pr-8 py-2 rounded-lg border border-zinc-300 bg-white text-sm text-zinc-800 focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+        />
+        <Search size={15} className="absolute left-2.5 top-2.5 text-zinc-400" />
+        {cargando ? (
+          <Loader2 size={15} className="absolute right-2.5 top-2.5 animate-spin text-zinc-400" />
+        ) : (
+          <ChevronDown size={15} className="absolute right-2.5 top-2.5 text-zinc-400 pointer-events-none" />
+        )}
+      </div>
+
+      {abierto && productosFiltrados.length > 0 && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-zinc-200 rounded-xl shadow-lg max-h-60 overflow-y-auto z-50">
+          {productosFiltrados.slice(0, 50).map((prod) => (
+            <button
+              key={prod.id}
+              type="button"
+              onClick={() => {
+                onSeleccionarProducto(prod);
+                setAbierto(false);
+              }}
+              className="w-full text-left px-3 py-2 hover:bg-zinc-50 flex items-center justify-between border-b border-zinc-100 last:border-none transition-colors"
+            >
+              <div>
+                <p className="font-medium text-xs text-zinc-800">{prod.nombre}</p>
+                <p className="text-[10px] text-zinc-400">
+                  {prod.codigo ? `Cód: ${prod.codigo}` : ''} {prod.laboratorio ? `| Lab: ${prod.laboratorio}` : ''}
+                </p>
+              </div>
+              {productoSeleccionado?.id === prod.id && <Check size={14} className="text-primary" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BuscadorLaboratorio({
+  label,
+  laboratorioSeleccionado,
+  onSeleccionarLaboratorio,
+}: {
+  label: string;
+  laboratorioSeleccionado: api.LaboratorioResumen | null;
+  onSeleccionarLaboratorio: (lab: api.LaboratorioResumen | null) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [laboratorios, setLaboratorios] = useState<api.LaboratorioResumen[]>([]);
+  const [cargando, setCargando] = useState(false);
+  const [abierto, setAbierto] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setAbierto(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Carga la lista de laboratorios una sola vez al montar el buscador
+  useEffect(() => {
+    setCargando(true);
+    api
+      .listarLaboratorios()
+      .then(setLaboratorios)
+      .catch((err) => console.error('Error al cargar laboratorios:', err))
+      .finally(() => setCargando(false));
+  }, []);
+
+  const laboratoriosFiltrados = query.trim()
+    ? laboratorios.filter((l) => l.nombreLaboratorio.toLowerCase().includes(query.toLowerCase()))
+    : laboratorios;
+
+  return (
+    <div className="flex flex-col gap-1 text-xs text-zinc-500 w-full relative" ref={dropdownRef}>
+      <span>{label}</span>
+      <div className="relative">
+        <input
+          type="text"
+          placeholder="Buscar laboratorio..."
+          value={laboratorioSeleccionado ? laboratorioSeleccionado.nombreLaboratorio : query}
+          onFocus={() => {
+            setAbierto(true);
+            if (laboratorioSeleccionado) {
+              setQuery('');
+              onSeleccionarLaboratorio(null);
+            }
+          }}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            if (laboratorioSeleccionado) onSeleccionarLaboratorio(null);
+            setAbierto(true);
+          }}
+          className="w-full pl-8 pr-8 py-2 rounded-lg border border-zinc-300 bg-white text-sm text-zinc-800 focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+        />
+        <Search size={15} className="absolute left-2.5 top-2.5 text-zinc-400" />
+        {cargando ? (
+          <Loader2 size={15} className="absolute right-2.5 top-2.5 animate-spin text-zinc-400" />
+        ) : (
+          <ChevronDown size={15} className="absolute right-2.5 top-2.5 text-zinc-400 pointer-events-none" />
+        )}
+      </div>
+
+      {abierto && laboratoriosFiltrados.length > 0 && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-zinc-200 rounded-xl shadow-lg max-h-60 overflow-y-auto z-50">
+          {laboratoriosFiltrados.map((lab) => (
+            <button
+              key={lab.idLaboratorio}
+              type="button"
+              onClick={() => {
+                onSeleccionarLaboratorio(lab);
+                setAbierto(false);
+              }}
+              className="w-full text-left px-3 py-2 hover:bg-zinc-50 flex items-center justify-between border-b border-zinc-100 last:border-none transition-colors"
+            >
+              <div>
+                <p className="font-medium text-xs text-zinc-800">{lab.nombreLaboratorio}</p>
+                <p className="text-[10px] text-zinc-400">{lab.cantidadProductos} producto(s)</p>
+              </div>
+              {laboratorioSeleccionado?.idLaboratorio === lab.idLaboratorio && (
+                <Check size={14} className="text-primary" />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ReportesPage() {
   const [moduloActivo, setModuloActivo] = useState<Modulo>('ventas');
   const [cargando, setCargando] = useState<string | null>(null);
 
-  // Rango de fechas compartido por la mayoria de reportes
   const [fechaInicio, setFechaInicio] = useState(inicioDeMes());
   const [fechaFin, setFechaFin] = useState(hoy());
 
-  // Parametros especificos
   const [idArqueo, setIdArqueo] = useState('');
-  const [idProducto, setIdProducto] = useState('');
+  const [productoSeleccionado, setProductoSeleccionado] = useState<Producto | null>(null);
+  const [laboratorioSeleccionado, setLaboratorioSeleccionado] = useState<api.LaboratorioResumen | null>(null);
   const [limiteTop, setLimiteTop] = useState('20');
+  const [diasVencer, setDiasVencer] = useState('30');
+
+  // Logo de la empresa, cargado una sola vez para usarse en TODOS los reportes
+  const [logoEmpresa, setLogoEmpresa] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    obtenerEmpresa()
+      .then((empresa) => setLogoEmpresa(empresa.logo || undefined))
+      .catch((err) => console.error('No se pudo cargar el logo de la empresa:', err));
+  }, []);
 
   async function ejecutar(key: string, accion: () => Promise<void>) {
     setCargando(key);
@@ -175,13 +399,12 @@ export default function ReportesPage() {
         <p className="text-sm text-zinc-500 mt-1">Genera y descarga los reportes del sistema en formato ticket o A4.</p>
       </div>
 
-      {/* Tabs de modulos */}
       <div className="flex flex-wrap gap-2">
         {MODULOS.map((m) => (
           <button
             key={m.id}
             onClick={() => setModuloActivo(m.id)}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
               moduloActivo === m.id
                 ? 'bg-primary text-white'
                 : 'bg-white text-zinc-600 border border-zinc-300 hover:bg-zinc-50'
@@ -192,7 +415,6 @@ export default function ReportesPage() {
         ))}
       </div>
 
-      {/* Rango de fechas compartido (aplica a casi todos los reportes) */}
       {moduloActivo !== 'inventario' && (
         <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs p-4 flex flex-wrap gap-4 items-end">
           <InputFecha label="Fecha inicio" value={fechaInicio} onChange={setFechaInicio} />
@@ -210,13 +432,16 @@ export default function ReportesPage() {
             onPos80={() =>
               ejecutar('ventas-periodo', async () => {
                 const data = await api.obtenerReporteVentasPeriodo(fechaInicio, fechaFin);
-                abrirPdfEnNuevaPestana(generarReporteVentasPeriodoPos80(data));
+                abrirPdfEnNuevaPestana(await generarReporteVentasPeriodoPos80(data, logoEmpresa));
               })
             }
             onA4={() =>
               ejecutar('ventas-periodo', async () => {
                 const data = await api.obtenerReporteVentasPeriodo(fechaInicio, fechaFin);
-                descargarPdf(generarReporteVentasPeriodoA4(data), `ventas-periodo-${fechaInicio}_${fechaFin}`);
+                descargarPdf(
+                  await generarReporteVentasPeriodoA4(data, logoEmpresa),
+                  `ventas-periodo-${fechaInicio}_${fechaFin}`
+                );
               })
             }
           />
@@ -228,14 +453,14 @@ export default function ReportesPage() {
             onPos80={() =>
               ejecutar('ventas-empleado', async () => {
                 const data = await api.obtenerVentasPorEmpleado(fechaInicio, fechaFin);
-                abrirPdfEnNuevaPestana(generarVentasPorEmpleadoPos80(fechaInicio, fechaFin, data));
+                abrirPdfEnNuevaPestana(await generarVentasPorEmpleadoPos80(fechaInicio, fechaFin, data, logoEmpresa));
               })
             }
             onA4={() =>
               ejecutar('ventas-empleado', async () => {
                 const data = await api.obtenerVentasPorEmpleado(fechaInicio, fechaFin);
                 descargarPdf(
-                  generarVentasPorEmpleadoA4(fechaInicio, fechaFin, data),
+                  await generarVentasPorEmpleadoA4(fechaInicio, fechaFin, data, logoEmpresa),
                   `ventas-por-empleado-${fechaInicio}_${fechaFin}`
                 );
               })
@@ -249,20 +474,49 @@ export default function ReportesPage() {
             onPos80={() =>
               ejecutar('top-productos', async () => {
                 const data = await api.obtenerTopProductos(fechaInicio, fechaFin, Number(limiteTop) || 20);
-                abrirPdfEnNuevaPestana(generarTopProductosPos80(fechaInicio, fechaFin, data));
+                abrirPdfEnNuevaPestana(await generarTopProductosPos80(fechaInicio, fechaFin, data, logoEmpresa));
               })
             }
             onA4={() =>
               ejecutar('top-productos', async () => {
                 const data = await api.obtenerTopProductos(fechaInicio, fechaFin, Number(limiteTop) || 20);
                 descargarPdf(
-                  generarTopProductosA4(fechaInicio, fechaFin, data),
+                  await generarTopProductosA4(fechaInicio, fechaFin, data, logoEmpresa),
                   `top-productos-${fechaInicio}_${fechaFin}`
                 );
               })
             }
           >
             <InputNumero label="Límite (top N)" value={limiteTop} onChange={setLimiteTop} placeholder="20" />
+          </ReporteCard>
+
+          <ReporteCard
+            titulo="Ventas por Producto"
+            descripcion="Detalle de ventas realizadas de un producto específico en el periodo seleccionado."
+            cargando={cargando === 'ventas-producto'}
+            onPos80={() =>
+              ejecutar('ventas-producto', async () => {
+                if (!productoSeleccionado) return alert('Por favor, selecciona un producto.');
+                const data = await api.obtenerVentasPorProducto(productoSeleccionado.id, fechaInicio, fechaFin);
+                abrirPdfEnNuevaPestana(await generarVentasPorProductoPos80(data, logoEmpresa));
+              })
+            }
+            onA4={() =>
+              ejecutar('ventas-producto', async () => {
+                if (!productoSeleccionado) return alert('Por favor, selecciona un producto.');
+                const data = await api.obtenerVentasPorProducto(productoSeleccionado.id, fechaInicio, fechaFin);
+                descargarPdf(
+                  await generarVentasPorProductoA4(data, logoEmpresa),
+                  `ventas-producto-${productoSeleccionado.id}-${fechaInicio}_${fechaFin}`
+                );
+              })
+            }
+          >
+            <BuscadorProducto
+              label="Seleccionar Producto"
+              productoSeleccionado={productoSeleccionado}
+              onSeleccionarProducto={setProductoSeleccionado}
+            />
           </ReporteCard>
         </div>
       )}
@@ -278,14 +532,14 @@ export default function ReportesPage() {
               ejecutar('arqueo', async () => {
                 if (!idArqueo) return alert('Ingresa el N° de arqueo/caja.');
                 const data = await api.obtenerReporteArqueo(Number(idArqueo));
-                abrirPdfEnNuevaPestana(generarArqueoCajaPos80(data));
+                abrirPdfEnNuevaPestana(await generarArqueoCajaPos80(data));
               })
             }
             onA4={() =>
               ejecutar('arqueo', async () => {
                 if (!idArqueo) return alert('Ingresa el N° de arqueo/caja.');
                 const data = await api.obtenerReporteArqueo(Number(idArqueo));
-                descargarPdf(generarArqueoCajaA4(data), `arqueo-caja-${idArqueo}`);
+                descargarPdf(await generarArqueoCajaA4(data), `arqueo-caja-${idArqueo}`);
               })
             }
           >
@@ -299,13 +553,13 @@ export default function ReportesPage() {
             onPos80={() =>
               ejecutar('flujo-caja', async () => {
                 const data = await api.obtenerFlujoCaja(fechaInicio, fechaFin);
-                abrirPdfEnNuevaPestana(generarFlujoCajaPos80(data));
+                abrirPdfEnNuevaPestana(await generarFlujoCajaPos80(data, logoEmpresa));
               })
             }
             onA4={() =>
               ejecutar('flujo-caja', async () => {
                 const data = await api.obtenerFlujoCaja(fechaInicio, fechaFin);
-                descargarPdf(generarFlujoCajaA4(data), `flujo-caja-${fechaInicio}_${fechaFin}`);
+                descargarPdf(await generarFlujoCajaA4(data, logoEmpresa), `flujo-caja-${fechaInicio}_${fechaFin}`);
               })
             }
           />
@@ -322,14 +576,16 @@ export default function ReportesPage() {
             onPos80={() =>
               ejecutar('compras-proveedor', async () => {
                 const data = await api.obtenerComprasPorProveedor(fechaInicio, fechaFin);
-                abrirPdfEnNuevaPestana(generarComprasPorProveedorPos80(fechaInicio, fechaFin, data));
+                abrirPdfEnNuevaPestana(
+                  await generarComprasPorProveedorPos80(fechaInicio, fechaFin, data, logoEmpresa)
+                );
               })
             }
             onA4={() =>
               ejecutar('compras-proveedor', async () => {
                 const data = await api.obtenerComprasPorProveedor(fechaInicio, fechaFin);
                 descargarPdf(
-                  generarComprasPorProveedorA4(fechaInicio, fechaFin, data),
+                  await generarComprasPorProveedorA4(fechaInicio, fechaFin, data, logoEmpresa),
                   `compras-por-proveedor-${fechaInicio}_${fechaFin}`
                 );
               })
@@ -342,20 +598,27 @@ export default function ReportesPage() {
             cargando={cargando === 'analisis-costos'}
             onPos80={() =>
               ejecutar('analisis-costos', async () => {
-                if (!idProducto) return alert('Ingresa el ID del producto.');
-                const data = await api.obtenerAnalisisCostos(Number(idProducto));
-                abrirPdfEnNuevaPestana(generarAnalisisCostosPos80(data));
+                if (!productoSeleccionado) return alert('Selecciona un producto.');
+                const data = await api.obtenerAnalisisCostos(productoSeleccionado.id);
+                abrirPdfEnNuevaPestana(await generarAnalisisCostosPos80(data, logoEmpresa));
               })
             }
             onA4={() =>
               ejecutar('analisis-costos', async () => {
-                if (!idProducto) return alert('Ingresa el ID del producto.');
-                const data = await api.obtenerAnalisisCostos(Number(idProducto));
-                descargarPdf(generarAnalisisCostosA4(data), `analisis-costos-producto-${idProducto}`);
+                if (!productoSeleccionado) return alert('Selecciona un producto.');
+                const data = await api.obtenerAnalisisCostos(productoSeleccionado.id);
+                descargarPdf(
+                  await generarAnalisisCostosA4(data, logoEmpresa),
+                  `analisis-costos-producto-${productoSeleccionado.id}`
+                );
               })
             }
           >
-            <InputNumero label="ID de producto" value={idProducto} onChange={setIdProducto} placeholder="Ej: 45" />
+            <BuscadorProducto
+              label="Seleccionar Producto"
+              productoSeleccionado={productoSeleccionado}
+              onSeleccionarProducto={setProductoSeleccionado}
+            />
           </ReporteCard>
 
           <ReporteCard
@@ -365,13 +628,16 @@ export default function ReportesPage() {
             onPos80={() =>
               ejecutar('cuentas-por-pagar', async () => {
                 const data = await api.obtenerCuentasPorPagar(fechaInicio, fechaFin);
-                abrirPdfEnNuevaPestana(generarCuentasPorPagarPos80(data));
+                abrirPdfEnNuevaPestana(await generarCuentasPorPagarPos80(data, logoEmpresa));
               })
             }
             onA4={() =>
               ejecutar('cuentas-por-pagar', async () => {
                 const data = await api.obtenerCuentasPorPagar(fechaInicio, fechaFin);
-                descargarPdf(generarCuentasPorPagarA4(data), `cuentas-por-pagar-${fechaInicio}_${fechaFin}`);
+                descargarPdf(
+                  await generarCuentasPorPagarA4(data, logoEmpresa),
+                  `cuentas-por-pagar-${fechaInicio}_${fechaFin}`
+                );
               })
             }
           />
@@ -388,13 +654,13 @@ export default function ReportesPage() {
             onPos80={() =>
               ejecutar('inventario-valorado', async () => {
                 const data = await api.obtenerInventarioValorado();
-                abrirPdfEnNuevaPestana(generarInventarioValoradoPos80(data));
+                abrirPdfEnNuevaPestana(await generarInventarioValoradoPos80(data, logoEmpresa));
               })
             }
             onA4={() =>
               ejecutar('inventario-valorado', async () => {
                 const data = await api.obtenerInventarioValorado();
-                descargarPdf(generarInventarioValoradoA4(data), 'inventario-valorado');
+                descargarPdf(await generarInventarioValoradoA4(data, logoEmpresa), 'inventario-valorado');
               })
             }
           />
@@ -406,13 +672,13 @@ export default function ReportesPage() {
             onPos80={() =>
               ejecutar('alerta-stock', async () => {
                 const data = await api.obtenerAlertaStockMinimo();
-                abrirPdfEnNuevaPestana(generarAlertaStockPos80(data));
+                abrirPdfEnNuevaPestana(await generarAlertaStockPos80(data, logoEmpresa));
               })
             }
             onA4={() =>
               ejecutar('alerta-stock', async () => {
                 const data = await api.obtenerAlertaStockMinimo();
-                descargarPdf(generarAlertaStockA4(data), 'alerta-stock-minimo');
+                descargarPdf(await generarAlertaStockA4(data, logoEmpresa), 'alerta-stock-minimo');
               })
             }
           />
@@ -424,16 +690,73 @@ export default function ReportesPage() {
             onPos80={() =>
               ejecutar('catalogo-terapeutico', async () => {
                 const data = await api.obtenerCatalogoTerapeutico();
-                abrirPdfEnNuevaPestana(generarCatalogoTerapeuticoPos80(data));
+                abrirPdfEnNuevaPestana(await generarCatalogoTerapeuticoPos80(data, undefined, logoEmpresa));
               })
             }
             onA4={() =>
               ejecutar('catalogo-terapeutico', async () => {
                 const data = await api.obtenerCatalogoTerapeutico();
-                descargarPdf(generarCatalogoTerapeuticoA4(data), 'catalogo-terapeutico');
+                descargarPdf(
+                  await generarCatalogoTerapeuticoA4(data, undefined, logoEmpresa),
+                  'catalogo-terapeutico'
+                );
               })
             }
           />
+
+          <ReporteCard
+            titulo="Productos por Laboratorio"
+            descripcion="Listado completo de productos de un laboratorio o marca específica."
+            cargando={cargando === 'productos-laboratorio'}
+            onPos80={() =>
+              ejecutar('productos-laboratorio', async () => {
+                if (!laboratorioSeleccionado) return alert('Selecciona un laboratorio.');
+                const data = await api.obtenerProductosPorLaboratorio(laboratorioSeleccionado.idLaboratorio);
+                abrirPdfEnNuevaPestana(await generarProductosPorLaboratorioPos80(data, logoEmpresa));
+              })
+            }
+            onA4={() =>
+              ejecutar('productos-laboratorio', async () => {
+                if (!laboratorioSeleccionado) return alert('Selecciona un laboratorio.');
+                const data = await api.obtenerProductosPorLaboratorio(laboratorioSeleccionado.idLaboratorio);
+                descargarPdf(
+                  await generarProductosPorLaboratorioA4(data, logoEmpresa),
+                  `productos-laboratorio-${laboratorioSeleccionado.idLaboratorio}`
+                );
+              })
+            }
+          >
+            <BuscadorLaboratorio
+              label="Seleccionar Laboratorio"
+              laboratorioSeleccionado={laboratorioSeleccionado}
+              onSeleccionarLaboratorio={setLaboratorioSeleccionado}
+            />
+          </ReporteCard>
+
+          <ReporteCard
+            titulo="Productos Próximos a Vencer"
+            descripcion="Lista de lotes o productos próximos a llegar a su fecha de caducidad."
+            cargando={cargando === 'productos-por-vencer'}
+            onPos80={() =>
+              ejecutar('productos-por-vencer', async () => {
+                const data = await api.obtenerProductosPorVencer(Number(diasVencer) || 30);
+                abrirPdfEnNuevaPestana(
+                  await generarProductosPorVencerPos80(data, Number(diasVencer) || 30, logoEmpresa)
+                );
+              })
+            }
+            onA4={() =>
+              ejecutar('productos-por-vencer', async () => {
+                const data = await api.obtenerProductosPorVencer(Number(diasVencer) || 30);
+                descargarPdf(
+                  await generarProductosPorVencerA4(data, Number(diasVencer) || 30, logoEmpresa),
+                  `productos-por-vencer-${diasVencer}-dias`
+                );
+              })
+            }
+          >
+            <InputNumero label="Días margen" value={diasVencer} onChange={setDiasVencer} placeholder="30" />
+          </ReporteCard>
         </div>
       )}
 
@@ -447,13 +770,16 @@ export default function ReportesPage() {
             onPos80={() =>
               ejecutar('consolidado', async () => {
                 const data = await api.obtenerConsolidadoGeneral(fechaInicio, fechaFin);
-                abrirPdfEnNuevaPestana(generarConsolidadoGeneralPos80(data));
+                abrirPdfEnNuevaPestana(await generarConsolidadoGeneralPos80(data, logoEmpresa));
               })
             }
             onA4={() =>
               ejecutar('consolidado', async () => {
                 const data = await api.obtenerConsolidadoGeneral(fechaInicio, fechaFin);
-                descargarPdf(generarConsolidadoGeneralA4(data), `consolidado-general-${fechaInicio}_${fechaFin}`);
+                descargarPdf(
+                  await generarConsolidadoGeneralA4(data, logoEmpresa),
+                  `consolidado-general-${fechaInicio}_${fechaFin}`
+                );
               })
             }
           />
@@ -464,31 +790,23 @@ export default function ReportesPage() {
             cargando={cargando === 'asistencia'}
             onPos80={() =>
               ejecutar('asistencia', async () => {
-                const [data, empresa] = await Promise.all([
-                  api.obtenerReporteAsistencia(fechaInicio, fechaFin),
-                  obtenerEmpresa(),
-                ]);
+                const data = await api.obtenerReporteAsistencia(fechaInicio, fechaFin);
                 abrirPdfEnNuevaPestana(
-                  await generarReporteAsistenciaPos80(fechaInicio, fechaFin, data, empresa.logo || undefined)
+                  await generarReporteAsistenciaPos80(fechaInicio, fechaFin, data, logoEmpresa)
                 );
               })
             }
             onA4={() =>
               ejecutar('asistencia', async () => {
-                const [data, empresa] = await Promise.all([
-                  api.obtenerReporteAsistencia(fechaInicio, fechaFin),
-                  obtenerEmpresa(),
-                ]);
+                const data = await api.obtenerReporteAsistencia(fechaInicio, fechaFin);
                 descargarPdf(
-                  await generarReporteAsistenciaA4(fechaInicio, fechaFin, data, empresa.logo || undefined),
+                  await generarReporteAsistenciaA4(fechaInicio, fechaFin, data, logoEmpresa),
                   `reporte-asistencia-${fechaInicio}_${fechaFin}`
                 );
               })
             }
           />
         </div>
-
-        
       )}
     </div>
   );

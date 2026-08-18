@@ -2,6 +2,7 @@
 
 import { X } from 'lucide-react';
 import type { Venta } from '@/api/ventas';
+import { getNombreCompleto } from '@/api/ventas';
 
 interface VentaDetalleModalProps {
   venta: Venta | null;
@@ -25,7 +26,7 @@ export default function VentaDetalleModal({ venta, onClose }: VentaDetalleModalP
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
               <span className="text-xs text-zinc-400 block">Cliente</span>
-              <span className="font-medium text-zinc-800">{venta.cliente?.nombre ?? 'No registrado'}</span>
+              <span className="font-medium text-zinc-800">{venta.cliente ? getNombreCompleto(venta.cliente) : 'No registrado'}</span>
             </div>
             <div>
               <span className="text-xs text-zinc-400 block">Fecha</span>

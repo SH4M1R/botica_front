@@ -5,7 +5,6 @@ export interface FilaMetodoPago {
   metodo: string;
   cantidadVentas: number;
   totalVendido: number;
-  ganancia: number;
 }
 
 function formatFechaHora(fecha: string) {
@@ -26,7 +25,7 @@ export function generarReporteMetodoPagoPos80(
   const ANCHO = 80;
   const MARGEN = 6;
 
-  const alturaEstimada = 55 + filas.length * 20 + 25;
+  const alturaEstimada = 55 + filas.length * 15 + 25;
   const doc = new jsPDF({ unit: 'mm', format: [ANCHO, Math.max(alturaEstimada, 90)] });
 
   let y = 6;
@@ -58,23 +57,30 @@ export function generarReporteMetodoPagoPos80(
 
   texto(`Empleado: ${caja.empleadoNombre}`, { size: 7.5 });
   texto(`Apertura: ${formatFechaHora(caja.fechaInicio)}`, { size: 7.5 });
-  texto(`Emitido: ${new Date().toLocaleString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`, { size: 7.5 });
+  texto(
+    `Emitido: ${new Date().toLocaleString('es-PE', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })}`,
+    { size: 7.5 }
+  );
 
   linea();
 
   filas.forEach((fila) => {
     texto(fila.metodo, { bold: true, size: 8 });
-    texto(`  Ventas: ${fila.cantidadVentas}`, { size: 7 });
-    texto(`  Total vendido: S/ ${fila.totalVendido.toFixed(2)}`, { size: 7 });
-    texto(`  Ganancia: S/ ${fila.ganancia.toFixed(2)}`, { size: 7 });
+    texto(`  Ventas: ${fila.cantidadVentas ?? 0}`, { size: 7 });
+    texto(`  Total vendido: S/ ${(fila.totalVendido ?? 0).toFixed(2)}`, { size: 7 });
     y += 1;
   });
 
   linea(false);
 
-  texto(`Total ventas: ${totales.cantidadVentas}`, { bold: true, size: 8 });
-  texto(`Total vendido: S/ ${totales.totalVendido.toFixed(2)}`, { bold: true, size: 8 });
-  texto(`Ganancia total: S/ ${totales.ganancia.toFixed(2)}`, { bold: true, size: 8 });
+  texto(`Total ventas: ${totales.cantidadVentas ?? 0}`, { bold: true, size: 8 });
+  texto(`Total vendido: S/ ${(totales.totalVendido ?? 0).toFixed(2)}`, { bold: true, size: 8 });
 
   linea();
   texto('Reporte generado por el sistema', { align: 'center', size: 6.5 });
@@ -93,21 +99,19 @@ export function generarReporteMetodoPagoA4(
   const ANCHO_PAGINA = 210;
   const ANCHO_UTIL = ANCHO_PAGINA - MARGEN * 2; // 170mm
 
-  const COL_METODO = 55;
-  const COL_VENTAS = 30;
-  const COL_TOTAL = 42;
-  const COL_GANANCIA = 43; // suma = 170
+  const COL_METODO = 85;
+  const COL_VENTAS = 40;
+  const COL_TOTAL = 45; // suma = 170
 
   const X_METODO = MARGEN;
   const X_VENTAS_R = X_METODO + COL_METODO + COL_VENTAS;
   const X_TOTAL_R = X_VENTAS_R + COL_TOTAL;
-  const X_GANANCIA_R = X_TOTAL_R + COL_GANANCIA;
 
   let y = 25;
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(16);
-  doc.text('Reporte de Ganancias por Método de Pago', MARGEN, y);
+  doc.text('Reporte por Método de Pago', MARGEN, y);
   y += 10;
 
   doc.setFont('helvetica', 'normal');
@@ -140,7 +144,6 @@ export function generarReporteMetodoPagoA4(
   doc.text('Método de Pago', X_METODO, y);
   doc.text('N° Ventas', X_VENTAS_R, y, { align: 'right' });
   doc.text('Total Vendido', X_TOTAL_R, y, { align: 'right' });
-  doc.text('Ganancia', X_GANANCIA_R, y, { align: 'right' });
   y += 3;
 
   doc.setDrawColor(0);
@@ -150,9 +153,8 @@ export function generarReporteMetodoPagoA4(
   doc.setFont('helvetica', 'normal');
   filas.forEach((fila) => {
     doc.text(fila.metodo, X_METODO, y);
-    doc.text(String(fila.cantidadVentas), X_VENTAS_R, y, { align: 'right' });
-    doc.text(`S/ ${fila.totalVendido.toFixed(2)}`, X_TOTAL_R, y, { align: 'right' });
-    doc.text(`S/ ${fila.ganancia.toFixed(2)}`, X_GANANCIA_R, y, { align: 'right' });
+    doc.text(String(fila.cantidadVentas ?? 0), X_VENTAS_R, y, { align: 'right' });
+    doc.text(`S/ ${(fila.totalVendido ?? 0).toFixed(2)}`, X_TOTAL_R, y, { align: 'right' });
     y += 8;
   });
 
@@ -162,9 +164,8 @@ export function generarReporteMetodoPagoA4(
 
   doc.setFont('helvetica', 'bold');
   doc.text('TOTAL', X_METODO, y);
-  doc.text(String(totales.cantidadVentas), X_VENTAS_R, y, { align: 'right' });
-  doc.text(`S/ ${totales.totalVendido.toFixed(2)}`, X_TOTAL_R, y, { align: 'right' });
-  doc.text(`S/ ${totales.ganancia.toFixed(2)}`, X_GANANCIA_R, y, { align: 'right' });
+  doc.text(String(totales.cantidadVentas ?? 0), X_VENTAS_R, y, { align: 'right' });
+  doc.text(`S/ ${(totales.totalVendido ?? 0).toFixed(2)}`, X_TOTAL_R, y, { align: 'right' });
 
   doc.setDrawColor(0);
   y += 3;

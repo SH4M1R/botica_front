@@ -2,15 +2,17 @@ import type { AlertaStock } from '@/api/reportes';
 import { crearPos80Builder, crearA4Builder, formatEmision, ColumnaReporte } from './pdfBase';
 
 const columnas: ColumnaReporte<AlertaStock>[] = [
-  { header: 'Producto', align: 'left', widthA4: 70, render: (f) => f.nombreProducto },
-  { header: 'Stock', align: 'right', widthA4: 30, render: (f) => String(f.stock) },
-  { header: 'Mínimo', align: 'right', widthA4: 30, render: (f) => String(f.stockMinimo) },
-  { header: 'Diferencia', align: 'right', widthA4: 40, render: (f) => String(f.diferencia) },
+  { header: 'Producto', align: 'left', widthA4: 95, render: (f) => f.nombreProducto },
+  { header: 'Laboratorio', align: 'left', widthA4: 25, render: (f) => f.laboratorio?.nombre ?? '-' },
+  { header: 'Stock', align: 'right', widthA4: 10, render: (f) => String(f.stock) },
+  { header: 'Mínimo', align: 'right', widthA4: 20, render: (f) => String(f.stockMinimo) },
+  { header: 'Diferencia', align: 'right', widthA4: 20, render: (f) => String(f.diferencia) },
 ];
 
-export function generarAlertaStockPos80(filas: AlertaStock[]): Blob {
-  const altura = 55 + filas.length * 18 + 20;
+export async function generarAlertaStockPos80(filas: AlertaStock[], logo?: string): Promise<Blob> {
+  const altura = 65 + filas.length * 18 + 20;
   const b = crearPos80Builder(altura);
+  await b.encabezadoEmpresa(logo);
 
   b.texto('ALERTA DE STOCK MÍNIMO', { align: 'center', size: 9.5, bold: true });
   b.linea();
@@ -22,6 +24,7 @@ export function generarAlertaStockPos80(filas: AlertaStock[]): Blob {
   } else {
     filas.forEach((p) => {
       b.texto(p.nombreProducto, { bold: true, size: 7.5 });
+      b.texto(p.laboratorio?.nombre ?? '-', { size: 7.5 });
       b.texto(`  Stock actual: ${p.stock}  |  Mínimo: ${p.stockMinimo}`, { size: 7 });
       b.texto(`  Diferencia: ${p.diferencia}`, { size: 7 });
       b.espacio(1);
@@ -36,8 +39,9 @@ export function generarAlertaStockPos80(filas: AlertaStock[]): Blob {
   return b.finalizar();
 }
 
-export function generarAlertaStockA4(filas: AlertaStock[]): Blob {
+export async function generarAlertaStockA4(filas: AlertaStock[], logo?: string): Promise<Blob> {
   const b = crearA4Builder();
+  await b.encabezadoEmpresa(logo);
 
   b.titulo('Productos por Alerta de Stock Mínimo');
   b.subtitulo([`Fecha de emisión: ${formatEmision()}`]);

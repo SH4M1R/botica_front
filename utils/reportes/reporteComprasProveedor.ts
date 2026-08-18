@@ -1,3 +1,4 @@
+// reporteComprasProveedor.ts
 import type { CompraPorProveedor } from '@/api/reportes';
 import { crearPos80Builder, crearA4Builder, formatFecha, formatEmision, formatMoneda, ColumnaReporte } from './pdfBase';
 
@@ -7,13 +8,15 @@ const columnas: ColumnaReporte<CompraPorProveedor>[] = [
   { header: 'Total Comprado', align: 'right', widthA4: 55, render: (f) => formatMoneda(f.totalComprado) },
 ];
 
-export function generarComprasPorProveedorPos80(
+export async function generarComprasPorProveedorPos80(
   fechaInicio: string,
   fechaFin: string,
-  filas: CompraPorProveedor[]
-): Blob {
-  const altura = 55 + filas.length * 16 + 20;
+  filas: CompraPorProveedor[],
+  logo?: string
+): Promise<Blob> {
+  const altura = 65 + filas.length * 16 + 20;
   const b = crearPos80Builder(altura);
+  await b.encabezadoEmpresa(logo);
 
   b.texto('HISTORIAL DE COMPRAS', { align: 'center', size: 9.5, bold: true });
   b.texto('Por Proveedor', { align: 'center', size: 8 });
@@ -36,12 +39,14 @@ export function generarComprasPorProveedorPos80(
   return b.finalizar();
 }
 
-export function generarComprasPorProveedorA4(
+export async function generarComprasPorProveedorA4(
   fechaInicio: string,
   fechaFin: string,
-  filas: CompraPorProveedor[]
-): Blob {
+  filas: CompraPorProveedor[],
+  logo?: string
+): Promise<Blob> {
   const b = crearA4Builder();
+  await b.encabezadoEmpresa(logo);
 
   b.titulo('Historial de Compras por Proveedor');
   b.subtitulo([`Del ${formatFecha(fechaInicio)} al ${formatFecha(fechaFin)}`, `Fecha de emisión: ${formatEmision()}`]);

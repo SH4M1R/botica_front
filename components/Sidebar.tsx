@@ -1,18 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { 
-  LayoutDashboard, Package, Settings, ShoppingCart, Contact, ChevronDown, 
-  List, Plus, Users, Tags, Lock, Repeat, ArrowDownToLine, ArrowUpFromLine, 
-  Wallet, CreditCard, Receipt, ArrowRightLeft, ShieldCheck, UserCheck, 
-  BarChart3, CalendarCheck, ShoppingBag, Menu, X 
+import {
+  LayoutDashboard, Package, Settings, ShoppingCart, Contact, ChevronDown,
+  List, Plus, Users, Tags, Lock, Repeat, ArrowDownToLine, ArrowUpFromLine,
+  CreditCard, Receipt, ArrowRightLeft, ShieldCheck, UserCheck,
+  BarChart3, CalendarCheck, ShoppingBag, Wallet, ChevronsLeft, ChevronsRight, FileText,
 } from 'lucide-react';
 import { useSession } from '@/hooks/useSession';
 import { arqueoApi } from '@/api/arqueo';
 import { permisosApi } from '@/api/permisos';
-import { CajaCerradaModal } from './CajaCerradaModal';
 
 const topLinks = [
   { href: '/dashboard', label: 'Panel', icon: LayoutDashboard, siempreVisible: true },
@@ -46,19 +45,27 @@ const bottomLinks = [
 ];
 
 const EVENTO_CAJA_ACTUALIZADA = 'caja:actualizada';
+const RUTA_GENERAR_VENTA = '/dashboard/ventas/generar';
+const RUTA_GENERAR_COTIZACION = '/dashboard/ventas/cotizacion';
+const RUTA_GENERAR_COMPRA = '/dashboard/compras/generar';
 
 type MenuId = 'caja' | 'ventas' | 'compras' | 'productos' | 'empleados' | 'traslados' | null;
 
-export default function Sidebar() {
+interface SidebarProps {
+  onClose?: () => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+  onCajaCerrada: () => void;
+}
+
+export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCerrada }: SidebarProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const { empleado, cargando: cargandoSesion } = useSession();
 
   const esAdmin = empleado?.rol === 'Administrador';
 
   const [permisos, setPermisos] = useState<Set<string>>(new Set());
   const [cargandoPermisos, setCargandoPermisos] = useState(true);
-  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     if (cargandoSesion || !empleado?.id) return;
@@ -75,11 +82,6 @@ export default function Sidebar() {
       .finally(() => setCargandoPermisos(false));
   }, [empleado?.id, esAdmin, cargandoSesion]);
 
-  // Cerrar sidebar móvil en cambios de ruta
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
-
   const tienePermiso = (ruta: string) => {
     if (esAdmin) return true;
     if (cargandoSesion || cargandoPermisos) return false;
@@ -95,14 +97,15 @@ export default function Sidebar() {
 
   const ventasLinksVisibles = {
     listado: tienePermiso('/dashboard/ventas'),
-    generar: tienePermiso('/dashboard/ventas/generar'),
+    generar: tienePermiso(RUTA_GENERAR_VENTA),
+    cotizacion: tienePermiso(RUTA_GENERAR_COTIZACION),
     clientes: tienePermiso('/dashboard/clientes'),
   };
   const ventasModuloVisible = Object.values(ventasLinksVisibles).some(Boolean);
 
   const comprasLinksVisibles = {
     listado: tienePermiso('/dashboard/compras'),
-    generar: tienePermiso('/dashboard/compras/generar'),
+    generar: tienePermiso(RUTA_GENERAR_COMPRA),
     proveedores: tienePermiso('/dashboard/proveedores'),
   };
   const comprasModuloVisible = Object.values(comprasLinksVisibles).some(Boolean);
@@ -141,291 +144,436 @@ export default function Sidebar() {
     setMenuAbierto((prev) => (prev === id ? null : id));
   };
 
+  const handleToggleMenu = (id: MenuId) => {
+    if (collapsed) {
+      onToggleCollapse();
+      setMenuAbierto(id);
+    } else {
+      toggleMenu(id);
+    }
+  };
+
   const [cajaAbierta, setCajaAbierta] = useState<unknown | null | undefined>(undefined);
-  const [modalCajaOpen, setModalCajaOpen] = useState(false);
+
+  // Función reútilizable para verificar el estado de la caja
+  const revisarCaja = useCallback(() => {
+    if (!empleado?.id) return;
+    arqueoApi.cajaActual(empleado.id)
+      .then((actual) => setCajaAbierta(actual ?? null))
+      .catch(() => setCajaAbierta(null));
+  }, [empleado?.id]);
 
   useEffect(() => {
     if (cargandoSesion || !empleado?.id) return;
-    let activo = true;
 
-    const revisar = () => {
-      arqueoApi.cajaActual(empleado.id)
-        .then((actual) => { if (activo) setCajaAbierta(actual ?? null); })
-        .catch(() => { if (activo) setCajaAbierta(null); });
-    };
+    // Consulta inicial inmediata
+    revisarCaja();
 
-    revisar();
+    // Eventos para detectar cambios en tiempo real sin recargar
+    window.addEventListener('focus', revisarCaja);
+    window.addEventListener(EVENTO_CAJA_ACTUALIZADA, revisarCaja);
+    window.addEventListener('storage', revisarCaja);
 
-    window.addEventListener('focus', revisar);
-    window.addEventListener(EVENTO_CAJA_ACTUALIZADA, revisar);
-
-    const intervalo = setInterval(revisar, 30000);
+    // Polling de seguridad
+    const intervalo = setInterval(revisarCaja, 5000);
 
     return () => {
-      activo = false;
       clearInterval(intervalo);
-      window.removeEventListener('focus', revisar);
-      window.removeEventListener(EVENTO_CAJA_ACTUALIZADA, revisar);
+      window.removeEventListener('focus', revisarCaja);
+      window.removeEventListener(EVENTO_CAJA_ACTUALIZADA, revisarCaja);
+      window.removeEventListener('storage', revisarCaja);
     };
-  }, [empleado?.id, cargandoSesion, pathname]);
+  }, [empleado?.id, cargandoSesion, pathname, revisarCaja]);
 
   const puedeVender = !!cajaAbierta;
 
+  // Abre "Generar venta" en una ventana emergente, apuntando SIEMPRE a esa
+  // ruta (sin importar en qué página del dashboard estés parado).
+  const abrirVentanaFlotanteVenta = useCallback(() => {
+    const width = 1280;
+    const height = 800;
+    const left = (window.screen.width - width) / 2;
+    const top = (window.screen.height - height) / 2;
+    const popupUrl = `${window.location.origin}${RUTA_GENERAR_VENTA}?popup=true`;
+
+    window.open(
+      popupUrl,
+      'GenerarVentaPOS',
+      `width=${width},height=${height},top=${top},left=${left},resizable=yes,scrollbars=yes,status=no,toolbar=no,menubar=no,location=no`
+    );
+  }, []);
+
+  // Atajo global F4: abre la ventana flotante de "Generar venta" desde
+  // cualquier ruta del dashboard. Respeta permisos (no hace nada si el
+  // empleado no tiene acceso a esa ruta) y el estado de caja (si está
+  // cerrada, muestra el mismo modal que ya usa el link del menú).
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'F4') return;
+
+      const target = e.target as HTMLElement | null;
+      const estaEscribiendo =
+        !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+      if (estaEscribiendo) return;
+
+      if (!ventasLinksVisibles.generar) return;
+
+      e.preventDefault();
+
+      if (!puedeVender) {
+        onCajaCerrada();
+        return;
+      }
+
+      abrirVentanaFlotanteVenta();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [ventasLinksVisibles.generar, puedeVender, onCajaCerrada, abrirVentanaFlotanteVenta]);
+
+  // Abre "Ingresar Compra" en una ventana emergente, apuntando SIEMPRE a
+  // esa ruta (sin importar en qué página del dashboard estés parado).
+  const abrirVentanaFlotanteCompra = useCallback(() => {
+    const width = 1280;
+    const height = 800;
+    const left = (window.screen.width - width) / 2;
+    const top = (window.screen.height - height) / 2;
+    const popupUrl = `${window.location.origin}${RUTA_GENERAR_COMPRA}?popup=true`;
+
+    window.open(
+      popupUrl,
+      'GenerarCompraPOS',
+      `width=${width},height=${height},top=${top},left=${left},resizable=yes,scrollbars=yes,status=no,toolbar=no,menubar=no,location=no`
+    );
+  }, []);
+
+  // Atajo global F6: abre la ventana flotante de "Ingresar Compra" desde
+  // cualquier ruta del dashboard. Respeta permisos (no hace nada si el
+  // empleado no tiene acceso a esa ruta). A diferencia de ventas, compras
+  // no depende del estado de caja.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'F6') return;
+
+      const target = e.target as HTMLElement | null;
+      const estaEscribiendo =
+        !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+      if (estaEscribiendo) return;
+
+      if (!comprasLinksVisibles.generar) return;
+
+      e.preventDefault();
+      abrirVentanaFlotanteCompra();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [comprasLinksVisibles.generar, abrirVentanaFlotanteCompra]);
+
   const linkClass = (active: boolean) =>
-    `flex items-center gap-3 px-4 py-2.5 rounded-lg text-md font-semibold transition-all shrink-0 ${
+    `flex items-center gap-3 rounded-lg text-md font-semibold transition-all shrink-0 ${
+      collapsed ? 'justify-center px-0 py-2.5' : 'px-4 py-2.5'
+    } ${
       active ? 'bg-white text-primary shadow-md' : 'text-white hover:bg-white/20 hover:text-white'
     }`;
 
   const handleClickGenerarVenta = (e: React.MouseEvent) => {
     if (!puedeVender) {
       e.preventDefault();
-      setModalCajaOpen(true);
+      onCajaCerrada(); // el modal ahora vive en el layout, no aquí
+    } else if (onClose) {
+      onClose();
     }
   };
 
-  const irAArqueo = () => {
-    setModalCajaOpen(false);
-    router.push('/dashboard/caja');
+  const handleLinkClick = () => {
+    if (onClose) onClose();
   };
 
   return (
-    <>
-      {/* Botón flotante para abrir el menú en dispositivos móviles */}
-      <button
-        onClick={() => setMobileOpen(!mobileOpen)}
-        aria-label="Abrir menú"
-        className="lg:hidden fixed top-3 left-3 z-50 p-2.5 rounded-xl bg-primary text-white shadow-lg focus:outline-hidden"
-      >
-        {mobileOpen ? <X size={20} /> : <Menu size={20} />}
-      </button>
-
-      {/* Fondo oscuro traslúcido para móviles al abrir el menú */}
-      {mobileOpen && (
-        <div
-          onClick={() => setMobileOpen(false)}
-          className="lg:hidden fixed inset-0 z-30 bg-black/50 backdrop-blur-xs transition-opacity"
-        />
-      )}
-
-      {/* Sidebar Responsive */}
-      <aside
-        className={`fixed lg:static top-0 left-0 z-40 w-64 shrink-0 h-full bg-primary flex flex-col text-white shadow-2xl transition-transform duration-300 ease-in-out ${
-          mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+    <div className="flex flex-col h-full bg-primary text-white shadow-2xl">
+      {/* Botón de colapsar/expandir — solo escritorio, solo por clic */}
+      <div
+        className={`hidden md:flex items-center border-b border-white/50 ${
+          collapsed ? 'justify-center py-3' : 'justify-end px-3 py-3'
         }`}
       >
-        <nav
-          className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto p-5 pt-16 lg:pt-20
-                     [&::-webkit-scrollbar]:w-1.5
-                     [&::-webkit-scrollbar-track]:bg-primary
-                     [&::-webkit-scrollbar-thumb]:bg-white/25
-                     [&::-webkit-scrollbar-thumb]:rounded-full
-                     hover:[&::-webkit-scrollbar-thumb]:bg-white/40"
-          style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0) transparent' }}
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+          className="p-2 rounded-lg text-white hover:bg-white/20 transition-colors cursor-pointer"
         >
-          {topLinksVisibles.map(({ href, label, icon: Icon }) => (
-            <Link key={href} href={href} className={linkClass(pathname === href)}>
-              <Icon size={18} />
-              {label}
-            </Link>
-          ))}
+          {collapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
+        </button>
+      </div>
 
-          {/* Caja */}
-          {cajaModuloVisible && (
-            <>
-              <button
-                onClick={() => toggleMenu('caja')}
-                className={linkClass(cajaActivo && menuAbierto !== 'caja')}
-              >
-                <Wallet size={18} />
-                <span className="flex-1 text-left">Caja</span>
+      <nav
+        className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto p-3
+                   [&::-webkit-scrollbar]:w-1.5
+                   [&::-webkit-scrollbar-track]:bg-primary
+                   [&::-webkit-scrollbar-thumb]:bg-white/25
+                   [&::-webkit-scrollbar-thumb]:rounded-full
+                   hover:[&::-webkit-scrollbar-thumb]:bg-white/40"
+        style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.25) transparent' }}
+      >
+        {topLinksVisibles.map(({ href, label, icon: Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            onClick={handleLinkClick}
+            title={collapsed ? label : undefined}
+            className={linkClass(pathname === href)}
+          >
+            <Icon size={18} />
+            {!collapsed && label}
+          </Link>
+        ))}
+
+        {/* Caja */}
+        {cajaModuloVisible && (
+          <>
+            <button
+              type="button"
+              onClick={() => handleToggleMenu('caja')}
+              title={collapsed ? 'Caja' : undefined}
+              className={linkClass(cajaActivo && menuAbierto !== 'caja')}
+            >
+              <Wallet size={18} />
+              {!collapsed && <span className="flex-1 text-left">Caja</span>}
+              {!collapsed && (
                 <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'caja' ? 'rotate-180' : ''}`} />
-              </button>
-
-              {menuAbierto === 'caja' && (
-                <div className="flex flex-col gap-1 pl-4">
-                  {cajaChildrenVisibles.map(({ href, label, icon: Icon }) => (
-                    <Link key={href} href={href} className={linkClass(pathname === href)}>
-                      <Icon size={16} />
-                      <span className="text-sm">{label}</span>
-                    </Link>
-                  ))}
-                </div>
               )}
-            </>
-          )}
+            </button>
 
-          {/* Ventas */}
-          {ventasModuloVisible && (
-            <>
-              <button
-                onClick={() => toggleMenu('ventas')}
-                className={linkClass(ventasActivo && menuAbierto !== 'ventas')}
-              >
-                <ShoppingCart size={18} />
-                <span className="flex-1 text-left">Ventas</span>
+            {!collapsed && menuAbierto === 'caja' && (
+              <div className="flex flex-col gap-1 pl-4">
+                {cajaChildrenVisibles.map(({ href, label, icon: Icon }) => (
+                  <Link key={href} href={href} onClick={handleLinkClick} className={linkClass(pathname === href)}>
+                    <Icon size={16} />
+                    <span className="text-sm">{label}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Ventas */}
+        {ventasModuloVisible && (
+          <>
+            <button
+              type="button"
+              onClick={() => handleToggleMenu('ventas')}
+              title={collapsed ? 'Ventas' : undefined}
+              className={linkClass(ventasActivo && menuAbierto !== 'ventas')}
+            >
+              <ShoppingCart size={18} />
+              {!collapsed && <span className="flex-1 text-left">Ventas</span>}
+              {!collapsed && (
                 <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'ventas' ? 'rotate-180' : ''}`} />
-              </button>
-
-              {menuAbierto === 'ventas' && (
-                <div className="flex flex-col gap-1 pl-4">
-                  {ventasLinksVisibles.listado && (
-                    <Link href="/dashboard/ventas" className={linkClass(pathname === '/dashboard/ventas')}>
-                      <List size={16} />
-                      <span className="text-sm">Listado de ventas</span>
-                    </Link>
-                  )}
-
-                  {ventasLinksVisibles.generar && (
-                    <Link
-                      href="/dashboard/ventas/generar"
-                      onClick={handleClickGenerarVenta}
-                      title={!puedeVender ? 'Debes abrir tu caja primero' : undefined}
-                      className={`${linkClass(pathname === '/dashboard/ventas/generar')} ${!puedeVender ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      {puedeVender ? <Plus size={16} /> : <Lock size={16} />}
-                      <span className="text-sm">Generar venta</span>
-                    </Link>
-                  )}
-
-                  {ventasLinksVisibles.clientes && (
-                    <Link href="/dashboard/clientes" className={linkClass(pathname === '/dashboard/clientes')}>
-                      <Contact size={16} />
-                      <span className="text-sm">Clientes</span>
-                    </Link>
-                  )}
-                </div>
               )}
-            </>
-          )}
+            </button>
 
-          {/* Compras */}
-          {comprasModuloVisible && (
-            <>
-              <button
-                onClick={() => toggleMenu('compras')}
-                className={linkClass(comprasActivo && menuAbierto !== 'compras')}
-              >
-                <ShoppingBag size={18} />
-                <span className="flex-1 text-left">Compras</span>
+            {!collapsed && menuAbierto === 'ventas' && (
+              <div className="flex flex-col gap-1 pl-4">
+                {ventasLinksVisibles.listado && (
+                  <Link href="/dashboard/ventas" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/ventas')}>
+                    <List size={16} />
+                    <span className="text-sm">Listado de ventas</span>
+                  </Link>
+                )}
+
+                {ventasLinksVisibles.generar && (
+                  <Link
+                    href={RUTA_GENERAR_VENTA}
+                    onClick={handleClickGenerarVenta}
+                    title={!puedeVender ? 'Debes abrir tu caja primero' : 'Generar venta (F4 abre ventana flotante desde cualquier página)'}
+                    className={`${linkClass(pathname === RUTA_GENERAR_VENTA)} ${!puedeVender ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {puedeVender ? <Plus size={16} /> : <Lock size={16} />}
+                    <span className="text-sm flex-1">Generar venta</span>
+                    {!collapsed && puedeVender && (
+                      <span className="text-[10px] font-semibold text-white/60 border border-white/30 rounded px-1">F4</span>
+                    )}
+                  </Link>
+                )}
+
+                {ventasLinksVisibles.cotizacion && (
+                  <Link
+                    href={RUTA_GENERAR_COTIZACION}
+                    onClick={handleLinkClick}
+                    title="Generar cotización (no requiere caja abierta)"
+                    className={linkClass(pathname === RUTA_GENERAR_COTIZACION)}
+                  >
+                    <FileText size={16} />
+                    <span className="text-sm flex-1">Generar cotización</span>
+                  </Link>
+                )}
+
+                {ventasLinksVisibles.clientes && (
+                  <Link href="/dashboard/clientes" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/clientes')}>
+                    <Contact size={16} />
+                    <span className="text-sm">Clientes</span>
+                  </Link>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Compras */}
+        {comprasModuloVisible && (
+          <>
+            <button
+              type="button"
+              onClick={() => handleToggleMenu('compras')}
+              title={collapsed ? 'Compras' : undefined}
+              className={linkClass(comprasActivo && menuAbierto !== 'compras')}
+            >
+              <ShoppingBag size={18} />
+              {!collapsed && <span className="flex-1 text-left">Compras</span>}
+              {!collapsed && (
                 <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'compras' ? 'rotate-180' : ''}`} />
-              </button>
-
-              {menuAbierto === 'compras' && (
-                <div className="flex flex-col gap-1 pl-4">
-                  {comprasLinksVisibles.listado && (
-                    <Link href="/dashboard/compras" className={linkClass(pathname === '/dashboard/compras')}>
-                      <List size={16} />
-                      <span className="text-sm">Listado de Compras</span>
-                    </Link>
-                  )}
-
-                  {comprasLinksVisibles.generar && (
-                    <Link href="/dashboard/compras/generar" className={linkClass(pathname === '/dashboard/compras/generar')}>
-                      <Plus size={16} />
-                      <span className="text-sm">Ingresar Compra</span>
-                    </Link>
-                  )}
-
-                  {comprasLinksVisibles.proveedores && (
-                    <Link href="/dashboard/proveedores" className={linkClass(pathname === '/dashboard/proveedores')}>
-                      <Contact size={16} />
-                      <span className="text-sm">Proveedores</span>
-                    </Link>
-                  )}
-                </div>
               )}
-            </>
-          )}
+            </button>
 
-          {/* Productos */}
-          {productosModuloVisible && (
-            <>
-              <button
-                onClick={() => toggleMenu('productos')}
-                className={linkClass(productosActivo && menuAbierto !== 'productos')}
-              >
-                <Package size={18} />
-                <span className="flex-1 text-left">Productos</span>
+            {!collapsed && menuAbierto === 'compras' && (
+              <div className="flex flex-col gap-1 pl-4">
+                {comprasLinksVisibles.listado && (
+                  <Link href="/dashboard/compras" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/compras')}>
+                    <List size={16} />
+                    <span className="text-sm">Listado de Compras</span>
+                  </Link>
+                )}
+
+                {comprasLinksVisibles.generar && (
+                  <Link
+                    href={RUTA_GENERAR_COMPRA}
+                    onClick={handleLinkClick}
+                    title="Ingresar Compra (F6 abre ventana flotante desde cualquier página)"
+                    className={linkClass(pathname === RUTA_GENERAR_COMPRA)}
+                  >
+                    <Plus size={16} />
+                    <span className="text-sm flex-1">Ingresar Compra</span>
+                    {!collapsed && (
+                      <span className="text-[10px] font-semibold text-white/60 border border-white/30 rounded px-1">F6</span>
+                    )}
+                  </Link>
+                )}
+
+                {comprasLinksVisibles.proveedores && (
+                  <Link href="/dashboard/proveedores" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/proveedores')}>
+                    <Contact size={16} />
+                    <span className="text-sm">Proveedores</span>
+                  </Link>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Productos */}
+        {productosModuloVisible && (
+          <>
+            <button
+              type="button"
+              onClick={() => handleToggleMenu('productos')}
+              title={collapsed ? 'Productos' : undefined}
+              className={linkClass(productosActivo && menuAbierto !== 'productos')}
+            >
+              <Package size={18} />
+              {!collapsed && <span className="flex-1 text-left">Productos</span>}
+              {!collapsed && (
                 <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'productos' ? 'rotate-180' : ''}`} />
-              </button>
-
-              {menuAbierto === 'productos' && (
-                <div className="flex flex-col gap-1 pl-4">
-                  {productosChildrenVisibles.map(({ href, label, icon: Icon }) => (
-                    <Link key={href} href={href} className={linkClass(pathname === href)}>
-                      <Icon size={16} />
-                      <span className="text-sm">{label}</span>
-                    </Link>
-                  ))}
-                </div>
               )}
-            </>
-          )}
+            </button>
 
-          {/* Traslados */}
-          {trasladosModuloVisible && (
-            <>
-              <button
-                onClick={() => toggleMenu('traslados')}
-                className={linkClass(trasladosActivo && menuAbierto !== 'traslados')}
-              >
-                <Repeat size={18} />
-                <span className="flex-1 text-left">Traslados</span>
+            {!collapsed && menuAbierto === 'productos' && (
+              <div className="flex flex-col gap-1 pl-4">
+                {productosChildrenVisibles.map(({ href, label, icon: Icon }) => (
+                  <Link key={href} href={href} onClick={handleLinkClick} className={linkClass(pathname === href)}>
+                    <Icon size={16} />
+                    <span className="text-sm">{label}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Traslados */}
+        {trasladosModuloVisible && (
+          <>
+            <button
+              type="button"
+              onClick={() => handleToggleMenu('traslados')}
+              title={collapsed ? 'Traslados' : undefined}
+              className={linkClass(trasladosActivo && menuAbierto !== 'traslados')}
+            >
+              <Repeat size={18} />
+              {!collapsed && <span className="flex-1 text-left">Traslados</span>}
+              {!collapsed && (
                 <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'traslados' ? 'rotate-180' : ''}`} />
-              </button>
-
-              {menuAbierto === 'traslados' && (
-                <div className="flex flex-col gap-1 pl-4">
-                  {trasladosChildrenVisibles.map(({ href, label, icon: Icon }) => (
-                    <Link key={href} href={href} className={linkClass(pathname === href)}>
-                      <Icon size={16} />
-                      <span className="text-sm">{label}</span>
-                    </Link>
-                  ))}
-                </div>
               )}
-            </>
-          )}
+            </button>
 
-          {/* Empleados */}
-          {empleadosModuloVisible && (
-            <>
-              <button
-                onClick={() => toggleMenu('empleados')}
-                className={linkClass(empleadosActivo && menuAbierto !== 'empleados')}
-              >
-                <Users size={18} />
-                <span className="flex-1 text-left">Empleados</span>
+            {!collapsed && menuAbierto === 'traslados' && (
+              <div className="flex flex-col gap-1 pl-4">
+                {trasladosChildrenVisibles.map(({ href, label, icon: Icon }) => (
+                  <Link key={href} href={href} onClick={handleLinkClick} className={linkClass(pathname === href)}>
+                    <Icon size={16} />
+                    <span className="text-sm">{label}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Empleados */}
+        {empleadosModuloVisible && (
+          <>
+            <button
+              type="button"
+              onClick={() => handleToggleMenu('empleados')}
+              title={collapsed ? 'Empleados' : undefined}
+              className={linkClass(empleadosActivo && menuAbierto !== 'empleados')}
+            >
+              <Users size={18} />
+              {!collapsed && <span className="flex-1 text-left">Empleados</span>}
+              {!collapsed && (
                 <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'empleados' ? 'rotate-180' : ''}`} />
-              </button>
-
-              {menuAbierto === 'empleados' && (
-                <div className="flex flex-col gap-1 pl-4">
-                  {empleadosChildrenVisibles.map(({ href, label, icon: Icon }) => (
-                    <Link key={href} href={href} className={linkClass(pathname === href)}>
-                      <Icon size={16} />
-                      <span className="text-sm">{label}</span>
-                    </Link>
-                  ))}
-                </div>
               )}
-            </>
-          )}
+            </button>
 
-          {esAdmin && bottomLinks.map(({ href, label, icon: Icon }) => (
-            <Link key={href} href={href} className={linkClass(pathname === href)}>
-              <Icon size={18} />
-              {label}
-            </Link>
-          ))}
-        </nav>
-      </aside>
+            {!collapsed && menuAbierto === 'empleados' && (
+              <div className="flex flex-col gap-1 pl-4">
+                {empleadosChildrenVisibles.map(({ href, label, icon: Icon }) => (
+                  <Link key={href} href={href} onClick={handleLinkClick} className={linkClass(pathname === href)}>
+                    <Icon size={16} />
+                    <span className="text-sm">{label}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </>
+        )}
 
-      <CajaCerradaModal
-        open={modalCajaOpen}
-        onClose={() => setModalCajaOpen(false)}
-        onIrAArqueo={irAArqueo}
-      />
-    </>
+        {esAdmin && bottomLinks.map(({ href, label, icon: Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            onClick={handleLinkClick}
+            title={collapsed ? label : undefined}
+            className={linkClass(pathname === href)}
+          >
+            <Icon size={18} />
+            {!collapsed && label}
+          </Link>
+        ))}
+      </nav>
+    </div>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, ComponentType } from 'react';
+import { useEffect, useState, FC } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Plus, Pencil, Trash2 } from 'lucide-react';
 import {
@@ -10,15 +10,24 @@ import LaboratorioModal from "../components/LaboratorioModal";
 import CategoriaModal from  "../components/CategoriaModal";
 import PrincipioActivoModal from "../components/PrincipioActivoModal";
 import AccionTerapeuticaModal from "../components/AccionTerapeuticaModal";
+import ModalEliminar from "@/components/ModalEliminar";
 import Paginacion from "@/components/Paginacion";
 
-type ItemBase = { id: number; nombre: string };
+export type ItemBase = { id: number; nombre: string };
+
+// Interfaz unificada para los modales de atributos
+export interface AtributoModalProps {
+  open: boolean;
+  item?: ItemBase | null;
+  onClose: () => void;
+  onSave: (nombre: string) => Promise<void>;
+}
 
 const TABS = [
-  { key: 'categoria', label: 'CATEGORÍA', api: categoriasApi, Modal: CategoriaModal },
-  { key: 'laboratorio', label: 'LABORATORIO', api: laboratoriosApi, Modal: LaboratorioModal },
-  { key: 'principio', label: 'PRINCIPIO ACTIVO', api: principiosActivosApi, Modal: PrincipioActivoModal },
-  { key: 'accion', label: 'ACCIÓN TERAPEÚTICA', api: accionesTerapeuticasApi, Modal: AccionTerapeuticaModal },
+  { key: 'categoria', label: 'CATEGORÍA', api: categoriasApi, Modal: CategoriaModal as FC<AtributoModalProps> },
+  { key: 'laboratorio', label: 'LABORATORIO', api: laboratoriosApi, Modal: LaboratorioModal as FC<AtributoModalProps> },
+  { key: 'principio', label: 'PRINCIPIO ACTIVO', api: principiosActivosApi, Modal: PrincipioActivoModal as FC<AtributoModalProps> },
+  { key: 'accion', label: 'ACCIÓN TERAPEÚTICA', api: accionesTerapeuticasApi, Modal: AccionTerapeuticaModal as FC<AtributoModalProps> },
 ] as const;
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
@@ -39,6 +48,20 @@ export default function AtributoProductoPage() {
   // 1. Estados para la paginación
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
+
+  const [modalConfig, setModalConfig] = useState<{
+  isOpen: boolean;
+  mensaje: string;
+  errorMensaje?: string;
+  onConfirm: () => Promise<void>;
+}>({
+  isOpen: false,
+  mensaje: '',
+  onConfirm: async () => {},
+});
+
+const cerrarModal = () =>
+  setModalConfig((prev) => ({ ...prev, isOpen: false }));
 
   const tab = TABS.find((t) => t.key === tabActiva)!;
 
@@ -74,14 +97,16 @@ export default function AtributoProductoPage() {
     await cargar();
   };
 
-  const handleEliminar = async (item: ItemBase) => {
-    if (!confirm(`¿Eliminar "${item.nombre}"?`)) return;
-    try {
-      await tab.api.eliminar(item.id);
-      await cargar();
-    } catch {
-      alert('No se pudo eliminar. Puede que esté siendo usado por algún producto.');
-    }
+  const handleEliminar = (item: ItemBase) => {
+    setModalConfig({
+      isOpen: true,
+      mensaje: `¿Deseas eliminar "${item.nombre}"?`,
+      errorMensaje: 'No se pudo eliminar. Puede que esté siendo usado por algún producto.',
+      onConfirm: async () => {
+        await tab.api.eliminar(item.id);
+        await cargar();
+      },
+    });
   };
 
   const ModalComponent = tab.Modal;
@@ -89,9 +114,6 @@ export default function AtributoProductoPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Link href="/dashboard/productos" className="text-zinc-400 hover:text-zinc-600">
-          <ArrowLeft size={20} />
-        </Link>
         <div>
           <h1 className="text-2xl font-bold text-primary tracking-tight">Atributos de Producto</h1>
           <p className="text-sm text-zinc-500 mt-1">Gestiona los catálogos usados al registrar productos.</p>
@@ -143,7 +165,6 @@ export default function AtributoProductoPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {/* 3. Renderizar solo la porción correspondiente a la página actual */}
                 {itemsPaginados.map((item) => (
                   <tr key={item.id} className="hover:bg-zinc-50/60 transition-colors">
                     <td className="px-5 py-3 text-zinc-800">{item.id}</td>
@@ -163,7 +184,6 @@ export default function AtributoProductoPage() {
               </tbody>
             </table>
 
-            {/* 4. Componente de paginación correctamente enlazado */}
             <Paginacion
               currentPage={paginaSegura}
               totalPages={totalPaginas}
@@ -181,7 +201,20 @@ export default function AtributoProductoPage() {
         )}
       </div>
 
-      <ModalComponent open={modalOpen} item={itemActivo} onClose={() => setModalOpen(false)} onSave={handleGuardar} />
+      <ModalComponent
+        open={modalOpen}
+        item={itemActivo}
+        onClose={() => setModalOpen(false)}
+        onSave={handleGuardar}
+      />
+
+      <ModalEliminar
+      isOpen={modalConfig.isOpen}
+      onClose={cerrarModal}
+      mensaje={modalConfig.mensaje}
+      errorMensajeDefault={modalConfig.errorMensaje}
+      onConfirm={modalConfig.onConfirm}
+    />
     </div>
   );
 }

@@ -1,3 +1,4 @@
+// reporteFlujoCaja.ts
 import type { FlujoCaja, MovimientoCaja } from '@/api/reportes';
 import { crearPos80Builder, crearA4Builder, formatFecha, formatEmision, formatMoneda, ColumnaReporte } from './pdfBase';
 
@@ -9,9 +10,10 @@ const columnas: ColumnaReporte<MovimientoCaja>[] = [
   { header: 'Monto', align: 'right', widthA4: 40, render: (f) => formatMoneda(f.monto) },
 ];
 
-export function generarFlujoCajaPos80(data: FlujoCaja): Blob {
-  const altura = 55 + data.movimientos.length * 24 + 25;
+export async function generarFlujoCajaPos80(data: FlujoCaja, logo?: string): Promise<Blob> {
+  const altura = 65 + data.movimientos.length * 24 + 25;
   const b = crearPos80Builder(altura);
+  await b.encabezadoEmpresa(logo);
 
   b.texto('FLUJO DE CAJA', { align: 'center', size: 9.5, bold: true });
   b.texto('Ingresos y Egresos', { align: 'center', size: 8 });
@@ -38,8 +40,9 @@ export function generarFlujoCajaPos80(data: FlujoCaja): Blob {
   return b.finalizar();
 }
 
-export function generarFlujoCajaA4(data: FlujoCaja): Blob {
+export async function generarFlujoCajaA4(data: FlujoCaja, logo?: string): Promise<Blob> {
   const b = crearA4Builder();
+  await b.encabezadoEmpresa(logo);
 
   b.titulo('Flujo de Caja (Ingresos y Egresos)');
   b.subtitulo([

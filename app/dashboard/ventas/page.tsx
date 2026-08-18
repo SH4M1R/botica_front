@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Plus, Eye, Ban, Receipt, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
-import { ventasApi } from '@/api/ventas';
+import { ventasApi, getNombreCompleto } from '@/api/ventas';
 import type { Venta } from '@/api/ventas';
 import { useSession } from '@/hooks/useSession';
 import VentaDetalleModal from './components/VentaDetalleModal';
 import Paginacion from '@/components/Paginacion';
+import AnularModal from '@/components/AnularModal';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
@@ -43,6 +44,7 @@ export default function VentasPage() {
   const [ventas, setVentas] = useState<Venta[]>([]);
   const [loading, setLoading] = useState(true);
   const [ventaDetalle, setVentaDetalle] = useState<Venta | null>(null);
+  const [ventaAAnular, setVentaAAnular] = useState<Venta | null>(null);
 
   // Paginación por días
   const [paginaDia, setPaginaDia] = useState(0);
@@ -63,9 +65,13 @@ export default function VentasPage() {
 
   useEffect(() => { cargarVentas(); }, []);
 
-  const handleAnular = async (venta: Venta) => {
-    if (!confirm(`¿Anular la venta #${String(venta.id).padStart(6, '0')}? El stock se devolverá.`)) return;
-    await ventasApi.anular(venta.id);
+  const handleAnular = (venta: Venta) => {
+    setVentaAAnular(venta);
+  };
+
+  const confirmarAnulacion = async () => {
+    if (!ventaAAnular) return;
+    await ventasApi.anular(ventaAAnular.id);
     await cargarVentas();
   };
 
@@ -209,13 +215,13 @@ export default function VentasPage() {
 
               <table className="w-full text-sm">
                 <colgroup>
-                  <col style={{ width: colWidth }} />
-                  <col style={{ width: colWidth }} />
-                  {esAdministrador && <col style={{ width: colWidth }} />}
-                  <col style={{ width: colWidth }} />
-                  <col style={{ width: colWidth }} />
-                  <col style={{ width: colWidth }} />
-                  <col style={{ width: colWidth }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '20%' }} />
+                  {esAdministrador && <col style={{ width: '15%' }} />}
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '15%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '15%' }} />
                 </colgroup>
                 <thead>
                   <tr className="bg-primary/10 border-b border-zinc-200 text-left text-xs font-bold text-primary uppercase tracking-wider">
@@ -233,7 +239,9 @@ export default function VentasPage() {
                   {itemsPaginados.map((v) => (
                     <tr key={v.id} className="hover:bg-zinc-50/60 transition-colors">
                       <td className="px-5 py-3 font-mono text-zinc-600">#{String(v.id).padStart(6, '0')}</td>
-                      <td className="px-5 py-3 font-medium text-zinc-800">{v.cliente?.nombre ?? 'No registrado'}</td>
+                      <td className="px-5 py-3 font-medium text-zinc-800">
+                        {v.cliente ? getNombreCompleto(v.cliente) : 'No registrado'}
+                      </td>
                       {esAdministrador && (
                         <td className="px-5 py-3 text-zinc-600">{v.empleado?.nombre ?? '—'}</td>
                       )}
@@ -260,7 +268,7 @@ export default function VentasPage() {
                           </button>
 
                           <button
-                            onClick={() => window.open(`/dashboard/ventas/boleta/${v.id}`, '_blank')}
+                            onClick={() => window.open(`/dashboard/ventas/boleta?id=${v.id}`, '_blank')}
                             className="p-2 text-primary hover:text-primary hover:bg-primary/10 rounded-lg transition-colors border-2"
                             title="Ver boleta"
                           >
@@ -303,6 +311,15 @@ export default function VentasPage() {
       )}
 
       <VentaDetalleModal venta={ventaDetalle} onClose={() => setVentaDetalle(null)} />
+
+      <AnularModal
+        isOpen={!!ventaAAnular}
+        onClose={() => setVentaAAnular(null)}
+        onConfirm={confirmarAnulacion}
+        titulo="Anular venta"
+        mensaje={`¿Anular la venta #${String(ventaAAnular?.id ?? '').padStart(6, '0')}? El stock se devolverá.`}
+        errorMensajeDefault="Ocurrió un error al intentar anular esta venta."
+      />
     </div>
   );
 }

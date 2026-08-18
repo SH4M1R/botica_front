@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { ventasApi } from '@/api/ventas';
 import { obtenerEmpresa } from '@/api/empresa';
 import { generarBoletaPdf } from '@/utils/generarBoletaPdf';
 
 export default function BoletaCliente() {
-  const params = useParams();
-  const idVenta = Number(params?.id);
+  const searchParams = useSearchParams();
+  const idVenta = Number(searchParams.get('id'));
+  const vueltoParam = searchParams.get('vuelto');
+  const vuelto = vueltoParam ? Number(vueltoParam) : undefined;
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -20,7 +22,7 @@ export default function BoletaCliente() {
           ventasApi.obtener(idVenta),
           obtenerEmpresa(),
         ]);
-        const blob = await generarBoletaPdf(venta, empresa);
+        const blob = await generarBoletaPdf(venta, empresa, vuelto);
         const url = URL.createObjectURL(blob);
         window.location.replace(url);
       } catch {

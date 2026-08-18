@@ -1,18 +1,83 @@
 import { delay, nextId } from './_mockUtils';
 
-export interface Proveedor {
-  id: number; tipoDocumento: string; numeroDocumento: string; nombres: string;
-  departamento?: string; provincia?: string; distrito?: string; direccion?: string;
-  telefono?: string; correo?: string; contactoNombres?: string; contactoCelular?: string; contactoCorreo?: string;
+// apiFetch se deja disponible por si algún componente lo importa directamente,
+// pero comprasApi/proveedorApi ya NO lo usan: todo corre en memoria.
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers ?? {}),
+    },
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `Error ${res.status} al llamar ${path}`);
+  }
+
+  if (res.status === 204) return undefined as T;
+
+  const text = await res.text();
+  if (!text) return undefined as T;
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return undefined as T;
+  }
 }
 
-export type ProveedorRequestDTO = Omit<Proveedor, 'id'>;
+export interface Proveedor {
+  id: number;
+  tipoDocumento: string;
+  numeroDocumento: string;
+  nombres: string;
+  departamento?: string;
+  provincia?: string;
+  distrito?: string;
+  direccion?: string;
+  telefono?: string;
+  correo?: string;
+  contactoNombres?: string;
+  contactoCelular?: string;
+  contactoCorreo?: string;
+}
 
-export interface Empleado { id: number; nombre: string; rol?: string; }
+export interface ProveedorRequestDTO {
+  tipoDocumento: string;
+  numeroDocumento: string;
+  nombres: string;
+  departamento?: string;
+  provincia?: string;
+  distrito?: string;
+  direccion?: string;
+  telefono?: string;
+  correo?: string;
+  contactoNombres?: string;
+  contactoCelular?: string;
+  contactoCorreo?: string;
+}
+
+export interface Empleado {
+  id: number;
+  nombre: string;
+  rol?: string;
+}
 
 export interface Producto {
-  id: number; nombre: string; codigoBarra?: string; unidadMedida: string; gravada: boolean;
-  precioUnitario: number; precioMayorista: number; costoUnitario?: number; stockActual?: number; unidadesPorPresentacion?: number;
+  id: number;
+  nombre: string;
+  codigoBarra?: string;
+  unidadMedida: string;
+  gravada: boolean;
+  precioUnitario: number;
+  precioMayorista: number;
+  costoUnitario?: number;
+  stockActual?: number;
+  unidadesPorPresentacion?: number;
 }
 
 export type AfectacionIgv = "GRAVADO_ONEROSO" | "EXONERADO" | "INAFECTO";
@@ -26,33 +91,84 @@ export const AFECTACION_IGV_OPTIONS: { value: AfectacionIgv; label: string }[] =
 export type TipoPrecio = "UNITARIO" | "MAYORISTA";
 
 export interface DetalleCompraItem {
-  key: string; idProducto: number; nombreProducto: string; tipoPrecio: TipoPrecio; afectacionIgv: AfectacionIgv;
-  lote?: string; fechaVencimiento?: string; unidadMedida: string; cantidad: number; precioUnitario: number; importe: number;
+  key: string;
+  idProducto: number;
+  nombreProducto: string;
+  tipoPrecio: TipoPrecio;
+  afectacionIgv: AfectacionIgv;
+  lote?: string;
+  fechaVencimiento?: string;
+  unidadMedida: string;
+  cantidad: number;
+  precioUnitario: number;
+  importe: number;
 }
 
 export interface ItemCompraRequestDTO {
-  idProducto: number; lote?: string; fechaVencimiento?: string; unidadMedida: string; cantidad: number; precioUnitario: number;
+  idProducto: number;
+  lote?: string;
+  fechaVencimiento?: string;
+  unidadMedida: string;
+  cantidad: number;
+  precioUnitario: number;
 }
 
 export interface CompraRequestDTO {
-  comprobante: string; serie: string; numero: string; fechaEmision: string; regularizar: boolean;
-  idProveedor: number; idEmpleado: number; precioIncluyeIgv: boolean; descripcion?: string; percepcion?: number;
-  tipoPago: string; medioPago: string; items: ItemCompraRequestDTO[];
+  comprobante: string;
+  serie: string;
+  numero: string;
+  fechaEmision: string; // yyyy-MM-dd
+  regularizar: boolean;
+  idProveedor: number;
+  idEmpleado: number;
+  precioIncluyeIgv: boolean;
+  descripcion?: string;
+  percepcion?: number;
+  tipoPago: string;
+  medioPago: string;
+  items: ItemCompraRequestDTO[];
 }
 
 export interface DetalleCompraResponse {
-  id: number; producto: Producto; lote?: string; fechaVencimiento?: string; unidadMedida: string;
-  cantidad: number; precioUnitario: number; importe: number;
+  id: number;
+  producto: Producto;
+  lote?: string;
+  fechaVencimiento?: string;
+  unidadMedida: string;
+  cantidad: number;
+  precioUnitario: number;
+  importe: number;
 }
 
 export interface Compra {
-  id: number; comprobante: string; serie: string; numero: string; fechaEmision: string; fechaRegistro: string;
-  regularizar: boolean; proveedor: Proveedor; empleado: Empleado; precioIncluyeIgv: boolean; descripcion?: string;
-  subtotal: number; igv: number; total: number; percepcion?: number; pagar: number; tipoPago: string; medioPago: string;
-  estado: boolean; estadoPago: boolean; detalles: DetalleCompraResponse[];
+  id: number;
+  comprobante: string;
+  serie: string;
+  numero: string;
+  fechaEmision: string;
+  fechaRegistro: string;
+  regularizar: boolean;
+  proveedor: Proveedor;
+  empleado: Empleado;
+  precioIncluyeIgv: boolean;
+  descripcion?: string;
+  subtotal: number;
+  igv: number;
+  total: number;
+  percepcion?: number;
+  pagar: number;
+  tipoPago: string;
+  medioPago: string;
+  estado: boolean;
+  estadoPago: boolean;
+  detalles: DetalleCompraResponse[];
 }
 
 export const IGV_RATE = 0.18;
+
+/* ============================================================
+   DATOS ESTÁTICOS (en memoria)
+   ============================================================ */
 
 let proveedores: Proveedor[] = [
   { id: 1, tipoDocumento: 'RUC', numeroDocumento: '20456789123', nombres: 'Distribuidora Farmacéutica del Perú S.A.C.', departamento: 'Lima', provincia: 'Lima', distrito: 'Ate', direccion: 'Av. Industrial 456', telefono: '014567890', correo: 'ventas@disfarma.pe', contactoNombres: 'Pedro Salas', contactoCelular: '987112233', contactoCorreo: 'pedro.salas@disfarma.pe' },
@@ -72,34 +188,66 @@ let compras: Compra[] = [
   ] },
 ];
 
+/* ============================================================
+   APIs
+   ============================================================ */
+
 export const comprasApi = {
   listar: async () => { await delay(); return [...compras]; },
+
   obtener: async (id: number) => {
     await delay();
     const compra = compras.find((c) => c.id === id);
     if (!compra) throw new Error('Compra no encontrada');
     return compra;
   },
+
   crear: async (payload: CompraRequestDTO) => {
     await delay();
     const proveedor = proveedores.find((p) => p.id === payload.idProveedor) ?? proveedores[0];
     const detalles: DetalleCompraResponse[] = payload.items.map((item, i) => {
       const producto = productosCompra.find((p) => p.id === item.idProducto) ?? productosCompra[0];
-      return { id: i + 1, producto, lote: item.lote, fechaVencimiento: item.fechaVencimiento, unidadMedida: item.unidadMedida, cantidad: item.cantidad, precioUnitario: item.precioUnitario, importe: item.cantidad * item.precioUnitario };
+      return {
+        id: i + 1,
+        producto,
+        lote: item.lote,
+        fechaVencimiento: item.fechaVencimiento,
+        unidadMedida: item.unidadMedida,
+        cantidad: item.cantidad,
+        precioUnitario: item.precioUnitario,
+        importe: item.cantidad * item.precioUnitario,
+      };
     });
     const subtotalBase = detalles.reduce((sum, d) => sum + d.importe, 0);
     const igv = payload.precioIncluyeIgv ? subtotalBase - subtotalBase / (1 + IGV_RATE) : subtotalBase * IGV_RATE;
     const total = payload.precioIncluyeIgv ? subtotalBase : subtotalBase + igv;
     const nueva: Compra = {
-      id: nextId(compras), comprobante: payload.comprobante, serie: payload.serie, numero: payload.numero, fechaEmision: payload.fechaEmision,
-      fechaRegistro: new Date().toISOString(), regularizar: payload.regularizar, proveedor, empleado: { id: payload.idEmpleado, nombre: 'Empleado Demo' },
-      precioIncluyeIgv: payload.precioIncluyeIgv, descripcion: payload.descripcion, subtotal: Number((total - igv).toFixed(2)), igv: Number(igv.toFixed(2)),
-      total: Number(total.toFixed(2)), percepcion: payload.percepcion ?? 0, pagar: Number((total + (payload.percepcion ?? 0)).toFixed(2)),
-      tipoPago: payload.tipoPago, medioPago: payload.medioPago, estado: true, estadoPago: payload.tipoPago === 'CONTADO', detalles,
+      id: nextId(compras),
+      comprobante: payload.comprobante,
+      serie: payload.serie,
+      numero: payload.numero,
+      fechaEmision: payload.fechaEmision,
+      fechaRegistro: new Date().toISOString(),
+      regularizar: payload.regularizar,
+      proveedor,
+      empleado: { id: payload.idEmpleado, nombre: 'Empleado Demo' },
+      precioIncluyeIgv: payload.precioIncluyeIgv,
+      descripcion: payload.descripcion,
+      subtotal: Number((total - igv).toFixed(2)),
+      igv: Number(igv.toFixed(2)),
+      total: Number(total.toFixed(2)),
+      percepcion: payload.percepcion ?? 0,
+      pagar: Number((total + (payload.percepcion ?? 0)).toFixed(2)),
+      tipoPago: payload.tipoPago,
+      medioPago: payload.medioPago,
+      estado: true,
+      estadoPago: payload.tipoPago === 'CONTADO',
+      detalles,
     };
     compras.push(nueva);
     return nueva;
   },
+
   anular: async (id: number) => {
     await delay();
     const compra = compras.find((c) => c.id === id);
@@ -110,13 +258,21 @@ export const comprasApi = {
 
 export const proveedorApi = {
   listar: async () => { await delay(); return [...proveedores]; },
+
   obtener: async (id: number) => {
     await delay();
     const proveedor = proveedores.find((p) => p.id === id);
     if (!proveedor) throw new Error('Proveedor no encontrado');
     return proveedor;
   },
-  crear: async (data: ProveedorRequestDTO) => { await delay(); const n: Proveedor = { id: nextId(proveedores), ...data }; proveedores.push(n); return n; },
+
+  crear: async (data: ProveedorRequestDTO) => {
+    await delay();
+    const nuevo: Proveedor = { id: nextId(proveedores), ...data };
+    proveedores.push(nuevo);
+    return nuevo;
+  },
+
   actualizar: async (id: number, data: Partial<ProveedorRequestDTO>) => {
     await delay();
     const proveedor = proveedores.find((p) => p.id === id);
