@@ -57,24 +57,18 @@ let arqueos: ArqueoCaja[] = [
   },
 ];
 
-// Oculta el empleadoId "interno" en las respuestas, igual que hacía el backend
-function sinEmpleadoId(a: ArqueoCaja): Omit<ArqueoCaja, 'empleadoId'> {
-  const { empleadoId, ...rest } = a;
-  return rest;
-}
-
 export const arqueoApi = {
   listar: async (desde?: string, hasta?: string) => {
     await delay();
     let resultado = [...arqueos];
     if (desde) resultado = resultado.filter((a) => a.fechaInicio >= desde);
     if (hasta) resultado = resultado.filter((a) => a.fechaInicio <= hasta);
-    return resultado.map(sinEmpleadoId);
+    return resultado;
   },
 
   pendientes: async () => {
     await delay();
-    return arqueos.filter((a) => a.estado).map(sinEmpleadoId);
+    return arqueos.filter((a) => a.estado);
   },
 
   abrir: async (data: AbrirCajaPayload) => {
@@ -96,7 +90,7 @@ export const arqueoApi = {
       estado: true,
     };
     arqueos.push(nuevo);
-    return sinEmpleadoId(nuevo);
+    return nuevo;
   },
 
   cerrar: async (id: number, data: CerrarCajaPayload) => {
@@ -110,12 +104,11 @@ export const arqueoApi = {
     arqueo.montoDejado = data.montoDejado;
     arqueo.montoFinal = arqueo.montoInicial + data.montoDejado;
     arqueo.estado = false;
-    return sinEmpleadoId(arqueo);
+    return arqueo;
   },
 
   cajaActual: async (empleadoId: number) => {
     await delay();
-    const arqueo = arqueos.find((a) => a.empleadoId === empleadoId && a.estado);
-    return arqueo ? sinEmpleadoId(arqueo) : undefined;
+    return arqueos.find((a) => a.empleadoId === empleadoId && a.estado);
   },
 };
