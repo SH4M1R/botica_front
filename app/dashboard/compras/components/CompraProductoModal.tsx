@@ -62,11 +62,12 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
     const filtrados: ProductoExtendido[] = listaProductos
       .filter((p) => {
         const nombreMatch = p.nombre?.toLowerCase().includes(q);
-        const barraMatch = p.barras?.toLowerCase().includes(q) || p.codigoBarra?.toLowerCase().includes(q);
+        const barraMatch =
+          p.barras?.toLowerCase().includes(q) ||
+          p.codigoBarra?.toLowerCase().includes(q);
         const labMatch = p.laboratorio?.nombre?.toLowerCase().includes(q);
         return nombreMatch || barraMatch || labMatch;
       })
-      .slice(0, 8)
       .map((p) => {
         const factorCompra = p.factor ?? 1;
         const nombreLab = typeof p.laboratorio === "object" ? p.laboratorio?.nombre : p.laboratorio;

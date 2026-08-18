@@ -552,7 +552,6 @@ export default function GenerarCotizacionPage() {
         <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-50 border border-zinc-200 shrink-0">
           <FileText size={15} className="text-primary shrink-0" />
           <span className="text-xs font-semibold text-zinc-700">Cotización de Venta</span>
-          <span className="text-[10px] text-zinc-400">(no descuenta stock)</span>
         </div>
 
         <div className="w-full md:w-auto md:min-w-[250px] md:max-w-[350px] md:flex-1 xl:flex-none space-y-1">

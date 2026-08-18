@@ -253,7 +253,7 @@ export default function ArqueoPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs font-bold uppercase tracking-wide text-zinc-400 border-b border-zinc-200">
+              <tr className="bg-primary/10 border-b border-zinc-200 text-left text-xs font-bold text-primary uppercase tracking-wider">
                 <th className="py-2 px-2">Numero</th>
                 <th className="py-2 px-2">Empleado</th>
                 <th className="py-2 px-2">Fecha Inicial</th>

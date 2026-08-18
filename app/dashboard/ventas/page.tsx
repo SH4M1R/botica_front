@@ -215,13 +215,13 @@ export default function VentasPage() {
 
               <table className="w-full text-sm">
                 <colgroup>
-                  <col style={{ width: colWidth }} />
-                  <col style={{ width: colWidth }} />
-                  {esAdministrador && <col style={{ width: colWidth }} />}
-                  <col style={{ width: colWidth }} />
-                  <col style={{ width: colWidth }} />
-                  <col style={{ width: colWidth }} />
-                  <col style={{ width: colWidth }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '20%' }} />
+                  {esAdministrador && <col style={{ width: '15%' }} />}
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '15%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '15%' }} />
                 </colgroup>
                 <thead>
                   <tr className="bg-primary/10 border-b border-zinc-200 text-left text-xs font-bold text-primary uppercase tracking-wider">

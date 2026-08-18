@@ -118,12 +118,12 @@ export default function ProveedoresPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <colgroup>
-                  <col style={{ width: '42%' }} />
+                  <col style={{ width: '46%' }} />
                   <col style={{ width: '14%' }} />
-                  <col style={{ width: '12%' }} />
-                  <col style={{ width: '12%' }} />
-                  <col style={{ width: '12%' }} />
-                  <col style={{ width: '8%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '10%' }} />
                 </colgroup>
                 <thead>
                   <tr className="bg-primary/10 border-b border-zinc-200 text-left text-xs font-bold text-primary uppercase tracking-wider">

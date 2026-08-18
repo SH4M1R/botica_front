@@ -97,9 +97,6 @@ export default function TrasladoRegistroForm({ tipo }: Props) {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <button onClick={() => router.push(rutaListado)} className="p-2 text-zinc-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors">
-          <ArrowLeft size={18} />
-        </button>
         <div>
           <h1 className="text-2xl font-bold text-primary tracking-tight">{titulo}</h1>
           <p className="text-sm text-zinc-500 mt-1">Busca los productos y registra las cantidades del traslado.</p>
@@ -154,7 +151,7 @@ export default function TrasladoRegistroForm({ tipo }: Props) {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-zinc-50 border-b border-zinc-200 text-left text-xs font-bold text-zinc-400 uppercase tracking-wider">
+              <tr className="bg-primary/10 border-b border-zinc-200 text-left text-xs font-bold text-primary uppercase tracking-wider">
                 <th className="px-5 py-3">Producto</th>
                 <th className="px-5 py-3 w-32">Cantidad</th>
                 <th className="px-5 py-3 w-36">Precio unitario</th>
@@ -192,7 +189,7 @@ export default function TrasladoRegistroForm({ tipo }: Props) {
                   </td>
                   <td className="px-5 py-3 font-semibold text-zinc-700">S/ {(l.cantidad * l.precioUnitario).toFixed(2)}</td>
                   <td className="px-5 py-3">
-                    <button onClick={() => quitarLinea(l.idProducto)} className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                    <button onClick={() => quitarLinea(l.idProducto)} className="p-2 text-red-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors border-2">
                       <Trash2 size={16} />
                     </button>
                   </td>

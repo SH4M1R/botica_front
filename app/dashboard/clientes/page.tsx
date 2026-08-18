@@ -123,10 +123,10 @@ export default function ClientesPage() {
           <>
             <table className="w-full text-sm">
               <colgroup>
-                <col style={{ width: '50%' }} />
-                <col style={{ width: '10%' }} />
-                <col style={{ width: '10%' }} />
-                <col style={{ width: '10%' }} />
+                <col style={{ width: '40%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '14%' }} />
                 <col style={{ width: '20%' }} />
               </colgroup>
               <thead>
@@ -159,7 +159,7 @@ export default function ClientesPage() {
                         <button
                           onClick={() => { setClienteParaPago(c); setPagoModalOpen(true); }}
                           title="Registrar pago de deuda"
-                          className="p-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors border-2"
+                          className="p-2 text-primary hover:text-primary/70 hover:bg-primary/10 rounded-lg transition-colors border-2"
                         >
                           <HandCoins size={16} />
                         </button>

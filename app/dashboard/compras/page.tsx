@@ -118,13 +118,13 @@ export default function ComprasPage() {
           <table className="w-full text-sm">
             <colgroup>
               <col style={{ width: "10%" }} />
-              <col style={{ width: "12%" }} />
+              <col style={{ width: "10%" }} />
               <col style={{ width: esAdministrador ? "20%" : "30%" }} />
               <col style={{ width: "15%" }} />
               {esAdministrador && <col style={{ width: "10%" }} />}
               <col style={{ width: "10%" }} />
               <col style={{ width: "10%" }} />
-              <col style={{ width: "8%" }} />
+              <col style={{ width: "10%" }} />
               <col style={{ width: "10%" }} />
             </colgroup>
             <thead>
@@ -135,12 +135,12 @@ export default function ComprasPage() {
                 <th className="px-5 py-3">COMPROBANTE</th>
                 {esAdministrador && <th className="px-5 py-3">REGISTRADO POR</th>}
                 <th className="px-5 py-3">TIPO PAGO</th>
-                <th className="px-5 py-3 text-right">PAGAR</th>
+                <th className="px-5 py-3 text-right">MONTO</th>
                 <th className="px-5 py-3">ESTADO</th>
                 <th className="px-5 py-3 text-right">ACCIONES</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100">
+            <tbody className="divide-y divide-zinc-100 text-xs">
               {itemsPaginados.map((c) => (
                 <tr key={c.id} className="hover:bg-zinc-50/60 transition-colors">
                   <td className="px-5 py-3 font-mono text-zinc-600">

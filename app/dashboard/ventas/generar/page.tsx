@@ -633,12 +633,12 @@ export default function GenerarVentaPage() {
         </div>
 
         {/* Selector de tipo de comprobante (Boleta/Factura llegan luego) */}
-        <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-50 border border-zinc-200 shrink-0">
-          <FileText size={15} className="text-primary shrink-0" />
+        <div className="hidden xl:flex items-center gap-1.5 px-2 py-1.5 rounded-xl bg-zinc-50 border border-zinc-200 shrink-0 w-fit">
+          <FileText size={14} className="text-primary shrink-0" />
           <select
             value={tipoComprobante}
             onChange={(e) => setTipoComprobante(e.target.value as TipoComprobante)}
-            className="text-xs font-semibold text-zinc-700 bg-transparent outline-none cursor-pointer"
+            className="w-[150px] text-xs font-semibold text-zinc-700 bg-transparent outline-none cursor-pointer"
             title="Tipo de comprobante a emitir"
           >
             {COMPROBANTE_OPTIONS.map((op) => (
