@@ -118,9 +118,9 @@ export default function ConfiguracionPage() {
       {/* Cabecera */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-zinc-200 pb-5">
         <div>
-          <h1 className="text-2xl font-bold text-primary tracking-tight">Configuración de la Empresa</h1>
+          <h1 className="text-2xl font-bold text-primary tracking-tight">Configuración de la Botica</h1>
           <p className="text-sm text-zinc-500 mt-1">
-            Personaliza la apariencia visual, horario e información legal o comercial de tu botica.
+            Personaliza la apariencia visual, horario e información legal o comercial de tu botica. Los datos ingresados se visualizarán en las boletas.
           </p>
         </div>
         <button
@@ -271,7 +271,7 @@ export default function ConfiguracionPage() {
           <div className="bg-white p-6 rounded-2xl border border-zinc-200 shadow-xs space-y-4">
             <span className="flex items-center gap-2 text-sm font-bold text-zinc-800">
               <Upload size={18} className="text-primary" />
-              Logo Principal
+              Logo Principal de la Boleta
             </span>
 
             <div className="w-full h-28 rounded-xl border border-dashed border-zinc-300 bg-zinc-50 flex items-center justify-center p-2 overflow-hidden">

@@ -1,13 +1,12 @@
-// reporteCatalogoTerapeutico.ts
 import type { CatalogoTerapeutico } from '@/api/reportes';
 import { crearPos80Builder, crearA4Builder, formatEmision, formatMoneda, ColumnaReporte } from './pdfBase';
 
 const columnas: ColumnaReporte<CatalogoTerapeutico>[] = [
   { header: 'Producto', align: 'left', widthA4: 50, render: (f) => f.nombreProducto },
-  { header: 'Principio Activo', align: 'left', widthA4: 45, render: (f) => f.principioActivo ?? '—' },
-  { header: 'Acción Terapéutica', align: 'left', widthA4: 45, render: (f) => f.accionTerapeutica ?? '—' },
-  { header: 'Stock', align: 'right', widthA4: 15, render: (f) => String(f.stock) },
-  { header: 'P. Venta', align: 'right', widthA4: 15, render: (f) => formatMoneda(f.precioVenta) },
+  { header: 'Principio Activo', align: 'left', widthA4: 40, render: (f) => f.principioActivo ?? '—' },
+  { header: 'Acción Terapéutica', align: 'left', widthA4: 40, render: (f) => f.accionTerapeutica ?? '—' },
+  { header: 'Stock', align: 'right', widthA4: 20, render: (f) => String(f.stock) },
+  { header: 'P. Venta', align: 'right', widthA4: 20, render: (f) => formatMoneda(f.precioVenta) },
 ];
 
 export async function generarCatalogoTerapeuticoPos80(

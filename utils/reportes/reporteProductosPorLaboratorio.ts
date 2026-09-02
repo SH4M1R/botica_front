@@ -11,6 +11,7 @@ import {
 const columnas: ColumnaReporte<ProductoPorLaboratorio>[] = [
   { header: 'Producto', align: 'left', widthA4: 65, render: (f) => f.nombreProducto },
   { header: 'Stock', align: 'right', widthA4: 25, render: (f) => String(f.stock) },
+  { header: 'Stock Fisico', align: 'right', widthA4: 25, render: () => '' },
   { header: 'P. Venta', align: 'right', widthA4: 30, render: (f) => formatMoneda(f.precioVenta) },
   {
     header: 'Vencimiento',

@@ -114,6 +114,12 @@ export function obtenerFlujoCaja(fechaInicio: string, fechaFin: string) {
    COMPRAS
    ============================================================ */
 
+export interface ProveedorResumen {
+  idProveedor: number;
+  nombreProveedor: string;
+  ruc?: string;
+}
+
 export interface CompraPorProveedor {
   idProveedor: number;
   nombreProveedor: string;
@@ -161,8 +167,15 @@ export interface CuentasPorPagar {
   compras: CompraDetalle[];
 }
 
-export function obtenerComprasPorProveedor(fechaInicio: string, fechaFin: string) {
-  return getJson<CompraPorProveedor[]>(`/reportes/compras/por-proveedor?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`);
+export function listarProveedores() {
+  return getJson<ProveedorResumen[]>(`/reportes/compras/proveedores`);
+}
+
+export function obtenerComprasPorProveedor(fechaInicio: string, fechaFin: string, idProveedor?: number) {
+  const queryProv = idProveedor ? `&idProveedor=${idProveedor}` : '';
+  return getJson<CompraPorProveedor[]>(
+    `/reportes/compras/por-proveedor?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}${queryProv}`
+  );
 }
 
 export function obtenerAnalisisCostos(idProducto: number) {
@@ -222,8 +235,9 @@ export function obtenerAlertaStockMinimo() {
   return getJson<AlertaStock[]>(`/reportes/inventario/alerta-stock-minimo`);
 }
 
-export function obtenerCatalogoTerapeutico() {
-  return getJson<CatalogoTerapeutico[]>(`/reportes/inventario/catalogo-terapeutico`);
+export function obtenerCatalogoTerapeutico(principioActivo?: string) {
+  const queryPA = principioActivo ? `?principioActivo=${encodeURIComponent(principioActivo)}` : '';
+  return getJson<CatalogoTerapeutico[]>(`/reportes/inventario/catalogo-terapeutico${queryPA}`);
 }
 
 export function obtenerSustitutos(idPrincipioActivo: number, idProductoExcluir: number) {

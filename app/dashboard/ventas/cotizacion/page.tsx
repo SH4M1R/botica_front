@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Trash2, FileText, ShoppingCart, UserPlus, Plus, X as XIcon, AlertTriangle, ExternalLink, Barcode, MousePointerClick } from 'lucide-react';
+import Link from 'next/link';
+import { Search, Trash2, FileText, ShoppingCart, UserPlus, Plus, X as XIcon, AlertTriangle, ExternalLink, Barcode, MousePointerClick, List } from 'lucide-react';
 import { productosApi } from '@/api/productos';
 import type { Producto } from '@/api/productos';
 import { clientesApi, getNombreCompleto } from '@/api/ventas';
@@ -10,6 +11,7 @@ import type { Cliente } from '@/api/ventas';
 import { permisosApi } from '@/api/permisos';
 import { empresaApi } from '@/api/empresa';
 import type { EmpresaForm } from '@/api/empresa';
+import { cotizacionesApi } from '@/api/cotizaciones';
 import { PERMISO_EDITAR_PRECIO_VENTA } from '@/constants/permisos';
 import { useSession } from '@/hooks/useSession';
 import ClienteModal from '@/app/dashboard/clientes/components/ClienteModal';
@@ -316,18 +318,36 @@ export default function GenerarCotizacionPage() {
     seleccionarCliente(nuevo);
   };
 
-  // Genera la cotización directamente desde el carrito en memoria: NO se
-  // persiste nada ni se descuenta stock. Trae los datos de la empresa
-  // (logo, RUC, dirección, etc.) para la cabecera del PDF.
+  // Guarda la cotización en la BD y luego genera el PDF con su folio real.
+  // NO descuenta stock: solo queda registrada para poder consultarla más
+  // adelante en el listado, o cargarla en "Generar venta" si el cliente
+  // decide comprar.
   const handleGenerarCotizacion = async () => {
     setError('');
     if (carrito.length === 0) {
       setError('Agrega al menos un producto.');
       return;
     }
+    if (!empleado) {
+      setError('Sesión expirada. Vuelve a iniciar sesión.');
+      return;
+    }
 
     setGenerandoCotizacion(true);
     try {
+      const guardada = await cotizacionesApi.crear({
+        idEmpleado: empleado.id,
+        idCliente: idClienteSeleccionado,
+        clienteNombre: nombreCliente.trim() || 'Clientes Varios',
+        clienteDni: dniCliente.trim() || undefined,
+        items: carrito.map(({ idProducto, tipoVenta, cantidad, precioUnitario }) => ({
+          idProducto,
+          tipoVenta,
+          cantidad,
+          precioUnitario,
+        })),
+      });
+
       let empresa: EmpresaForm | undefined;
       try {
         empresa = await empresaApi.obtener();
@@ -346,17 +366,23 @@ export default function GenerarCotizacionPage() {
           })),
           clienteNombre: nombreCliente.trim() || 'Clientes Varios',
           clienteDni: dniCliente.trim() || undefined,
-          empleadoNombre: empleado?.nombre ?? '',
           total,
+          folio: `N° ${String(guardada.id).padStart(6, '0')}`,
         },
         empresa
       );
 
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
+
+      setCarrito([]);
+      limpiarClienteSeleccionado();
+      setBusqueda('');
+      setError('');
+      searchInputRef.current?.focus();
     } catch (err) {
       console.error(err);
-      setError('Ocurrió un error al generar la cotización.');
+      setError('Ocurrió un error al guardar o generar la cotización.');
     } finally {
       setGenerandoCotizacion(false);
     }
@@ -525,25 +551,14 @@ export default function GenerarCotizacionPage() {
                 Generar Cotización
               </h1>
 
-              <button
-                type="button"
-                onClick={abrirVentanaFlotante}
+              <Link
+                href="/dashboard/ventas/cotizaciones"
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-primary text-primary hover:bg-primary/10 text-xs font-semibold transition-colors cursor-pointer"
-                title="Abrir en ventana emergente"
+                title="Ver cotizaciones guardadas"
               >
-                <ExternalLink size={13} />
-                <span className="hidden sm:inline">Ventana flotante</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setModoSinMouse(true)}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary text-white hover:bg-primary/90 text-xs font-semibold transition-colors cursor-pointer"
-                title="Cambiar a pantalla de cotización operable solo con teclado"
-              >
-                <MousePointerClick size={13} />
-                <span>Modo Sin Mouse</span>
-              </button>
+                <List size={13} />
+                <span className="hidden sm:inline">Ver cotizaciones</span>
+              </Link>
             </div>
           </div>
         </div>
@@ -552,6 +567,7 @@ export default function GenerarCotizacionPage() {
         <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-50 border border-zinc-200 shrink-0">
           <FileText size={15} className="text-primary shrink-0" />
           <span className="text-xs font-semibold text-zinc-700">Cotización de Venta</span>
+          <span className="text-[10px] text-zinc-400">(no descuenta stock)</span>
         </div>
 
         <div className="w-full md:w-auto md:min-w-[250px] md:max-w-[350px] md:flex-1 xl:flex-none space-y-1">

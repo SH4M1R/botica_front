@@ -659,7 +659,7 @@ export default function DashboardPage() {
               <div className="flex ml-12 mb-1">
                 {horasVisibles.map((h) => (
                   <div key={h} className="flex-1 text-center text-[10px] font-medium text-zinc-400">
-                    {h % 3 === 0 ? `${h}h` : ''}
+                    {h % 1 === 0 ? `${h}h` : ''}
                   </div>
                 ))}
               </div>

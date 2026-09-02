@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { FileText, Printer, Loader2, Search, Check, ChevronDown } from 'lucide-react';
 
 import * as api from '@/api/reportes';
-import { productosApi, type Producto as ProductoAPI } from '@/api/productos';
+import { productosApi } from '@/api/productos';
 import { generarReporteAsistenciaPos80, generarReporteAsistenciaA4 } from '@/utils/reportes/reporteAsistencia';
 import { obtenerEmpresa } from '@/api/empresa';
 import { descargarPdf, abrirPdfEnNuevaPestana } from '@/utils/reportes/pdfBase';
@@ -33,6 +33,10 @@ interface Producto {
   nombre: string;
   codigo?: string;
   laboratorio?: string;
+}
+
+interface ProveedorItem {
+  nombre: string;
 }
 
 const MODULOS: { id: Modulo; label: string }[] = [
@@ -175,7 +179,6 @@ function BuscadorProducto({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Carga la lista de productos activos una sola vez al montar el buscador
   useEffect(() => {
     setCargando(true);
     productosApi
@@ -245,7 +248,7 @@ function BuscadorProducto({
                 onSeleccionarProducto(prod);
                 setAbierto(false);
               }}
-              className="w-full text-left px-3 py-2 hover:bg-zinc-50 flex items-center justify-between border-b border-zinc-100 last:border-none transition-colors"
+              className="w-full text-left px-3 py-2 hover:bg-zinc-50 flex items-center justify-between border-b border-zinc-100 last:border-none transition-colors cursor-pointer"
             >
               <div>
                 <p className="font-medium text-xs text-zinc-800">{prod.nombre}</p>
@@ -287,7 +290,6 @@ function BuscadorLaboratorio({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Carga la lista de laboratorios una sola vez al montar el buscador
   useEffect(() => {
     setCargando(true);
     api
@@ -341,7 +343,7 @@ function BuscadorLaboratorio({
                 onSeleccionarLaboratorio(lab);
                 setAbierto(false);
               }}
-              className="w-full text-left px-3 py-2 hover:bg-zinc-50 flex items-center justify-between border-b border-zinc-100 last:border-none transition-colors"
+              className="w-full text-left px-3 py-2 hover:bg-zinc-50 flex items-center justify-between border-b border-zinc-100 last:border-none transition-colors cursor-pointer"
             >
               <div>
                 <p className="font-medium text-xs text-zinc-800">{lab.nombreLaboratorio}</p>
@@ -350,6 +352,208 @@ function BuscadorLaboratorio({
               {laboratorioSeleccionado?.idLaboratorio === lab.idLaboratorio && (
                 <Check size={14} className="text-primary" />
               )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ===================== BUSCADOR PROVEEDOR (MISMA ESTRUCTURA QUE BUSCADOR PRODUCTO) ===================== */
+function BuscadorProveedor({
+  label,
+  proveedorSeleccionado,
+  onSeleccionarProveedor,
+}: {
+  label: string;
+  proveedorSeleccionado: ProveedorItem | null;
+  onSeleccionarProveedor: (prov: ProveedorItem | null) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [proveedores, setProveedores] = useState<ProveedorItem[]>([]);
+  const [cargando, setCargando] = useState(false);
+  const [abierto, setAbierto] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setAbierto(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    setCargando(true);
+    productosApi
+      .listarActivos()
+      .then((data) => {
+        const nombresUnicos = Array.from(
+          new Set(
+            data
+              .map((p) => p.laboratorio?.nombre)
+              .filter((nom): nom is string => Boolean(nom && nom.trim() !== ''))
+          )
+        ).sort();
+        setProveedores(nombresUnicos.map((nombre) => ({ nombre })));
+      })
+      .catch((err) => console.error('Error al cargar proveedores:', err))
+      .finally(() => setCargando(false));
+  }, []);
+
+  const proveedoresFiltrados = query.trim()
+    ? proveedores.filter((p) => p.nombre.toLowerCase().includes(query.toLowerCase()))
+    : proveedores;
+
+  return (
+    <div className="flex flex-col gap-1 text-xs text-zinc-500 w-full relative" ref={dropdownRef}>
+      <span>{label}</span>
+      <div className="relative">
+        <input
+          type="text"
+          placeholder="Buscar proveedor por nombre..."
+          value={proveedorSeleccionado ? proveedorSeleccionado.nombre : query}
+          onFocus={() => {
+            setAbierto(true);
+            if (proveedorSeleccionado) {
+              setQuery('');
+              onSeleccionarProveedor(null);
+            }
+          }}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            if (proveedorSeleccionado) onSeleccionarProveedor(null);
+            setAbierto(true);
+          }}
+          className="w-full pl-8 pr-8 py-2 rounded-lg border border-zinc-300 bg-white text-sm text-zinc-800 focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+        />
+        <Search size={15} className="absolute left-2.5 top-2.5 text-zinc-400" />
+        {cargando ? (
+          <Loader2 size={15} className="absolute right-2.5 top-2.5 animate-spin text-zinc-400" />
+        ) : (
+          <ChevronDown size={15} className="absolute right-2.5 top-2.5 text-zinc-400 pointer-events-none" />
+        )}
+      </div>
+
+      {abierto && proveedoresFiltrados.length > 0 && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-zinc-200 rounded-xl shadow-lg max-h-60 overflow-y-auto z-50">
+          {proveedoresFiltrados.map((prov, index) => (
+            <button
+              key={index}
+              type="button"
+              onClick={() => {
+                onSeleccionarProveedor(prov);
+                setAbierto(false);
+              }}
+              className="w-full text-left px-3 py-2 hover:bg-zinc-50 flex items-center justify-between border-b border-zinc-100 last:border-none transition-colors cursor-pointer"
+            >
+              <div>
+                <p className="font-medium text-xs text-zinc-800">{prov.nombre}</p>
+              </div>
+              {proveedorSeleccionado?.nombre === prov.nombre && <Check size={14} className="text-primary" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ===================== BUSCADOR PRINCIPIO ACTIVO (MISMA ESTRUCTURA QUE BUSCADOR PRODUCTO) ===================== */
+function BuscadorPrincipioActivo({
+  label,
+  principioSeleccionado,
+  onSeleccionarPrincipio,
+}: {
+  label: string;
+  principioSeleccionado: string | null;
+  onSeleccionarPrincipio: (principio: string | null) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [principios, setPrincipios] = useState<string[]>([]);
+  const [cargando, setCargando] = useState(false);
+  const [abierto, setAbierto] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setAbierto(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    setCargando(true);
+    api
+      .obtenerCatalogoTerapeutico()
+      .then((data) => {
+        const unicos = Array.from(
+          new Set(
+            data
+              .map((item) => item.principioActivo)
+              .filter((p): p is string => Boolean(p && p.trim() !== ''))
+          )
+        ).sort();
+        setPrincipios(unicos);
+      })
+      .catch((err) => console.error('Error al cargar principios activos:', err))
+      .finally(() => setCargando(false));
+  }, []);
+
+  const principiosFiltrados = query.trim()
+    ? principios.filter((p) => p.toLowerCase().includes(query.toLowerCase()))
+    : principios;
+
+  return (
+    <div className="flex flex-col gap-1 text-xs text-zinc-500 w-full relative" ref={dropdownRef}>
+      <span>{label}</span>
+      <div className="relative">
+        <input
+          type="text"
+          placeholder="Buscar principio activo..."
+          value={principioSeleccionado ?? query}
+          onFocus={() => {
+            setAbierto(true);
+            if (principioSeleccionado) {
+              setQuery('');
+              onSeleccionarPrincipio(null);
+            }
+          }}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            if (principioSeleccionado) onSeleccionarPrincipio(null);
+            setAbierto(true);
+          }}
+          className="w-full pl-8 pr-8 py-2 rounded-lg border border-zinc-300 bg-white text-sm text-zinc-800 focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+        />
+        <Search size={15} className="absolute left-2.5 top-2.5 text-zinc-400" />
+        {cargando ? (
+          <Loader2 size={15} className="absolute right-2.5 top-2.5 animate-spin text-zinc-400" />
+        ) : (
+          <ChevronDown size={15} className="absolute right-2.5 top-2.5 text-zinc-400 pointer-events-none" />
+        )}
+      </div>
+
+      {abierto && principiosFiltrados.length > 0 && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-zinc-200 rounded-xl shadow-lg max-h-60 overflow-y-auto z-50">
+          {principiosFiltrados.map((p, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => {
+                onSeleccionarPrincipio(p);
+                setAbierto(false);
+              }}
+              className="w-full text-left px-3 py-2 hover:bg-zinc-50 flex items-center justify-between border-b border-zinc-100 last:border-none transition-colors cursor-pointer"
+            >
+              <p className="font-medium text-xs text-zinc-800">{p}</p>
+              {principioSeleccionado === p && <Check size={14} className="text-primary" />}
             </button>
           ))}
         </div>
@@ -368,10 +572,12 @@ export default function ReportesPage() {
   const [idArqueo, setIdArqueo] = useState('');
   const [productoSeleccionado, setProductoSeleccionado] = useState<Producto | null>(null);
   const [laboratorioSeleccionado, setLaboratorioSeleccionado] = useState<api.LaboratorioResumen | null>(null);
+  const [proveedorSeleccionado, setProveedorSeleccionado] = useState<ProveedorItem | null>(null);
+  const [principioSeleccionado, setPrincipioSeleccionado] = useState<string | null>(null);
+
   const [limiteTop, setLimiteTop] = useState('20');
   const [diasVencer, setDiasVencer] = useState('30');
 
-  // Logo de la empresa, cargado una sola vez para usarse en TODOS los reportes
   const [logoEmpresa, setLogoEmpresa] = useState<string | undefined>(undefined);
 
   useEffect(() => {
@@ -532,14 +738,14 @@ export default function ReportesPage() {
               ejecutar('arqueo', async () => {
                 if (!idArqueo) return alert('Ingresa el N° de arqueo/caja.');
                 const data = await api.obtenerReporteArqueo(Number(idArqueo));
-                abrirPdfEnNuevaPestana(await generarArqueoCajaPos80(data));
+                abrirPdfEnNuevaPestana(await generarArqueoCajaPos80(data, logoEmpresa));
               })
             }
             onA4={() =>
               ejecutar('arqueo', async () => {
                 if (!idArqueo) return alert('Ingresa el N° de arqueo/caja.');
                 const data = await api.obtenerReporteArqueo(Number(idArqueo));
-                descargarPdf(await generarArqueoCajaA4(data), `arqueo-caja-${idArqueo}`);
+                descargarPdf(await generarArqueoCajaA4(data, logoEmpresa), `arqueo-caja-${idArqueo}`);
               })
             }
           >
@@ -575,7 +781,12 @@ export default function ReportesPage() {
             cargando={cargando === 'compras-proveedor'}
             onPos80={() =>
               ejecutar('compras-proveedor', async () => {
-                const data = await api.obtenerComprasPorProveedor(fechaInicio, fechaFin);
+                let data = await api.obtenerComprasPorProveedor(fechaInicio, fechaFin);
+                if (proveedorSeleccionado) {
+                  data = data.filter((p) =>
+                    p.nombreProveedor.toLowerCase().includes(proveedorSeleccionado.nombre.toLowerCase())
+                  );
+                }
                 abrirPdfEnNuevaPestana(
                   await generarComprasPorProveedorPos80(fechaInicio, fechaFin, data, logoEmpresa)
                 );
@@ -583,14 +794,25 @@ export default function ReportesPage() {
             }
             onA4={() =>
               ejecutar('compras-proveedor', async () => {
-                const data = await api.obtenerComprasPorProveedor(fechaInicio, fechaFin);
+                let data = await api.obtenerComprasPorProveedor(fechaInicio, fechaFin);
+                if (proveedorSeleccionado) {
+                  data = data.filter((p) =>
+                    p.nombreProveedor.toLowerCase().includes(proveedorSeleccionado.nombre.toLowerCase())
+                  );
+                }
                 descargarPdf(
                   await generarComprasPorProveedorA4(fechaInicio, fechaFin, data, logoEmpresa),
                   `compras-por-proveedor-${fechaInicio}_${fechaFin}`
                 );
               })
             }
-          />
+          >
+            <BuscadorProveedor
+              label="Seleccionar Proveedor (Opcional)"
+              proveedorSeleccionado={proveedorSeleccionado}
+              onSeleccionarProveedor={setProveedorSeleccionado}
+            />
+          </ReporteCard>
 
           <ReporteCard
             titulo="Análisis de Costos"
@@ -689,20 +911,40 @@ export default function ReportesPage() {
             cargando={cargando === 'catalogo-terapeutico'}
             onPos80={() =>
               ejecutar('catalogo-terapeutico', async () => {
-                const data = await api.obtenerCatalogoTerapeutico();
-                abrirPdfEnNuevaPestana(await generarCatalogoTerapeuticoPos80(data, undefined, logoEmpresa));
+                let data = await api.obtenerCatalogoTerapeutico();
+                if (principioSeleccionado) {
+                  data = data.filter((item) => item.principioActivo === principioSeleccionado);
+                }
+                const tituloRpt = principioSeleccionado
+                  ? `CATÁLOGO: ${principioSeleccionado.toUpperCase()}`
+                  : 'CATÁLOGO TERAPÉUTICO';
+                abrirPdfEnNuevaPestana(
+                  await generarCatalogoTerapeuticoPos80(data, tituloRpt, logoEmpresa)
+                );
               })
             }
             onA4={() =>
               ejecutar('catalogo-terapeutico', async () => {
-                const data = await api.obtenerCatalogoTerapeutico();
+                let data = await api.obtenerCatalogoTerapeutico();
+                if (principioSeleccionado) {
+                  data = data.filter((item) => item.principioActivo === principioSeleccionado);
+                }
+                const tituloRpt = principioSeleccionado
+                  ? `Catálogo de Productos - ${principioSeleccionado}`
+                  : 'Catálogo por Principio Activo y Acción Terapéutica';
                 descargarPdf(
-                  await generarCatalogoTerapeuticoA4(data, undefined, logoEmpresa),
+                  await generarCatalogoTerapeuticoA4(data, tituloRpt, logoEmpresa),
                   'catalogo-terapeutico'
                 );
               })
             }
-          />
+          >
+            <BuscadorPrincipioActivo
+              label="Seleccionar Principio Activo"
+              principioSeleccionado={principioSeleccionado}
+              onSeleccionarPrincipio={setPrincipioSeleccionado}
+            />
+          </ReporteCard>
 
           <ReporteCard
             titulo="Productos por Laboratorio"

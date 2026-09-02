@@ -30,7 +30,7 @@ const TABS = [
   { key: 'accion', label: 'ACCIÓN TERAPEÚTICA', api: accionesTerapeuticasApi, Modal: AccionTerapeuticaModal as FC<AtributoModalProps> },
 ] as const;
 
-const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
 const COL_WIDTHS = {
   id: '10%',

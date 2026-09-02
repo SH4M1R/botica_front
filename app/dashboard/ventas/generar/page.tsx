@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Search, Trash2, Wallet, ShoppingCart, UserPlus, Plus, X as XIcon, FileText, AlertTriangle, ExternalLink, Barcode, MousePointerClick } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Search, Trash2, Wallet, ShoppingCart, UserPlus, Plus, X as XIcon, FileText, AlertTriangle, ExternalLink, Barcode, MousePointerClick, Info } from 'lucide-react';
 import { productosApi } from '@/api/productos';
 import type { Producto } from '@/api/productos';
 import { ventasApi, clientesApi, getNombreCompleto, splitNombreCompleto } from '@/api/ventas';
@@ -10,6 +10,7 @@ import type { Venta, Cliente } from '@/api/ventas';
 import { arqueoApi } from '@/api/arqueo';
 import type { ArqueoCaja } from '@/api/arqueo';
 import { permisosApi } from '@/api/permisos';
+import { cotizacionesApi } from '@/api/cotizaciones';
 import { PERMISO_EDITAR_PRECIO_VENTA } from '@/constants/permisos';
 import { useSession } from '@/hooks/useSession';
 import MetodoPagoModal, { PagoParte } from '../components/MetodoPagoModal';
@@ -46,6 +47,7 @@ const COMPROBANTE_OPTIONS: { value: TipoComprobante; label: string; disabled?: b
 
 export default function GenerarVentaPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { empleado, cargando } = useSession();
 
   const [productos, setProductos] = useState<Producto[]>([]);
@@ -78,6 +80,12 @@ export default function GenerarVentaPage() {
   const [puedeEditarPrecio, setPuedeEditarPrecio] = useState(false);
 
   const [tipoComprobante, setTipoComprobante] = useState<TipoComprobante>('nota');
+
+  // Si esta venta se inició cargando una cotización guardada
+  // (?cotizacionId=25), guardamos su id para marcarla como "convertida"
+  // una vez que la venta se confirme, y para mostrar un aviso al usuario.
+  const [cotizacionOrigenId, setCotizacionOrigenId] = useState<number | null>(null);
+  const cotizacionProcesadaRef = useRef(false);
 
   const fechaHoy = useMemo(
     () => new Date().toLocaleDateString('es-PE', { weekday: 'long', day: '2-digit', month: 'long'}),
@@ -188,6 +196,66 @@ export default function GenerarVentaPage() {
   useEffect(() => {
     setSelectedIndex(0);
   }, [productosVisibles]);
+
+  // Precarga el carrito y los datos del cliente desde una cotización
+  // guardada cuando la venta se abre con ?cotizacionId=25. Espera a que
+  // el catálogo de productos ya esté cargado para poder usar el producto
+  // completo (con sus opciones de blister/caja) en vez del snapshot.
+  useEffect(() => {
+    if (cotizacionProcesadaRef.current) return;
+    const idParam = searchParams.get('cotizacionId');
+    if (!idParam || productos.length === 0) return;
+
+    cotizacionProcesadaRef.current = true;
+    const idCotizacion = Number(idParam);
+    if (!idCotizacion) return;
+
+    cotizacionesApi.obtener(idCotizacion)
+      .then((cot) => {
+        if (!cot.estado) {
+          setError('Esa cotización está anulada y no se puede cargar.');
+          return;
+        }
+        if (cot.convertida) {
+          setError('Esa cotización ya fue convertida a venta anteriormente.');
+          return;
+        }
+
+        const nuevoCarrito: CarritoItem[] = cot.detalles.map((d) => {
+          const productoCompleto = productos.find((p) => p.id === d.producto.id);
+          // Si el producto ya no está activo o fue eliminado, armamos un
+          // snapshot mínimo con lo que sabemos de la cotización, para no
+          // romper la pantalla. Se castea porque el tipo Producto real
+          // tiene más campos (laboratorio, categoría, etc.) que aquí no
+          // conocemos.
+          const productoBase = (productoCompleto ?? {
+            id: d.producto.id,
+            nombre: d.producto.nombre,
+            precio_venta: d.precioUnitario,
+            stock: 0,
+            vende_por_presentaciones: false,
+            blister_habilitado: false,
+            caja_habilitado: false,
+          }) as Producto;
+
+          return {
+            idProducto: d.producto.id,
+            cantidad: d.cantidad,
+            tipoVenta: d.tipoVenta,
+            precioUnitario: d.precioUnitario,
+            producto: productoBase,
+          };
+        });
+
+        setCarrito(nuevoCarrito);
+        if (cot.idCliente) setIdClienteSeleccionado(cot.idCliente);
+        setNombreCliente(cot.clienteNombre ?? '');
+        setDniCliente(cot.clienteDni ?? '');
+        setCotizacionOrigenId(cot.id);
+        setError('');
+      })
+      .catch(() => setError('No se pudo cargar la cotización seleccionada.'));
+  }, [productos, searchParams]);
 
   useEffect(() => {
     rowRefs.current[selectedIndex]?.scrollIntoView({ block: 'nearest' });
@@ -404,6 +472,14 @@ export default function GenerarVentaPage() {
 
       if (pestanaBoleta) pestanaBoleta.location.href = `/dashboard/ventas/boleta?id=${venta.id}&vuelto=${vuelto.toFixed(2)}`;
       else abrirBoletaImprimible(venta.id, vuelto);
+
+      // Si esta venta se generó a partir de una cotización cargada, la
+      // marcamos como convertida para que no pueda volver a cargarse.
+      // No debe bloquear el flujo de venta si esto falla.
+      if (cotizacionOrigenId) {
+        cotizacionesApi.marcarConvertida(cotizacionOrigenId).catch(() => {});
+        setCotizacionOrigenId(null);
+      }
 
       setModalPagoAbierto(false);
       setVentaConfirmada(venta);
@@ -633,12 +709,12 @@ export default function GenerarVentaPage() {
         </div>
 
         {/* Selector de tipo de comprobante (Boleta/Factura llegan luego) */}
-        <div className="hidden xl:flex items-center gap-1.5 px-2 py-1.5 rounded-xl bg-zinc-50 border border-zinc-200 shrink-0 w-fit">
-          <FileText size={14} className="text-primary shrink-0" />
+        <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-50 border border-zinc-200 shrink-0">
+          <FileText size={15} className="text-primary shrink-0" />
           <select
             value={tipoComprobante}
             onChange={(e) => setTipoComprobante(e.target.value as TipoComprobante)}
-            className="w-[150px] text-xs font-semibold text-zinc-700 bg-transparent outline-none cursor-pointer"
+            className="text-xs font-semibold text-zinc-700 bg-transparent outline-none cursor-pointer"
             title="Tipo de comprobante a emitir"
           >
             {COMPROBANTE_OPTIONS.map((op) => (
@@ -745,6 +821,15 @@ export default function GenerarVentaPage() {
           </div>
         </div>
       </header>
+
+      {cotizacionOrigenId && (
+        <div className="shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-700">
+          <Info size={14} className="shrink-0" />
+          <span>
+            Cargaste la cotización N° {String(cotizacionOrigenId).padStart(6, '0')}. Verifica precios y stock antes de cobrar.
+          </span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-5 grid-rows-[1fr_1fr] lg:grid-rows-1 gap-2 sm:gap-3 lg:gap-4 flex-1 min-h-0 overflow-hidden">
 

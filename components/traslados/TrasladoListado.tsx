@@ -9,7 +9,7 @@ import { obtenerEmpresa } from '@/api/empresa';
 import { generarReporteTrasladoPos80, generarReporteTrasladoA4 } from '@/utils/reporteTraslado';
 import Paginacion from '@/components/Paginacion';
 
-const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
 interface Props {
   tipo: TipoTraslado;

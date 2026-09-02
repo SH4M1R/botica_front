@@ -1,5 +1,4 @@
 import jsPDF from 'jspdf';
-import { obtenerEmpresa, EmpresaForm } from '@/api/empresa'; // 👈 Importamos tu servicio de empresa
 
 export interface ColumnaReporte<T> {
   header: string;
@@ -56,7 +55,7 @@ export function abrirPdfEnNuevaPestana(blob: Blob) {
   window.open(url, '_blank');
 }
 
-async function cargarImagenBase64(url: string): Promise<{ data: string; ratio: number } | null> {
+async function cargarImagenBase64(url: string): Promise<{ data: string; width: number; height: number } | null> {
   try {
     let data: string;
     if (url.startsWith('data:')) {
@@ -72,13 +71,13 @@ async function cargarImagenBase64(url: string): Promise<{ data: string; ratio: n
         reader.readAsDataURL(blob);
       });
     }
-    const dim = await new Promise<{ w: number; h: number }>((resolve) => {
+    const dim = await new Promise<{ width: number; height: number }>((resolve) => {
       const img = new Image();
-      img.onload = () => resolve({ w: img.width, h: img.height });
-      img.onerror = () => resolve({ w: 100, h: 100 });
+      img.onload = () => resolve({ width: img.width, height: img.height });
+      img.onerror = () => resolve({ width: 100, height: 100 });
       img.src = data;
     });
-    return { data, ratio: dim.h / dim.w };
+    return { data, width: dim.width, height: dim.height };
   } catch {
     return null;
   }
@@ -102,32 +101,41 @@ export function crearPos80Builder(alturaEstimada: number) {
 
   const b = {
     doc,
-    /**
-     * Carga el logo y los datos desde la API si no se especifica un logoUrl directo.
-     */
     async encabezadoEmpresa(logoUrlManual?: string) {
       let urlLogo = logoUrlManual;
       let empresa: EmpresaForm | null = null;
 
-      // Si no nos pasan un logo explícito, lo traemos de la API de empresa
       if (!urlLogo) {
         empresa = await obtenerEmpresa();
         urlLogo = empresa.logo;
       }
 
-      // Si hay un logo disponible, lo agregamos arriba centrado
+      // 1. Agregar Logo Centrado y escalado proporcionalmente
       if (urlLogo) {
         const logo = await cargarImagenBase64(urlLogo);
         if (logo) {
-          const anchoLogo = 40;
-          const altoLogo = anchoLogo * logo.ratio;
-          const xLogo = centerX - anchoLogo / 2;
-          doc.addImage(logo.data, formatoImagen(logo.data), xLogo, y, anchoLogo, altoLogo);
-          y += altoLogo + 3;
+          const maxW = 32; // Ancho máximo sugerido para POS80 (mm)
+          const maxH = 18; // Alto máximo sugerido para POS80 (mm)
+
+          let logoW = maxW;
+          let logoH = (logo.height * logoW) / logo.width;
+
+          if (logoH > maxH) {
+            logoH = maxH;
+            logoW = (logo.width * logoH) / logo.height;
+          }
+
+          const xLogo = centerX - logoW / 2;
+          try {
+            doc.addImage(logo.data, formatoImagen(logo.data), xLogo, y, logoW, logoH);
+            y += logoH + 3;
+          } catch (e) {
+            console.warn('No se pudo agregar la imagen al PDF POS80:', e);
+          }
         }
       }
 
-      // Si obtuvimos la información de la empresa, imprimimos el nombre comercial / RUC en el ticket
+      // 2. Información de Empresa
       if (empresa && (empresa.nombreComercial || empresa.razonSocial)) {
         const nombre = empresa.nombreComercial || empresa.razonSocial;
         doc.setFont('courier', 'bold');
@@ -253,9 +261,6 @@ export function crearA4Builder() {
 
   const b = {
     doc,
-    /**
-     * Carga el logo y los datos desde la API si no se especifica un logoUrl directo.
-     */
     async encabezadoEmpresa(logoUrlManual?: string) {
       let urlLogo = logoUrlManual;
       let empresa: EmpresaForm | null = null;
@@ -265,43 +270,66 @@ export function crearA4Builder() {
         urlLogo = empresa.logo;
       }
 
-      // Dibujar datos de la empresa en la esquina izquierda si existen
-      if (empresa && empresa.razonSocial) {
+      let yEmpresa = y;
+      let altoLogoEfectivo = 0;
+
+      // 1. Dibujar datos de la empresa en la esquina izquierda si existen
+      if (empresa && (empresa.razonSocial || empresa.nombreComercial)) {
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(10);
-        doc.text(empresa.nombreComercial || empresa.razonSocial, MARGEN, y);
+        doc.text(empresa.nombreComercial || empresa.razonSocial, MARGEN, yEmpresa);
         
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
-        let yInfo = y + 4;
+        yEmpresa += 4;
         if (empresa.ruc) {
-          doc.text(`RUC: ${empresa.ruc}`, MARGEN, yInfo);
-          yInfo += 3.5;
+          doc.text(`RUC: ${empresa.ruc}`, MARGEN, yEmpresa);
+          yEmpresa += 3.5;
         }
         if (empresa.direccion) {
-          doc.text(empresa.direccion, MARGEN, yInfo);
-          yInfo += 3.5;
+          const lineasDir = doc.splitTextToSize(empresa.direccion, 100);
+          lineasDir.forEach((linea: string) => {
+            doc.text(linea, MARGEN, yEmpresa);
+            yEmpresa += 3.5;
+          });
         }
       }
 
-      // Dibujar Logo en la esquina superior derecha
+      // 2. Dibujar Logo en la esquina superior derecha (Alineado y escalado proporcionalmente)
       if (urlLogo) {
         const logo = await cargarImagenBase64(urlLogo);
         if (logo) {
-          const altoMax = 18;
-          const anchoLogo = altoMax / logo.ratio;
-          doc.addImage(
-            logo.data,
-            formatoImagen(logo.data),
-            ANCHO_PAGINA - MARGEN - anchoLogo,
-            y,
-            anchoLogo,
-            altoMax
-          );
+          const maxW = 40; // Ancho máximo (mm)
+          const maxH = 20; // Alto máximo (mm)
+
+          let logoW = maxW;
+          let logoH = (logo.height * logoW) / logo.width;
+
+          if (logoH > maxH) {
+            logoH = maxH;
+            logoW = (logo.width * logoH) / logo.height;
+          }
+
+          const xLogo = ANCHO_PAGINA - MARGEN - logoW;
+          try {
+            doc.addImage(
+              logo.data,
+              formatoImagen(logo.data),
+              xLogo,
+              y,
+              logoW,
+              logoH
+            );
+            altoLogoEfectivo = logoH;
+          } catch (e) {
+            console.warn('No se pudo agregar el logo al PDF A4:', e);
+          }
         }
       }
 
-      y += 20; // Avanzamos espacio vertical tras el encabezado
+      // 3. Avanzar `y` considerando cuál de los dos elementos ocupó más espacio vertical
+      const espacioUtilizado = Math.max(yEmpresa - y, altoLogoEfectivo);
+      y += espacioUtilizado + 8; // Margen de separación con el contenido
     },
     titulo(texto: string) {
       doc.setFont('helvetica', 'bold');
@@ -344,7 +372,7 @@ export function crearA4Builder() {
       const lineHeight = fontSize * 0.38 + 1.2;
 
       const celdasCalculadas = columnas.map((c, i) => {
-        const valor = c.render(fila);
+        const valor = c.render ? c.render(fila) : '';
         const anchoDisponible = c.widthA4 - 2; 
         const lineas = doc.splitTextToSize(valor, anchoDisponible);
         return { col: c, x: xs[i], lineas };
@@ -390,3 +418,82 @@ export function crearA4Builder() {
 
   return b;
 }
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+export interface EmpresaForm {
+  id?: number;
+  ruc: string;
+  razonSocial: string;
+  nombreComercial: string;
+  telefono: string;
+  email: string;
+  direccion: string;
+  departamento: string;
+  ciudad: string;
+  logo: string;
+  icono: string;
+  horaApertura: string;
+  horaCierre: string;
+  toleranciaMinutos: number;
+}
+
+export async function obtenerEmpresa(): Promise<EmpresaForm> {
+  const estructuraVacia: EmpresaForm = {
+    ruc: '', 
+    razonSocial: '', 
+    nombreComercial: '', 
+    telefono: '',
+    email: '', 
+    direccion: '', 
+    departamento: '', 
+    ciudad: '', 
+    logo: '',
+    icono: '',
+    horaApertura: '',
+    horaCierre: '',
+    toleranciaMinutos: 10,
+  };
+
+  try {
+    const urlFinal = API_URL?.endsWith('/api') ? `${API_URL}/empresa` : `${API_URL}/api/empresa`;
+    
+    const response = await fetch(urlFinal);
+    
+    if (response.status === 404) {
+      return estructuraVacia;
+    }
+
+    if (!response.ok) {
+      throw new Error('Error al obtener los datos de la empresa');
+    }
+
+    return await response.json();
+  } catch {
+    console.warn("Aviso: No se pudo conectar al servidor de datos de empresa.");
+    return estructuraVacia;
+  }
+}
+
+export async function guardarEmpresa(data: EmpresaForm): Promise<EmpresaForm> {
+  const urlFinal = API_URL?.endsWith('/api') ? `${API_URL}/empresa` : `${API_URL}/api/empresa`;
+
+  const response = await fetch(urlFinal, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error('Error al guardar los datos de la empresa');
+  }
+  
+  return response.json();
+}
+
+export const empresaApi = {
+  obtener: obtenerEmpresa,
+  guardar: guardarEmpresa,
+};

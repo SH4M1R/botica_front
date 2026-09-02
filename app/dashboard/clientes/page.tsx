@@ -9,7 +9,7 @@ import PagoDeudaModal from './components/PagoDeudaModal';
 import SaldoModal from './components/SaldoModal';
 import Paginacion from '@/components/Paginacion';
 
-const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
 export default function ClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);

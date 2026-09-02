@@ -13,10 +13,10 @@ const ANCHO = 80; // mm
 const MARGEN = 5; // mm
 const ANCHO_UTIL = ANCHO - MARGEN * 2;
 
-const COL_PROD = 36;
+const COL_PROD = 38;
 const X_PROD = MARGEN;
-const X_CANT_R = MARGEN + 46; 
-const X_PUNIT_R = MARGEN + 58; 
+const X_CANT_R = MARGEN + 48; 
+const X_PUNIT_R = MARGEN + 59; 
 const X_IMP_R = ANCHO - MARGEN;
 
 export interface ItemCotizacion {
@@ -31,8 +31,8 @@ export interface DatosCotizacion {
   items: ItemCotizacion[];
   clienteNombre: string;
   clienteDni?: string;
-  empleadoNombre: string;
   total: number;
+  folio?: string;
 }
 
 async function cargarImagenBase64(url: string): Promise<{ data: string; ratio: number } | null> {
@@ -62,84 +62,75 @@ export async function generarCotizacionPdf(datos: DatosCotizacion, empresa?: Emp
     imgLogo = await cargarImagenBase64(empresa.logo);
   }
 
-  // --- PASO 1: Calcular la altura exacta requerida (Simulación) ---
+  // --- PASO 1: Calcular la altura exacta requerida ---
   const docSimulado = new jsPDF({ unit: 'mm', format: [ANCHO, 1000] });
-  let altoCalculado = 6;
+  let altoCalculado = 5;
 
   if (imgLogo) {
-    altoCalculado += (ANCHO_UTIL * imgLogo.ratio) + 4;
+    altoCalculado += (ANCHO_UTIL * imgLogo.ratio) + 3;
   }
 
   if (empresa) {
-    docSimulado.setFontSize(9.5);
-    altoCalculado += docSimulado.splitTextToSize(empresa.nombreComercial || empresa.razonSocial, ANCHO_UTIL).length * 4 + 1;
-    
-    docSimulado.setFontSize(8);
-    if (empresa.razonSocial && empresa.nombreComercial && empresa.razonSocial !== empresa.nombreComercial) {
-      altoCalculado += docSimulado.splitTextToSize(empresa.razonSocial, ANCHO_UTIL).length * 3.5 + 1;
-    }
-    if (empresa.ruc) altoCalculado += 4;
-    if (empresa.direccion) {
-      altoCalculado += docSimulado.splitTextToSize(empresa.direccion, ANCHO_UTIL).length * 3.5 + 1;
-    }
-    if (empresa.departamento || empresa.ciudad) altoCalculado += 4;
-    if (empresa.telefono) altoCalculado += 4;
+    altoCalculado += 8; // Nombre / Razón social
+    if (empresa.ruc) altoCalculado += 3.5;
+    if (empresa.direccion) altoCalculado += 3.5;
+    if (empresa.departamento || empresa.ciudad) altoCalculado += 3.5;
+    if (empresa.telefono) altoCalculado += 3.5;
   }
 
   // Encabezado del documento
-  altoCalculado += 12;
+  altoCalculado += 10;
+  if (datos.folio) altoCalculado += 3.5;
 
   // Datos del cliente y empleado
-  docSimulado.setFontSize(8.5);
-  altoCalculado += docSimulado.splitTextToSize(`Fecha: ${new Date().toLocaleString()}`, ANCHO_UTIL).length * 3.8;
-  altoCalculado += docSimulado.splitTextToSize(`Cliente: ${datos.clienteNombre}`, ANCHO_UTIL).length * 3.8;
-  if (datos.clienteDni) altoCalculado += 4;
-  altoCalculado += docSimulado.splitTextToSize(`Atendido por: ${datos.empleadoNombre}`, ANCHO_UTIL).length * 3.8;
+  altoCalculado += 11;
+  if (datos.clienteDni) altoCalculado += 3.5;
 
   // Cabecera de la tabla
-  altoCalculado += 8;
+  altoCalculado += 7;
 
   // Filas de productos
-  docSimulado.setFontSize(8.5);
+  docSimulado.setFont('helvetica', 'normal');
+  docSimulado.setFontSize(9);
   datos.items.forEach((item) => {
     const nombre = item.nombre + (labelTipo[item.tipoVenta] ? ` (${labelTipo[item.tipoVenta]})` : '');
     const lineas = docSimulado.splitTextToSize(nombre, COL_PROD);
-    altoCalculado += (lineas.length * 3.8) + 2;
+    altoCalculado += Math.max(lineas.length * 3.5, 3.5) + 1;
   });
 
-  // Totales y avisos
-  altoCalculado += 8;
+  // Totales, monto en letras y pie de página
+  altoCalculado += 8; // Total
 
-  docSimulado.setFontSize(7.5);
+  docSimulado.setFontSize(8);
   const lineasMontoSim = docSimulado.splitTextToSize(`SON: ${montoEnLetras(datos.total)}`, ANCHO_UTIL);
-  altoCalculado += lineasMontoSim.length * 3.5 + 4;
+  altoCalculado += lineasMontoSim.length * 3.2 + 3;
 
-  altoCalculado += 12; // Pie de página
+  altoCalculado += 14; // Avisos legales / pie
 
-  const ALTO_FINAL = Math.ceil(altoCalculado) + 8; // Margen razonable de seguridad
+  const ALTO_FINAL = Math.ceil(altoCalculado) + 5; // Margen final ajustado
 
   // --- PASO 2: Renderizar el documento con la altura exacta ---
   const doc = new jsPDF({ unit: 'mm', format: [ANCHO, ALTO_FINAL] });
-  let y = 6;
+  let y = 5;
   const centerX = ANCHO / 2;
 
   const linea = (dashed = true) => {
     doc.setLineDashPattern(dashed ? [1, 1] : [], 0);
     doc.setDrawColor(150);
     doc.line(MARGEN, y, ANCHO - MARGEN, y);
-    y += 3.5;
+    y += 2.5;
   };
 
   const texto = (
     contenido: string,
     opts: { align?: 'left' | 'center' | 'right'; size?: number; bold?: boolean; x?: number } = {}
   ) => {
-    const { align = 'left', size = 8.5, bold = false, x } = opts;
+    const { align = 'left', size = 9, bold = false, x } = opts;
     doc.setFont('helvetica', bold ? 'bold' : 'normal');
     doc.setFontSize(size);
     const posX = x ?? (align === 'center' ? centerX : align === 'right' ? ANCHO - MARGEN : MARGEN);
     doc.text(contenido, posX, y, { align });
-    y += size * 0.38 + 1.2; // Altura corregida para evitar encimado
+    y += size * 0.32 + 1;
   };
 
   const textoMultilinea = (
@@ -152,7 +143,7 @@ export async function generarCotizacionPdf(datos: DatosCotizacion, empresa?: Emp
     const lineas = doc.splitTextToSize(contenido, ANCHO_UTIL);
     const posX = align === 'center' ? centerX : MARGEN;
     doc.text(lineas, posX, y, { align });
-    y += lineas.length * (size * 0.38 + 0.8) + 1.2;
+    y += lineas.length * (size * 0.32 + 0.8) + 1;
   };
 
   // Renderizado Empresa / Logo
@@ -160,24 +151,25 @@ export async function generarCotizacionPdf(datos: DatosCotizacion, empresa?: Emp
     const anchoImg = ANCHO_UTIL;
     const altoImg = anchoImg * imgLogo.ratio;
     doc.addImage(imgLogo.data, MARGEN, y, anchoImg, altoImg);
-    y += altoImg + 4;
+    y += altoImg + 3;
   }
 
   if (empresa) {
-    textoMultilinea(empresa.nombreComercial || empresa.razonSocial, { align: 'center', size: 9.5, bold: true });
+    texto(empresa.nombreComercial || empresa.razonSocial, { align: 'center', size: 10, bold: true });
     if (empresa.razonSocial && empresa.nombreComercial && empresa.razonSocial !== empresa.nombreComercial) {
-      textoMultilinea(empresa.razonSocial, { align: 'center', size: 8 });
+      texto(empresa.razonSocial, { align: 'center', size: 8.5 });
     }
-    if (empresa.ruc) texto(`RUC: ${empresa.ruc}`, { align: 'center', size: 8 });
-    if (empresa.direccion) textoMultilinea(empresa.direccion, { align: 'center', size: 8 });
+    if (empresa.ruc) texto(`RUC: ${empresa.ruc}`, { align: 'center', size: 8.5 });
+    if (empresa.direccion) texto(empresa.direccion, { align: 'center', size: 8.5 });
     if (empresa.departamento || empresa.ciudad) {
-      texto([empresa.departamento, empresa.ciudad].filter(Boolean).join(' - '), { align: 'center', size: 8 });
+      texto([empresa.departamento, empresa.ciudad].filter(Boolean).join(' - '), { align: 'center', size: 8.5 });
     }
-    if (empresa.telefono) texto(`Telf: ${empresa.telefono}`, { align: 'center', size: 8 });
+    if (empresa.telefono) texto(`Telf: ${empresa.telefono}`, { align: 'center', size: 8.5 });
   }
 
   linea();
-  texto('COTIZACIÓN DE VENTA', { align: 'center', bold: true, size: 9.5 });
+  texto('COTIZACIÓN DE VENTA', { align: 'center', bold: true, size: 10 });
+  if (datos.folio) texto(datos.folio, { align: 'center', bold: true, size: 8 });
   texto('Documento sin valor tributario', { align: 'center', size: 7 });
   linea();
 
@@ -185,9 +177,8 @@ export async function generarCotizacionPdf(datos: DatosCotizacion, empresa?: Emp
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
   texto(`Fecha: ${fecha}`, { size: 8.5 });
-  textoMultilinea(`Cliente: ${datos.clienteNombre}`, { size: 8.5 });
+  texto(`Cliente: ${datos.clienteNombre}`, { size: 8.5 });
   if (datos.clienteDni) texto(`DNI: ${datos.clienteDni}`, { size: 8.5 });
-  textoMultilinea(`Atendido por: ${datos.empleadoNombre}`, { size: 8.5 });
 
   linea();
 
@@ -198,7 +189,7 @@ export async function generarCotizacionPdf(datos: DatosCotizacion, empresa?: Emp
   doc.text('Cant.', X_CANT_R, y, { align: 'right' });
   doc.text('P.Unit', X_PUNIT_R, y, { align: 'right' });
   doc.text('Imp.', X_IMP_R, y, { align: 'right' });
-  y += 4;
+  y += 3;
 
   linea();
 
@@ -217,8 +208,7 @@ export async function generarCotizacionPdf(datos: DatosCotizacion, empresa?: Emp
     doc.text(item.precioUnitario.toFixed(2), X_PUNIT_R, yInicialFila, { align: 'right' });
     doc.text(item.subtotal.toFixed(2), X_IMP_R, yInicialFila, { align: 'right' });
 
-    // Avance de Y dinamico según la cantidad de líneas del producto
-    y += (lineasNombre.length * 3.8) + 2;
+    y += Math.max(lineasNombre.length * 3.2, 3.2) + 1;
   });
 
   // Total
@@ -227,13 +217,13 @@ export async function generarCotizacionPdf(datos: DatosCotizacion, empresa?: Emp
   doc.setFontSize(9);
   doc.text('TOTAL:', MARGEN, y);
   doc.text(`S/ ${datos.total.toFixed(2)}`, ANCHO - MARGEN, y, { align: 'right' });
-  y += 5;
+  y += 4;
 
   // Monto en letras
   textoMultilinea(`SON: ${montoEnLetras(datos.total)}`, { size: 7.5 });
 
   linea();
-  textoMultilinea('Esta es una cotización. Precios sujetos a variación sin previo aviso.', { align: 'center', size: 7 });
+  textoMultilinea('Esta cotización NO descuenta stock ni se registra como venta. Precios sujetos a variación.', { align: 'center', size: 7 });
 
   return doc.output('blob');
 }

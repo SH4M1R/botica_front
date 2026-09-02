@@ -10,7 +10,7 @@ import CompraDetalleModal from "./components/CompraDetalleModal";
 import Paginacion from "@/components/Paginacion";
 import AnularModal from "@/components/AnularModal";
 
-const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
 function formatComprobante(c: Compra) {
   return `${c.comprobante} ${c.serie}-${c.numero}`;

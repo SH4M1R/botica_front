@@ -1,11 +1,10 @@
-// reporteAnalisisCostos.ts
 import type { AnalisisCostos, PrecioEntrada } from '@/api/reportes';
 import { crearPos80Builder, crearA4Builder, formatFecha, formatEmision, formatMoneda, ColumnaReporte } from './pdfBase';
 
 const columnas: ColumnaReporte<PrecioEntrada>[] = [
   { header: 'Fecha', align: 'left', widthA4: 30, render: (f) => formatFecha(f.fecha) },
-  { header: 'Proveedor', align: 'left', widthA4: 55, render: (f) => f.proveedor },
-  { header: 'Cant.', align: 'right', widthA4: 25, render: (f) => String(f.cantidad) },
+  { header: 'Proveedor', align: 'left', widthA4: 70, render: (f) => f.proveedor },
+  { header: 'Cant.', align: 'right', widthA4: 30, render: (f) => String(f.cantidad) },
   { header: 'Precio Unit.', align: 'right', widthA4: 40, render: (f) => formatMoneda(f.precioUnitario) },
 ];
 

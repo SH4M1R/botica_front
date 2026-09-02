@@ -10,7 +10,7 @@ import VentaDetalleModal from './components/VentaDetalleModal';
 import Paginacion from '@/components/Paginacion';
 import AnularModal from '@/components/AnularModal';
 
-const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
 function claveDia(fecha: string) {
   return fecha.slice(0, 10); // YYYY-MM-DD

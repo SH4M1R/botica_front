@@ -39,7 +39,7 @@ const productoToPayload = (p: Producto): ProductoPayload => ({
   registro_sanitario: p.registro_sanitario ?? null,
 });
 
-const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
 const COL_WIDTHS = {
   producto: '34%',

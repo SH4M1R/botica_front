@@ -8,7 +8,7 @@ import EmpleadoModal from './components/EmpleadoModal';
 import Paginacion from '@/components/Paginacion';
 import ModalEliminar from "@/components/ModalEliminar";
 
-const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
 export default function EmpleadosPage() {
   const [empleados, setEmpleados] = useState<Empleado[]>([]);

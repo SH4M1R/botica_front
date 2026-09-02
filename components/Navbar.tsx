@@ -112,7 +112,7 @@ export default function Navbar({ onToggleSidebar }: NavbarProps) {
             className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold text-zinc-500 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer"
           >
             <LogOut size={16} />
-            <span className="hidden sm:inline">Salir</span>
+            <span className="hidden sm:inline">Cerrar Sesión</span>
           </button>
         </div>
       </header>

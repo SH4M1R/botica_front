@@ -1,8 +1,10 @@
 import type { ArqueoCierre } from '@/api/reportes';
 import { crearPos80Builder, crearA4Builder, formatFechaHora, formatEmision, formatMoneda } from './pdfBase';
 
-export function generarArqueoCajaPos80(data: ArqueoCierre): Blob {
-  const b = crearPos80Builder(110);
+export async function generarArqueoCajaPos80(data: ArqueoCierre, logo?: string): Promise<Blob> {
+  const b = crearPos80Builder(140);
+  
+  await b.encabezadoEmpresa(logo);
 
   b.texto('ARQUEO Y CIERRE DE CAJA', { align: 'center', size: 9.5, bold: true });
   b.texto(`Caja N° ${data.idArqueo}`, { align: 'center', size: 8, bold: true });
@@ -51,8 +53,11 @@ export function generarArqueoCajaPos80(data: ArqueoCierre): Blob {
   return b.finalizar();
 }
 
-export function generarArqueoCajaA4(data: ArqueoCierre): Blob {
+export async function generarArqueoCajaA4(data: ArqueoCierre, logo?: string): Promise<Blob> {
   const b = crearA4Builder();
+
+  // Esperar la carga del logo y datos de la empresa
+  await b.encabezadoEmpresa(logo);
 
   b.titulo('Reporte de Arqueo y Cierre de Caja');
   b.subtitulo([
