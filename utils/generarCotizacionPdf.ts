@@ -75,7 +75,6 @@ export async function generarCotizacionPdf(datos: DatosCotizacion, empresa?: Emp
     if (empresa.ruc) altoCalculado += 3.5;
     if (empresa.direccion) altoCalculado += 3.5;
     if (empresa.departamento || empresa.ciudad) altoCalculado += 3.5;
-    if (empresa.telefono) altoCalculado += 3.5;
   }
 
   // Encabezado del documento
@@ -164,7 +163,6 @@ export async function generarCotizacionPdf(datos: DatosCotizacion, empresa?: Emp
     if (empresa.departamento || empresa.ciudad) {
       texto([empresa.departamento, empresa.ciudad].filter(Boolean).join(' - '), { align: 'center', size: 8.5 });
     }
-    if (empresa.telefono) texto(`Telf: ${empresa.telefono}`, { align: 'center', size: 8.5 });
   }
 
   linea();

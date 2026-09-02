@@ -59,7 +59,6 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm, vuelt
   if (empresa.ruc) altoCalculado += 4;
   if (empresa.direccion) altoCalculado += 4;
   if (empresa.departamento || empresa.ciudad) altoCalculado += 4;
-  if (empresa.telefono) altoCalculado += 4;
 
   // Título ticket
   altoCalculado += 12;
@@ -146,7 +145,6 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm, vuelt
   if (empresa.departamento || empresa.ciudad) {
     texto([empresa.departamento, empresa.ciudad].filter(Boolean).join(' - '), { align: 'center', size: 9 });
   }
-  if (empresa.telefono) texto(`Telf: ${empresa.telefono}`, { align: 'center', size: 9 });
 
   linea();
   texto(`NOTA DE VENTA NV01 - ${String(venta.id).padStart(8, '0')}`, { align: 'center', bold: true, size: 10 });
