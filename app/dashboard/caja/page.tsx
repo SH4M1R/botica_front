@@ -6,6 +6,7 @@ import { arqueoApi } from '@/api/arqueo';
 import type { ArqueoCaja } from '@/api/arqueo';
 import { movimientoCajaApi } from '@/api/movimientoCaja';
 import type { TipoMovimiento, CategoriaMovimiento } from '@/api/movimientoCaja';
+import { ventasApi } from '@/api/ventas'; // NUEVO: para traer las ventas reales
 import { useSession } from '@/hooks/useSession';
 import AbrirCajaModal from './components/AbrirCajaModal';
 import RegistrarMovimientoModal from './components/RegistrarMovimientoModal';
@@ -49,6 +50,7 @@ export default function ArqueoPage() {
   const [modalCerrarOpen, setModalCerrarOpen] = useState(false);
   const [arqueoACerrar, setArqueoACerrar] = useState<ArqueoCaja | null>(null);
   const [error, setError] = useState('');
+  const [imprimiendoId, setImprimiendoId] = useState<number | null>(null); // feedback visual por fila
 
   const cargarDatos = async () => {
     setCargando(true);
@@ -130,15 +132,43 @@ export default function ArqueoPage() {
     });
   };
 
+  /**
+   * ANTES: `(arqueo as any).ventas ?? []` — ArqueoCaja NUNCA trae un campo
+   * `ventas` (revisa la interfaz en api/arqueo.ts), así que esto siempre
+   * devolvía un array vacío y el PDF salía sin ventas sin importar qué caja
+   * imprimieras.
+   *
+   * AHORA: traemos TODAS las ventas y filtramos por empleado + rango de
+   * fechas del arqueo (mismo patrón que en la página de Medios de Pago).
+   * Como este botón solo aparece para arqueos YA CERRADOS (!a.estado),
+   * fechaFin siempre viene definida.
+   */
   const handleImprimir = async (arqueo: ArqueoCaja) => {
+    setImprimiendoId(arqueo.id);
     try {
       setError('');
-      const ventas = (arqueo as any).ventas ?? [];
-      const pdfBlob = await generarReporteCajaPdf(arqueo, ventas);
+
+      const todasVentas = await ventasApi.listar();
+      const inicio = new Date(arqueo.fechaInicio);
+      const fin = arqueo.fechaFin ? new Date(arqueo.fechaFin) : new Date();
+
+      const ventasDeLaCaja = todasVentas.filter((v) => {
+        const fechaVenta = new Date(v.fecha);
+        return (
+          v.estado &&
+          v.empleado.id === arqueo.empleadoId &&
+          fechaVenta >= inicio &&
+          fechaVenta <= fin
+        );
+      });
+
+      const pdfBlob = await generarReporteCajaPdf(arqueo, ventasDeLaCaja);
       const pdfUrl = URL.createObjectURL(pdfBlob);
       window.open(pdfUrl, '_blank');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al generar el reporte en PDF.');
+    } finally {
+      setImprimiendoId(null);
     }
   };
 
@@ -299,8 +329,9 @@ export default function ArqueoPage() {
                     ) : (
                       <button
                         onClick={() => handleImprimir(a)}
+                        disabled={imprimiendoId === a.id}
                         title="Imprimir"
-                        className="p-2 text-green-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors border-2"
+                        className="p-2 text-green-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors border-2 disabled:opacity-40"
                       >
                         <Printer size={14} />
                       </button>

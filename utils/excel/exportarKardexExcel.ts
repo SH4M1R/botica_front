@@ -1,7 +1,3 @@
-// Requiere instalar la librería antes de usar este archivo:
-//
-//   npm install xlsx
-//
 import * as XLSX from 'xlsx';
 import type { Producto } from '@/api/productos';
 import type { FilaKardex } from '@/app/dashboard/productos/kardex/page';

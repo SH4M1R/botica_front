@@ -1,4 +1,3 @@
-// reporteVentasPeriodo.ts
 import type { ReporteVentasPeriodo } from '@/api/reportes';
 import { crearPos80Builder, crearA4Builder, formatFecha, formatEmision, formatMoneda, ColumnaReporte } from './pdfBase';
 

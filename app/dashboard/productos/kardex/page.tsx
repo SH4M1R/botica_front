@@ -11,7 +11,7 @@ import type { Venta } from '@/api/ventas';
 import { trasladosApi } from '@/api/traslados';
 import type { Traslado } from '@/api/traslados';
 import { generarKardexPdf } from '@/utils/generarKardexPdf';
-import { exportarKardexExcel } from '@/utils/exportarKardexExcel';
+import { exportarKardexExcel } from '@/utils/excel/exportarKardexExcel';
 
 function hoyISO() {
   return new Date().toISOString().slice(0, 10);
@@ -28,6 +28,20 @@ function unidadesBasePorTipo(producto: Producto, unidad: string): number {
   if (u === 'blister') return producto.unidades_blister ?? 1;
   if (u === 'caja') return producto.unidades_caja ?? 1;
   return 1;
+}
+
+/**
+ * Determina si un producto está activo, soportando ambas formas comunes
+ * que usan tus otras entidades:
+ *   - estado: boolean (true = activo) — como Venta/Compra
+ *   - estado: string 'Activo' | 'Inactivo'
+ * Si no existe el campo `estado` en absoluto, lo trata como activo por
+ * defecto para no ocultar productos por error si el backend no lo envía.
+ */
+function esProductoActivo(p: any): boolean {
+  if (p.estado === undefined || p.estado === null) return true;
+  if (typeof p.estado === 'boolean') return p.estado;
+  return String(p.estado).toLowerCase() !== 'inactivo';
 }
 
 export interface FilaKardex {
@@ -61,7 +75,6 @@ function construirMovimientos(
 ): Movimiento[] {
   const movimientos: Movimiento[] = [];
 
-  // ENTRADAS: Compras
   compras.forEach((compra) => {
     if (!compra.estado) return;
     compra.detalles.forEach((d) => {
@@ -79,7 +92,6 @@ function construirMovimientos(
     });
   });
 
-  // ENTRADAS / SALIDAS: Traslados
   traslados.forEach((traslado) => {
     traslado.detalles.forEach((d) => {
       if (d.idProducto !== producto.id) return;
@@ -94,7 +106,6 @@ function construirMovimientos(
     });
   });
 
-  // SALIDAS: Ventas
   ventas.forEach((venta) => {
     if (!venta.estado) return;
     venta.detalles.forEach((d) => {
@@ -122,6 +133,7 @@ export default function KardexPage() {
   const [traslados, setTraslados] = useState<Traslado[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
+  const [exportandoPdf, setExportandoPdf] = useState(false); // feedback visual mientras se genera el PDF
 
   const [busqueda, setBusqueda] = useState('');
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
@@ -157,7 +169,10 @@ export default function KardexPage() {
   const sugerenciasProducto = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
     if (!q) return [];
-    return productos.filter((p) => p.nombre.toLowerCase().includes(q)).slice(0, 8);
+    // NUEVO: se excluyen productos inactivos del buscador con esProductoActivo()
+    return productos
+      .filter((p) => esProductoActivo(p) && p.nombre.toLowerCase().includes(q))
+      .slice(0, 8);
   }, [busqueda, productos]);
 
   const seleccionarProducto = (producto: Producto) => {
@@ -205,11 +220,27 @@ export default function KardexPage() {
   const inputClass =
     'px-3 py-2 rounded-lg border border-zinc-300 bg-zinc-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all';
 
-  const handleExportarPdf = () => {
+  /**
+   * CAMBIO: generarKardexPdf ahora es async (carga el logo de la empresa
+   * antes de dibujar), así que devuelve Promise<Blob> en vez de Blob.
+   * Antes: `const blob = generarKardexPdf(...)` guardaba la Promise misma,
+   * y createObjectURL(Promise) truena con el mismo TypeError que viste en
+   * Medios de Pago. Ahora se hace `await` y se maneja el error si falla
+   * la carga de datos/imagen.
+   */
+  const handleExportarPdf = async () => {
     if (!productoSeleccionado) return;
-    const blob = generarKardexPdf(productoSeleccionado, filasVisibles, desde, hasta);
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
+    setExportandoPdf(true);
+    setError('');
+    try {
+      const blob = await generarKardexPdf(productoSeleccionado, filasVisibles, desde, hasta);
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo generar el PDF del kardex.');
+    } finally {
+      setExportandoPdf(false);
+    }
   };
 
   const handleExportarExcel = () => {
@@ -228,11 +259,11 @@ export default function KardexPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={handleExportarPdf}
-            disabled={!productoSeleccionado || filasVisibles.length === 0}
+            disabled={!productoSeleccionado || filasVisibles.length === 0 || exportandoPdf}
             className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-primary hover:bg-primary-dark rounded-lg shadow-xs hover:shadow-md transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <FileDown size={16} />
-            Exportar PDF
+            {exportandoPdf ? 'Generando...' : 'Exportar PDF'}
           </button>
           <button
             onClick={handleExportarExcel}
@@ -247,8 +278,6 @@ export default function KardexPage() {
 
       <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs p-5 space-y-4">
         <div className="flex flex-wrap items-end gap-4">
-          
-          {/* Buscador de producto (Ampliado a w-full sm:w-[480px]) */}
           <div className="relative w-full sm:w-[480px]">
             <label className="text-xs font-semibold text-zinc-600 block mb-1">Producto</label>
             <div className="relative">
@@ -278,15 +307,12 @@ export default function KardexPage() {
               )}
             </div>
 
-            {/* Lista desplegable con detalles de Principio Activo y Laboratorio */}
             {mostrarSugerencias && sugerenciasProducto.length > 0 && (
               <div className="absolute left-0 right-0 z-30 mt-1 max-h-64 overflow-y-auto bg-white border border-zinc-200 rounded-lg shadow-lg divide-y divide-zinc-100 min-w-full sm:min-w-[480px]">
                 {sugerenciasProducto.map((p: any) => {
-                  // 1. Extraer principio activo (sea string u objeto)
                   const paRaw = p.principio_activo || p.principioActivo;
                   const principioActivo = typeof paRaw === 'object' ? paRaw?.nombre : paRaw;
 
-                  // 2. Extraer laboratorio (sea string u objeto)
                   const labRaw = p.laboratorio;
                   const laboratorio = typeof labRaw === 'object' ? labRaw?.nombre : labRaw;
 
@@ -298,9 +324,8 @@ export default function KardexPage() {
                       className="w-full flex items-start justify-between px-3 py-2 text-left hover:bg-zinc-50 transition-colors gap-3"
                     >
                       <div className="flex-1 min-w-0 space-y-0.5">
-                        {/* Asegúrate de renderizar .nombre y no el objeto completo 'p' */}
                         <p className="text-xs font-semibold text-zinc-800 truncate">{p.nombre}</p>
-                        
+
                         {(principioActivo || laboratorio) && (
                           <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-zinc-500">
                             {principioActivo && (

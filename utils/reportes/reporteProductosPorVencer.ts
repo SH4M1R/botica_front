@@ -21,7 +21,7 @@ export async function generarProductosPorVencerPos80(
 ): Promise<Blob> {
   const altura = 60 + filas.length * 22 + 20;
   const b = crearPos80Builder(altura);
-  b.encabezadoEmpresa(logo);
+  await b.encabezadoEmpresa(logo);
 
   b.texto('PRODUCTOS POR VENCER', { align: 'center', size: 9.5, bold: true });
   b.texto(`Próximos ${dias} días`, { align: 'center', size: 7.5 });
@@ -59,7 +59,7 @@ export async function generarProductosPorVencerA4(
   logo?: string
 ): Promise<Blob> {
   const b = crearA4Builder();
-  b.encabezadoEmpresa(logo);
+  await b.encabezadoEmpresa(logo);
 
   b.titulo('Productos por Vencer');
   b.subtitulo([`Próximos ${dias} días`, `Fecha de emisión: ${formatEmision()}`]);

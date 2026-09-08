@@ -55,7 +55,7 @@ export function abrirPdfEnNuevaPestana(blob: Blob) {
   window.open(url, '_blank');
 }
 
-async function cargarImagenBase64(url: string): Promise<{ data: string; width: number; height: number } | null> {
+export async function cargarImagenBase64(url: string): Promise<{ data: string; width: number; height: number } | null> {
   try {
     let data: string;
     if (url.startsWith('data:')) {
@@ -83,8 +83,24 @@ async function cargarImagenBase64(url: string): Promise<{ data: string; width: n
   }
 }
 
-function formatoImagen(data: string) {
+export function formatoImagen(data: string) {
   return data.includes('image/jpeg') || data.includes('image/jpg') ? 'JPEG' : 'PNG';
+}
+
+/**
+ * Calcula el ancho/alto final de un logo respetando SIEMPRE un ancho y alto
+ * máximos, sin distorsionar la proporción original. Antes cada builder tenía
+ * su propia versión de este cálculo (o no lo tenía), lo que hacía que el logo
+ * se viera desproporcionado según el tamaño de la imagen subida.
+ */
+function ajustarDimensionesLogo(anchoOriginal: number, altoOriginal: number, maxW: number, maxH: number) {
+  let w = maxW;
+  let h = (altoOriginal * w) / anchoOriginal;
+  if (h > maxH) {
+    h = maxH;
+    w = (anchoOriginal * h) / altoOriginal;
+  }
+  return { w, h };
 }
 
 /* ============================================================
@@ -99,6 +115,9 @@ export function crearPos80Builder(alturaEstimada: number) {
   const doc = new jsPDF({ unit: 'mm', format: [ANCHO, Math.max(alturaEstimada, 120)] });
   let y = 6;
 
+  const MAX_W_LOGO_POS80 = 30;
+  const MAX_H_LOGO_POS80 = 16;
+
   const b = {
     doc,
     async encabezadoEmpresa(logoUrlManual?: string) {
@@ -110,21 +129,15 @@ export function crearPos80Builder(alturaEstimada: number) {
         urlLogo = empresa.logo;
       }
 
-      // 1. Agregar Logo Centrado y escalado proporcionalmente
       if (urlLogo) {
         const logo = await cargarImagenBase64(urlLogo);
         if (logo) {
-          const maxW = 32; // Ancho máximo sugerido para POS80 (mm)
-          const maxH = 18; // Alto máximo sugerido para POS80 (mm)
-
-          let logoW = maxW;
-          let logoH = (logo.height * logoW) / logo.width;
-
-          if (logoH > maxH) {
-            logoH = maxH;
-            logoW = (logo.width * logoH) / logo.height;
-          }
-
+          const { w: logoW, h: logoH } = ajustarDimensionesLogo(
+            logo.width,
+            logo.height,
+            MAX_W_LOGO_POS80,
+            MAX_H_LOGO_POS80
+          );
           const xLogo = centerX - logoW / 2;
           try {
             doc.addImage(logo.data, formatoImagen(logo.data), xLogo, y, logoW, logoH);
@@ -135,13 +148,15 @@ export function crearPos80Builder(alturaEstimada: number) {
         }
       }
 
-      // 2. Información de Empresa
       if (empresa && (empresa.nombreComercial || empresa.razonSocial)) {
         const nombre = empresa.nombreComercial || empresa.razonSocial;
         doc.setFont('courier', 'bold');
         doc.setFontSize(9);
-        doc.text(nombre, centerX, y, { align: 'center' });
-        y += 4;
+        const lineasNombre = doc.splitTextToSize(nombre, ANCHO_UTIL);
+        lineasNombre.forEach((linea: string) => {
+          doc.text(linea, centerX, y, { align: 'center' });
+          y += 4;
+        });
 
         if (empresa.ruc) {
           doc.setFont('courier', 'normal');
@@ -178,6 +193,7 @@ export function crearPos80Builder(alturaEstimada: number) {
     espacio(n: number) {
       y += n;
     },
+    
     tabla<T>(columnas: ColumnaReporte<T>[], filas: T[]) {
       const totalWidth = columnas.reduce((s, c) => s + c.widthA4, 0);
       const anchos = columnas.map((c) => (c.widthA4 / totalWidth) * ANCHO_UTIL);
@@ -225,14 +241,15 @@ export function crearPos80Builder(alturaEstimada: number) {
           });
         });
 
+        // Avance de línea simple por cada fila de datos
         y += maxFilasEnFila * lineHeight + 1;
       });
     },
+    
     finalizar(): Blob {
       return doc.output('blob');
     },
   };
-
   return b;
 }
 
@@ -247,16 +264,54 @@ export function crearA4Builder() {
   const ANCHO_UTIL = ANCHO_PAGINA - MARGEN * 2;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   let y = 20;
-  let xsActuales: number[] = [];
 
-  function calcularXs(columnas: ColumnaReporte<any>[]) {
+  // Estado de la tabla "activa" (se usa para escalar anchos, dibujar bordes,
+  // hacer zebra striping y repetir la cabecera al saltar de página)
+  let xsActuales: number[] = [];
+  let anchosActuales: number[] = [];
+  let columnasActuales: ColumnaReporte<any>[] = [];
+  let filaContador = 0;
+
+  const ALTURA_HEADER_TABLA = 8;
+  const PADDING_CELDA = 2;
+
+  function calcularXsYAnchos(columnas: ColumnaReporte<any>[]) {
+    const total = columnas.reduce((s, c) => s + c.widthA4, 0);
+    const anchos = columnas.map((c) => (c.widthA4 / total) * ANCHO_UTIL);
     const xs: number[] = [];
     let acc = MARGEN;
-    columnas.forEach((c) => {
+    anchos.forEach((w) => {
       xs.push(acc);
-      acc += c.widthA4;
+      acc += w;
     });
-    return xs;
+    return { xs, anchos };
+  }
+
+  function dibujarCabeceraTabla(columnas: ColumnaReporte<any>[], xs: number[], anchos: number[]) {
+    doc.setFillColor(232, 232, 232);
+    doc.setDrawColor(120, 120, 120);
+    doc.setLineWidth(0.2);
+    doc.rect(MARGEN, y, ANCHO_UTIL, ALTURA_HEADER_TABLA, 'FD');
+
+    // separadores verticales entre columnas
+    let acc = MARGEN;
+    anchos.forEach((w, i) => {
+      if (i > 0) doc.line(acc, y, acc, y + ALTURA_HEADER_TABLA);
+      acc += w;
+    });
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(30, 30, 30);
+    columnas.forEach((c, i) => {
+      const posX = c.align === 'right' ? xs[i] + anchos[i] - PADDING_CELDA : xs[i] + PADDING_CELDA;
+      doc.text(c.header, posX, y + ALTURA_HEADER_TABLA / 2 + 1.3, {
+        align: c.align === 'right' ? 'right' : 'left',
+      });
+    });
+
+    y += ALTURA_HEADER_TABLA;
+    filaContador = 0;
   }
 
   const b = {
@@ -270,133 +325,191 @@ export function crearA4Builder() {
         urlLogo = empresa.logo;
       }
 
-      let yEmpresa = y;
-      let altoLogoEfectivo = 0;
+      const MAX_W_LOGO = 35;
+      const MAX_H_LOGO = 22;
+      const GAP = 6;
+      // Ancho reservado para el texto de empresa: SIEMPRE deja el espacio del
+      // logo libre, aunque no haya logo, para que el layout no "salte".
+      const anchoTextoDisponible = ANCHO_UTIL - MAX_W_LOGO - GAP;
 
-      // 1. Dibujar datos de la empresa en la esquina izquierda si existen
+      const yInicio = y;
+      let yTexto = yInicio;
+      let altoTexto = 0;
+
       if (empresa && (empresa.razonSocial || empresa.nombreComercial)) {
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10);
-        doc.text(empresa.nombreComercial || empresa.razonSocial, MARGEN, yEmpresa);
-        
+        doc.setFontSize(12);
+        const nombre = empresa.nombreComercial || empresa.razonSocial;
+        const lineasNombre = doc.splitTextToSize(nombre, anchoTextoDisponible);
+        lineasNombre.forEach((linea: string) => {
+          doc.text(linea, MARGEN, yTexto);
+          yTexto += 5;
+        });
+
         doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8);
-        yEmpresa += 4;
+        doc.setFontSize(8.5);
+        doc.setTextColor(60, 60, 60);
+
         if (empresa.ruc) {
-          doc.text(`RUC: ${empresa.ruc}`, MARGEN, yEmpresa);
-          yEmpresa += 3.5;
+          doc.text(`RUC: ${empresa.ruc}`, MARGEN, yTexto);
+          yTexto += 4;
         }
         if (empresa.direccion) {
-          const lineasDir = doc.splitTextToSize(empresa.direccion, 100);
+          const lineasDir = doc.splitTextToSize(empresa.direccion, anchoTextoDisponible);
           lineasDir.forEach((linea: string) => {
-            doc.text(linea, MARGEN, yEmpresa);
-            yEmpresa += 3.5;
+            doc.text(linea, MARGEN, yTexto);
+            yTexto += 4;
           });
         }
+        if (empresa.departamento || empresa.ciudad) {
+          doc.text([empresa.departamento, empresa.ciudad].filter(Boolean).join(' - '), MARGEN, yTexto);
+          yTexto += 4;
+        }
+        doc.setTextColor(0, 0, 0);
+        altoTexto = yTexto - yInicio;
       }
 
-      // 2. Dibujar Logo en la esquina superior derecha (Alineado y escalado proporcionalmente)
+      // Logo en esquina superior derecha, centrado verticalmente respecto al
+      // bloque de texto (antes se dibujaba desde `y` fijo y podía quedar
+      // descolgado o encimarse con el texto si el nombre era largo).
+      let altoLogo = 0;
       if (urlLogo) {
         const logo = await cargarImagenBase64(urlLogo);
         if (logo) {
-          const maxW = 40; // Ancho máximo (mm)
-          const maxH = 20; // Alto máximo (mm)
-
-          let logoW = maxW;
-          let logoH = (logo.height * logoW) / logo.width;
-
-          if (logoH > maxH) {
-            logoH = maxH;
-            logoW = (logo.width * logoH) / logo.height;
-          }
-
+          const { w: logoW, h: logoH } = ajustarDimensionesLogo(logo.width, logo.height, MAX_W_LOGO, MAX_H_LOGO);
           const xLogo = ANCHO_PAGINA - MARGEN - logoW;
+          const yLogo = yInicio + Math.max(0, (Math.max(altoTexto, logoH) - logoH) / 2);
           try {
-            doc.addImage(
-              logo.data,
-              formatoImagen(logo.data),
-              xLogo,
-              y,
-              logoW,
-              logoH
-            );
-            altoLogoEfectivo = logoH;
+            doc.addImage(logo.data, formatoImagen(logo.data), xLogo, yLogo, logoW, logoH);
+            altoLogo = logoH;
           } catch (e) {
             console.warn('No se pudo agregar el logo al PDF A4:', e);
           }
         }
       }
 
-      // 3. Avanzar `y` considerando cuál de los dos elementos ocupó más espacio vertical
-      const espacioUtilizado = Math.max(yEmpresa - y, altoLogoEfectivo);
-      y += espacioUtilizado + 8; // Margen de separación con el contenido
+      const espacioUtilizado = Math.max(altoTexto, altoLogo);
+      y = yInicio + espacioUtilizado + 6;
+
+      doc.setDrawColor(200, 200, 200);
+      doc.setLineWidth(0.2);
+      doc.line(MARGEN, y, MARGEN + ANCHO_UTIL, y);
+      y += 8;
     },
     titulo(texto: string) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(15);
+      doc.setTextColor(0, 0, 0);
       doc.text(texto, MARGEN, y);
-      y += 7;
+      y += 8;
     },
     subtitulo(lineas: string[]) {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
+      doc.setTextColor(80, 80, 80);
       lineas.forEach((linea) => {
         doc.text(linea, MARGEN, y);
         y += 5;
       });
-      y += 2;
+      doc.setTextColor(0, 0, 0);
+      y += 3;
     },
     lineaSeparadora(bold = false) {
       doc.setDrawColor(bold ? 0 : 180);
+      doc.setLineWidth(bold ? 0.4 : 0.2);
       doc.line(MARGEN, y, MARGEN + ANCHO_UTIL, y);
       y += 7;
     },
     encabezadoTabla<T>(columnas: ColumnaReporte<T>[]) {
-      xsActuales = calcularXs(columnas);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
-      columnas.forEach((c, i) => {
-        const posX = c.align === 'right' ? xsActuales[i] + c.widthA4 : xsActuales[i];
-        doc.text(c.header, posX, y, { align: c.align === 'right' ? 'right' : 'left' });
-      });
-      y += 3;
-      doc.setDrawColor(0);
-      doc.line(MARGEN, y, MARGEN + ANCHO_UTIL, y);
-      y += 7;
-      doc.setFont('helvetica', 'normal');
+      columnasActuales = columnas;
+      const { xs, anchos } = calcularXsYAnchos(columnas);
+      xsActuales = xs;
+      anchosActuales = anchos;
+      dibujarCabeceraTabla(columnas, xs, anchos);
     },
     filaTabla<T>(columnas: ColumnaReporte<T>[], fila: T) {
-      const xs = xsActuales.length === columnas.length ? xsActuales : calcularXs(columnas);
+      const mismasColumnas = xsActuales.length === columnas.length;
+      const xs = mismasColumnas ? xsActuales : calcularXsYAnchos(columnas).xs;
+      const anchos = mismasColumnas ? anchosActuales : calcularXsYAnchos(columnas).anchos;
+
       doc.setFontSize(9);
       const fontSize = 9;
       const lineHeight = fontSize * 0.38 + 1.2;
 
       const celdasCalculadas = columnas.map((c, i) => {
         const valor = c.render ? c.render(fila) : '';
-        const anchoDisponible = c.widthA4 - 2; 
+        const anchoDisponible = anchos[i] - PADDING_CELDA * 2;
         const lineas = doc.splitTextToSize(valor, anchoDisponible);
-        return { col: c, x: xs[i], lineas };
+        return { col: c, x: xs[i], ancho: anchos[i], lineas };
       });
 
       const maxLineas = Math.max(...celdasCalculadas.map((item) => item.lineas.length));
-      const alturaFila = maxLineas * lineHeight;
+      const alturaContenido = maxLineas * lineHeight;
+      const alturaFila = alturaContenido + PADDING_CELDA * 1.5;
 
+      // Salto de página: si no entra la fila, se crea página nueva y se
+      // repite la cabecera de la tabla (antes la cabecera no se repetía).
       if (y + alturaFila > ALTO_PAGINA - 22) {
         doc.addPage();
         y = 20;
+        if (columnasActuales.length) {
+          dibujarCabeceraTabla(columnasActuales, xs, anchos);
+        }
       }
 
-      celdasCalculadas.forEach(({ col, x, lineas }) => {
-        const posX = col.align === 'right' ? x + col.widthA4 : x;
+      // Franjas alternadas (zebra) para que se lea como tabla real
+      if (filaContador % 2 === 1) {
+        doc.setFillColor(247, 247, 247);
+        doc.rect(MARGEN, y, ANCHO_UTIL, alturaFila, 'F');
+      }
+      filaContador++;
+
+      // Bordes de la fila + separadores verticales
+      doc.setDrawColor(210, 210, 210);
+      doc.setLineWidth(0.15);
+      doc.rect(MARGEN, y, ANCHO_UTIL, alturaFila);
+      let acc = MARGEN;
+      anchos.forEach((w, i) => {
+        if (i > 0) doc.line(acc, y, acc, y + alturaFila);
+        acc += w;
+      });
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(30, 30, 30);
+      const yTextoInicio = y + (alturaFila - alturaContenido) / 2 + lineHeight * 0.75;
+
+      celdasCalculadas.forEach(({ col, x, ancho, lineas }) => {
+        const posX = col.align === 'right' ? x + ancho - PADDING_CELDA : x + PADDING_CELDA;
         lineas.forEach((lineaTexto: string, lineIdx: number) => {
-          doc.text(lineaTexto, posX, y + lineIdx * lineHeight, {
+          doc.text(lineaTexto, posX, yTextoInicio + lineIdx * lineHeight, {
             align: col.align === 'right' ? 'right' : 'left',
           });
         });
       });
+      doc.setTextColor(0, 0, 0);
 
-      y += alturaFila + 2.5;
+      y += alturaFila;
     },
+
+        firmasDobles(labelIzq: string, labelDer: string) {
+      if (y > ALTO_PAGINA - 40) {
+        doc.addPage();
+        y = 20;
+      }
+      const xIzq = MARGEN;
+      const xDer = MARGEN + ANCHO_UTIL / 2 + 5;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.text(labelIzq, xIzq, y);
+      doc.text(labelDer, xDer, y);
+      y += 10;
+      doc.line(xIzq, y, xIzq + 70, y);
+      doc.line(xDer, y, xDer + 70, y);
+      y += 5;
+    },
+
+    
     campoValor(label: string, valor: string, bold = false) {
       if (y > ALTO_PAGINA - 20) {
         doc.addPage();
@@ -415,6 +528,7 @@ export function crearA4Builder() {
       return doc.output('blob');
     },
   };
+  
 
   return b;
 }
@@ -440,14 +554,14 @@ export interface EmpresaForm {
 
 export async function obtenerEmpresa(): Promise<EmpresaForm> {
   const estructuraVacia: EmpresaForm = {
-    ruc: '', 
-    razonSocial: '', 
-    nombreComercial: '', 
+    ruc: '',
+    razonSocial: '',
+    nombreComercial: '',
     telefono: '',
-    email: '', 
-    direccion: '', 
-    departamento: '', 
-    ciudad: '', 
+    email: '',
+    direccion: '',
+    departamento: '',
+    ciudad: '',
     logo: '',
     icono: '',
     horaApertura: '',
@@ -457,9 +571,9 @@ export async function obtenerEmpresa(): Promise<EmpresaForm> {
 
   try {
     const urlFinal = API_URL?.endsWith('/api') ? `${API_URL}/empresa` : `${API_URL}/api/empresa`;
-    
+
     const response = await fetch(urlFinal);
-    
+
     if (response.status === 404) {
       return estructuraVacia;
     }
@@ -470,7 +584,7 @@ export async function obtenerEmpresa(): Promise<EmpresaForm> {
 
     return await response.json();
   } catch {
-    console.warn("Aviso: No se pudo conectar al servidor de datos de empresa.");
+    console.warn('Aviso: No se pudo conectar al servidor de datos de empresa.');
     return estructuraVacia;
   }
 }
@@ -489,7 +603,7 @@ export async function guardarEmpresa(data: EmpresaForm): Promise<EmpresaForm> {
   if (!response.ok) {
     throw new Error('Error al guardar los datos de la empresa');
   }
-  
+
   return response.json();
 }
 

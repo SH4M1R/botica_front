@@ -1,13 +1,13 @@
 import jsPDF from 'jspdf';
 import type { Producto } from '@/api/productos';
 import type { FilaKardex } from '@/app/dashboard/productos/kardex/page';
+import { obtenerEmpresa, cargarImagenBase64, formatoImagen } from './reportes/pdfBase';
 
 const ANCHO_PAGINA = 297; // A4 landscape
 const ALTO_PAGINA = 210;
 const MARGEN = 10;
 const ANCHO_UTIL = ANCHO_PAGINA - MARGEN * 2; // 277mm
 
-// Anchos de columna (mm) — suman 277
 const COL = {
   fecha: 22,
   descripcion: 66,
@@ -23,32 +23,67 @@ const COL = {
 };
 
 const ALTO_FILA = 6;
-const ALTO_HEADER = 12; // dos filas de cabecera
+const ALTO_HEADER = 12;
+
+// Logo pequeño para no competir con el título del kardex
+const MAX_W_LOGO = 26;
+const MAX_H_LOGO = 14;
 
 function formatFecha(f: Date) {
   return f.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-export function generarKardexPdf(
+function ajustarLogo(anchoOriginal: number, altoOriginal: number) {
+  let w = MAX_W_LOGO;
+  let h = (altoOriginal * w) / anchoOriginal;
+  if (h > MAX_H_LOGO) {
+    h = MAX_H_LOGO;
+    w = (anchoOriginal * h) / altoOriginal;
+  }
+  return { w, h };
+}
+
+export async function generarKardexPdf(
   producto: Producto,
   filas: FilaKardex[],
   desde: string,
-  hasta: string
-): Blob {
+  hasta: string,
+  logoManual?: string
+): Promise<Blob> {
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+
+  // Cargamos el logo UNA sola vez antes de dibujar (se reutiliza en cada
+  // página, incluyendo los saltos de página al paginar el detalle)
+  let urlLogo = logoManual;
+  if (!urlLogo) {
+    const empresa = await obtenerEmpresa();
+    urlLogo = empresa.logo;
+  }
+  const logo = urlLogo ? await cargarImagenBase64(urlLogo) : null;
+  const dimLogo = logo ? ajustarLogo(logo.width, logo.height) : null;
 
   const dibujarEncabezadoPagina = () => {
     let y = MARGEN;
 
+    // Logo arriba a la derecha, sin invadir el bloque de texto del título
+    if (logo && dimLogo) {
+      const xLogo = ANCHO_PAGINA - MARGEN - dimLogo.w;
+      try {
+        doc.addImage(logo.data, formatoImagen(logo.data), xLogo, y, dimLogo.w, dimLogo.h);
+      } catch (e) {
+        console.warn('No se pudo agregar el logo al Kardex:', e);
+      }
+    }
+
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(14);
-    doc.text('KARDEX DE INVENTARIO', MARGEN, y);
-    y += 6;
+    doc.text('KARDEX DE INVENTARIO', MARGEN, y + 4);
+    y += 10;
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.text(`Producto: ${producto.nombre}`, MARGEN, y);
-    doc.text(`Periodo: ${desde} al ${hasta}`, ANCHO_PAGINA - MARGEN, y, { align: 'right' });
+    doc.text(`Periodo: ${desde} al ${hasta}`, ANCHO_PAGINA - MARGEN - (dimLogo?.w ?? 0) - 3, y, { align: 'right' });
     y += 5;
     doc.text(`Costo unitario actual: S/ ${producto.precio_costo.toFixed(2)}`, MARGEN, y);
     doc.text(
@@ -58,6 +93,10 @@ export function generarKardexPdf(
       { align: 'right' }
     );
     y += 6;
+
+    // Deja espacio suficiente para que el logo no se encime con la tabla
+    // si el bloque de texto quedó más bajo que el logo
+    y = Math.max(y, MARGEN + (dimLogo?.h ?? 0) + 4);
 
     return y;
   };
@@ -70,9 +109,14 @@ export function generarKardexPdf(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
 
-    // Fila 1 de cabecera (grupos)
     let x = x0;
-    const grupoAncho = { fecha: COL.fecha, descripcion: COL.descripcion, entradas: COL.entUnid + COL.entCosto + COL.entValor, salidas: COL.salUnid + COL.salCosto + COL.salValor, existencias: COL.extUnid + COL.extCosto + COL.extValor };
+    const grupoAncho = {
+      fecha: COL.fecha,
+      descripcion: COL.descripcion,
+      entradas: COL.entUnid + COL.entCosto + COL.entValor,
+      salidas: COL.salUnid + COL.salCosto + COL.salValor,
+      existencias: COL.extUnid + COL.extCosto + COL.extValor,
+    };
 
     doc.rect(x, y, grupoAncho.fecha, ALTO_HEADER);
     doc.text('Fecha', x + grupoAncho.fecha / 2, y + ALTO_HEADER / 2 + 1, { align: 'center' });
@@ -96,7 +140,6 @@ export function generarKardexPdf(
     doc.text('EXISTENCIAS', x + grupoAncho.existencias / 2, y + ALTO_HEADER / 4 + 1, { align: 'center' });
     const xExistencias = x;
 
-    // Fila 2 de cabecera (subcolumnas)
     const y2 = y + ALTO_HEADER / 2;
     const subcols = ['Unidades', 'Costo Unit', 'Valor Total'];
     doc.setFontSize(6.5);
