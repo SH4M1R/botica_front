@@ -8,6 +8,7 @@ import {
   List, Plus, Users, Tags, Lock, Repeat, ArrowDownToLine, ArrowUpFromLine,
   CreditCard, Receipt, ArrowRightLeft, ShieldCheck, UserCheck,
   BarChart3, CalendarCheck, ShoppingBag, Wallet, ChevronsLeft, ChevronsRight, FileText,
+  ClipboardList,
 } from 'lucide-react';
 import { useSession } from '@/hooks/useSession';
 import { arqueoApi } from '@/api/arqueo';
@@ -28,6 +29,7 @@ const cajaChildren = [
 const productosChildren = [
   { href: '/dashboard/productos', label: 'Listado productos', icon: List },
   { href: '/dashboard/productos/atributos', label: 'Atributos', icon: Tags },
+  { href: '/dashboard/productos/kardex', label: 'Kardex', icon: ClipboardList },
 ];
 
 const trasladosChildren = [

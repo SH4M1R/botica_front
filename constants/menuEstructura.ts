@@ -54,6 +54,7 @@ export const ESTRUCTURA_MENU: ModuloMenu[] = [
     items: [
       { ruta: '/dashboard/productos', label: 'Listado productos' },
       { ruta: '/dashboard/productos/atributos', label: 'Atributos' },
+      { ruta: '/dashboard/productos/kardex', label: 'Kardex' },
     ],
   },
   {

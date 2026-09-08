@@ -101,11 +101,12 @@ export default function VentaNoMouse({
   }, [filaSeleccionada]);
 
   // ---------- Sugerencias de producto (por nombre / principio activo) ----------
+  // Ya NO se excluyen los productos sin stock: se muestran igual, pero
+  // deshabilitados para seleccionar (ver render de la lista y handleNombreKeyDown).
   const sugerencias = useMemo(() => {
     const q = textoBusqueda.trim().toLowerCase();
     if (!q) return [];
-    const conStock = productos.filter((p) => p.stock > 0);
-    const filtradas = conStock.filter((p) => {
+    const filtradas = productos.filter((p) => {
       const producto = p as ProductoConCodigo;
       if (criterio === 'principio') {
         return producto.principioActivo?.nombre?.toLowerCase().includes(q);
@@ -132,8 +133,28 @@ export default function VentaNoMouse({
   const cantidadNum = typeof cantidad === 'number' ? cantidad : 0;
   const importeCalculado = productoSeleccionado ? precioActivo * cantidadNum : 0;
 
+  // Máxima cantidad que se puede ingresar para la presentación elegida,
+  // según el stock real del producto seleccionado.
+  const maxCantidad = productoSeleccionado
+    ? Math.floor(stockDisponible / unidadesBasePorTipo(productoSeleccionado, tipoVentaEntrada))
+    : undefined;
+
+  // Si el usuario cambia de presentación (unidad/blister/caja) y la
+  // cantidad ya ingresada supera el nuevo máximo permitido, la recorta.
+  useEffect(() => {
+    if (!productoSeleccionado || typeof cantidad !== 'number') return;
+    if (maxCantidad !== undefined && maxCantidad > 0 && cantidad > maxCantidad) {
+      setCantidad(maxCantidad);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tipoVentaEntrada]);
+
   // ---------- Selección de producto (agregar uno nuevo) ----------
   const seleccionarProducto = (producto: ProductoConCodigo) => {
+    if (producto.stock <= 0) {
+      setError(`"${producto.nombre}" no tiene stock disponible.`);
+      return;
+    }
     setProductoSeleccionado(producto);
     setTextoBusqueda(producto.nombre);
     setCodigoBarras(producto.codigo_barras ?? '');
@@ -188,6 +209,21 @@ export default function VentaNoMouse({
     codigoBarrasRef.current?.focus();
   };
 
+  // ---------- Cantidad: se ajusta sola al máximo permitido por el stock ----------
+  const handleCantidadChange = (valor: string) => {
+    if (valor === '') {
+      setCantidad('');
+      return;
+    }
+    let nueva = Math.max(1, Number(valor));
+    if (maxCantidad !== undefined && maxCantidad > 0 && nueva > maxCantidad) {
+      nueva = maxCantidad;
+      const etiqueta = tipoVentaEntrada === 'unidad' ? 'unidad(es)' : `${tipoVentaEntrada}(s)`;
+      setError(`Solo hay stock para ${maxCantidad} ${etiqueta} de "${productoSeleccionado?.nombre}".`);
+    }
+    setCantidad(nueva);
+  };
+
   // ---------- Grabar / Actualizar (agrega o reemplaza la línea actual) ----------
   const grabarLinea = () => {
     if (!productoSeleccionado) {
@@ -200,7 +236,12 @@ export default function VentaNoMouse({
     }
     const unidadesBase = unidadesBasePorTipo(productoSeleccionado, tipoVentaEntrada);
     if (cantidadNum * unidadesBase > productoSeleccionado.stock) {
-      setError(`Stock insuficiente para "${productoSeleccionado.nombre}".`);
+      const maxPosible = Math.floor(productoSeleccionado.stock / unidadesBase);
+      setError(
+        maxPosible > 0
+          ? `Stock insuficiente para "${productoSeleccionado.nombre}". Máximo disponible: ${maxPosible}.`
+          : `"${productoSeleccionado.nombre}" no tiene stock disponible.`
+      );
       return;
     }
 
@@ -260,7 +301,12 @@ export default function VentaNoMouse({
     if (e.key === 'Enter') {
       e.preventDefault();
       const producto = sugerencias[sugerenciaIndex];
-      if (producto) seleccionarProducto(producto as ProductoConCodigo);
+      if (!producto) return;
+      if (producto.stock <= 0) {
+        setError(`"${producto.nombre}" no tiene stock disponible.`);
+        return;
+      }
+      seleccionarProducto(producto as ProductoConCodigo);
       return;
     }
     if (e.key === 'Escape') {
@@ -519,27 +565,38 @@ export default function VentaNoMouse({
             />
             <p className="text-[9px] text-zinc-400 mt-0.5 truncate">[ ↑ ↓ navega · Enter selecciona ]</p>
 
-            {/* Sugerencias con ancho fijo de 500px */}
+            {/* Sugerencias con ancho fijo de 600px */}
             {!editandoKey && sugerencias.length > 0 && (
               <div className="absolute left-0 w-[600px] z-50 mt-1 max-h-56 overflow-y-auto bg-white border border-zinc-200 rounded-lg shadow-xl divide-y divide-zinc-100">
-                {sugerencias.map((p, idx) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onMouseDown={() => seleccionarProducto(p as ProductoConCodigo)}
-                    className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left ${
-                      idx === sugerenciaIndex ? 'bg-primary/10' : 'hover:bg-zinc-50'
-                    }`}
-                  >
-                    <span className="font-medium text-zinc-800 truncate mr-2">
-                      {p.nombre}
-                      {p.laboratorio?.nombre && (
-                        <span className="text-zinc-400 font-normal"> ({p.laboratorio.nombre})</span>
-                      )}
-                    </span>
-                    <span className="text-zinc-400 shrink-0">S/ {p.precio_venta.toFixed(2)} · Stock {p.stock}</span>
-                  </button>
-                ))}
+                {sugerencias.map((p, idx) => {
+                  const sinStock = p.stock <= 0;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onMouseDown={() => { if (!sinStock) seleccionarProducto(p as ProductoConCodigo); }}
+                      disabled={sinStock}
+                      title={sinStock ? 'Sin stock disponible' : undefined}
+                      className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left transition-colors ${
+                        sinStock
+                          ? 'opacity-50 cursor-not-allowed'
+                          : idx === sugerenciaIndex
+                          ? 'bg-primary/10'
+                          : 'hover:bg-zinc-50'
+                      }`}
+                    >
+                      <span className="font-medium text-zinc-800 truncate mr-2">
+                        {p.nombre}
+                        {p.laboratorio?.nombre && (
+                          <span className="text-zinc-400 font-normal"> ({p.laboratorio.nombre})</span>
+                        )}
+                      </span>
+                      <span className={`shrink-0 ${sinStock ? 'text-red-400 font-semibold' : 'text-zinc-400'}`}>
+                        {sinStock ? 'Sin stock' : `S/ ${p.precio_venta.toFixed(2)} · Stock ${p.stock}`}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -572,10 +629,11 @@ export default function VentaNoMouse({
               ref={cantidadRef}
               type="number"
               min={1}
+              max={maxCantidad && maxCantidad > 0 ? maxCantidad : undefined}
               value={cantidad}
               placeholder="1"
               onFocus={(e) => e.target.select()}
-              onChange={(e) => setCantidad(e.target.value === '' ? '' : Math.max(1, Number(e.target.value)))}
+              onChange={(e) => handleCantidadChange(e.target.value)}
               onKeyDown={handleCantidadKeyDown}
               className={`${inputBase} text-center font-semibold`}
             />

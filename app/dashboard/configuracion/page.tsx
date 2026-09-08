@@ -392,6 +392,8 @@ export default function ConfiguracionPage() {
                     >
                       <option value="DIARIO">Diario (Todos los días a las 12:00 PM)</option>
                       <option value="SEMANAL">Semanal (Todos los domingos a las 12:00 PM)</option>
+                      <option value="QUINCENAL">Quincenal (Días 1 y 15 del mes a las 12:00 PM)</option>
+                      <option value="MENSUAL">Mensual (Día 1 de cada mes a las 12:00 PM)</option>
                     </select>
                   </div>
 
@@ -409,42 +411,9 @@ export default function ConfiguracionPage() {
             </div>
           </div>
 
-          {/* Bloque 5: Color del Tema */}
-          <div className="bg-white p-6 rounded-2xl border border-zinc-200 shadow-xs space-y-4">
-            <span className="flex items-center gap-2 text-sm font-bold text-zinc-800">
-              <Paintbrush size={18} className="text-primary" />
-              Color del Tema
-            </span>
-            <p className="text-xs text-zinc-500">Selecciona el color de acento para la interfaz de la botica.</p>
-
-            <div className="grid grid-cols-4 sm:grid-cols-8 gap-3 pt-1">
-              {(Object.keys(PALETTES) as ThemeColor[]).map((key) => {
-                const isActive = activeTheme === key;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => changeTheme(key)}
-                    className="flex flex-col items-center gap-1.5 group cursor-pointer"
-                  >
-                    <div
-                      className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${
-                        isActive ? 'border-zinc-800 scale-105 shadow-sm' : 'border-transparent group-hover:scale-105'
-                      }`}
-                      style={{ backgroundColor: PALETTES[key].primary }}
-                    >
-                      {isActive && <Check size={16} className="text-white drop-shadow-xs" />}
-                    </div>
-                    <span className="text-[10px] font-medium text-zinc-600 capitalize">{key}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
         </div>
 
-        {/* COLUMNA DERECHA: Logo e Ícono */}
+        {/* COLUMNA DERECHA: Logo, Ícono y Tema */}
         <div className="space-y-6">
 
           {/* Logo de la Empresa */}
@@ -486,6 +455,39 @@ export default function ConfiguracionPage() {
             <div className="space-y-1">
               <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, 'icono')} className="block w-full text-xs text-zinc-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-zinc-100 file:text-zinc-700 hover:file:bg-zinc-200 file:cursor-pointer" />
               <p className="text-[10px] text-zinc-400 leading-tight">Utilizado como favicon o logo minificado.</p>
+            </div>
+          </div>
+
+          {/* Color del Tema */}
+          <div className="bg-white p-6 rounded-2xl border border-zinc-200 shadow-xs space-y-4">
+            <span className="flex items-center gap-2 text-sm font-bold text-zinc-800">
+              <Paintbrush size={18} className="text-primary" />
+              Color del Tema
+            </span>
+            <p className="text-xs text-zinc-500">Selecciona el color de acento para la interfaz de la botica.</p>
+
+            <div className="grid grid-cols-4 gap-3 pt-1">
+              {(Object.keys(PALETTES) as ThemeColor[]).map((key) => {
+                const isActive = activeTheme === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => changeTheme(key)}
+                    className="flex flex-col items-center gap-1.5 group cursor-pointer"
+                  >
+                    <div
+                      className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${
+                        isActive ? 'border-zinc-800 scale-105 shadow-sm' : 'border-transparent group-hover:scale-105'
+                      }`}
+                      style={{ backgroundColor: PALETTES[key].primary }}
+                    >
+                      {isActive && <Check size={16} className="text-white drop-shadow-xs" />}
+                    </div>
+                    <span className="text-[10px] font-medium text-zinc-600 capitalize">{key}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 

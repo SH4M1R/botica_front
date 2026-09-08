@@ -177,11 +177,11 @@ export default function GenerarVentaPage() {
   const productosVisibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
 
-    const conStock = productos.filter((p) => p.stock > 0);
+    // Ya NO se excluyen los productos sin stock: se muestran igual, pero
+    // deshabilitados para agregar (ver render de la tabla y agregarProducto).
+    if (!q) return productos.slice(0, 30);
 
-    if (!q) return conStock.slice(0, 30);
-
-    const base = conStock.filter((p) => {
+    const base = productos.filter((p) => {
       const producto = p as ProductoConCodigo;
       const nombreMatch = producto.nombre.toLowerCase().includes(q);
       const principioMatch = producto.principioActivo?.nombre?.toLowerCase().includes(q);
@@ -294,16 +294,29 @@ export default function GenerarVentaPage() {
 
   const tieneCliente = !!(idClienteSeleccionado || nombreCliente.trim());
 
+  // Etiqueta legible para mensajes de stock según el tipo de venta.
+  const etiquetaTipo = (tipoVenta: TipoVenta) => (tipoVenta === 'unidad' ? 'unidad(es)' : `${tipoVenta}(s)`);
+
   const agregarProducto = (producto: Producto) => {
+    if (producto.stock <= 0) {
+      setError(`"${producto.nombre}" no tiene stock disponible.`);
+      return;
+    }
     const existente = carrito.find((c) => c.idProducto === producto.id && c.tipoVenta === 'unidad');
+    const cantidadDeseada = (existente?.cantidad ?? 0) + 1;
+    if (cantidadDeseada > producto.stock) {
+      setError(`Solo hay ${producto.stock} unidad(es) disponibles de "${producto.nombre}".`);
+      return;
+    }
     if (existente) {
-      cambiarCantidad(producto.id, 'unidad', existente.cantidad + 1);
+      cambiarCantidad(producto.id, 'unidad', cantidadDeseada);
       return;
     }
     setCarrito((prev) => [
       ...prev,
       { idProducto: producto.id, cantidad: 1, tipoVenta: 'unidad', precioUnitario: producto.precio_venta, producto },
     ]);
+    setError('');
   };
 
   const agregarProductoConDetalle = (
@@ -312,16 +325,29 @@ export default function GenerarVentaPage() {
     cantidad: number,
     precioUnitarioManual?: number
   ) => {
+    if (producto.stock <= 0) {
+      setError(`"${producto.nombre}" no tiene stock disponible.`);
+      return;
+    }
+
+    const unidadesBase = unidadesBasePorTipo(producto, tipoVenta);
+    const maxCantidad = Math.floor(producto.stock / unidadesBase);
+    const existente = carrito.find((c) => c.idProducto === producto.id && c.tipoVenta === tipoVenta);
+    const cantidadDeseadaTotal = (existente?.cantidad ?? 0) + cantidad;
+
+    let cantidadFinal = cantidadDeseadaTotal;
+    if (maxCantidad > 0 && cantidadDeseadaTotal > maxCantidad) {
+      cantidadFinal = maxCantidad;
+      setError(`Solo hay stock para ${maxCantidad} ${etiquetaTipo(tipoVenta)} de "${producto.nombre}".`);
+    } else {
+      setError('');
+    }
+
     setCarrito((prev) => {
-      const existente = prev.find((c) => c.idProducto === producto.id && c.tipoVenta === tipoVenta);
       if (existente) {
         return prev.map((item) =>
           item.idProducto === producto.id && item.tipoVenta === tipoVenta
-            ? {
-                ...item,
-                cantidad: item.cantidad + cantidad,
-                precioUnitario: precioUnitarioManual ?? item.precioUnitario,
-              }
+            ? { ...item, cantidad: cantidadFinal, precioUnitario: precioUnitarioManual ?? item.precioUnitario }
             : item
         );
       }
@@ -329,7 +355,7 @@ export default function GenerarVentaPage() {
         ...prev,
         {
           idProducto: producto.id,
-          cantidad,
+          cantidad: cantidadFinal,
           tipoVenta,
           precioUnitario: precioUnitarioManual ?? precioPorTipo(producto, tipoVenta),
           producto,
@@ -339,9 +365,22 @@ export default function GenerarVentaPage() {
   };
 
   const cambiarCantidad = (idProducto: number, tipoVenta: TipoVenta, cantidad: number) => {
+    const item = carrito.find((c) => c.idProducto === idProducto && c.tipoVenta === tipoVenta);
+    if (!item) return;
+
+    const maxCantidad = Math.floor(item.producto.stock / unidadesBasePorTipo(item.producto, tipoVenta));
+    let cantidadFinal = Math.max(1, cantidad);
+
+    if (maxCantidad > 0 && cantidadFinal > maxCantidad) {
+      cantidadFinal = maxCantidad;
+      setError(`Solo hay stock para ${maxCantidad} ${etiquetaTipo(tipoVenta)} de "${item.producto.nombre}".`);
+    } else {
+      setError('');
+    }
+
     setCarrito((prev) =>
-      prev.map((item) =>
-        item.idProducto === idProducto && item.tipoVenta === tipoVenta ? { ...item, cantidad: Math.max(1, cantidad) } : item
+      prev.map((it) =>
+        it.idProducto === idProducto && it.tipoVenta === tipoVenta ? { ...it, cantidad: cantidadFinal } : it
       )
     );
   };
@@ -372,14 +411,21 @@ export default function GenerarVentaPage() {
       if (!actual) return prev;
       const destino = prev.find((i) => i.idProducto === idProducto && i.tipoVenta === nuevoTipo);
       const nuevoPrecio = precioPorTipo(actual.producto, nuevoTipo);
+      const unidadesBaseNuevo = unidadesBasePorTipo(actual.producto, nuevoTipo);
+      const maxCantidadNuevo = Math.floor(actual.producto.stock / unidadesBaseNuevo);
 
       if (destino) {
+        const cantidadCombinada = destino.cantidad + actual.cantidad;
+        const cantidadFinal = maxCantidadNuevo > 0 ? Math.min(cantidadCombinada, maxCantidadNuevo) : cantidadCombinada;
         return prev
           .filter((i) => !(i.idProducto === idProducto && i.tipoVenta === tipoActual))
-          .map((i) => (i.idProducto === idProducto && i.tipoVenta === nuevoTipo ? { ...i, cantidad: i.cantidad + actual.cantidad } : i));
+          .map((i) => (i.idProducto === idProducto && i.tipoVenta === nuevoTipo ? { ...i, cantidad: cantidadFinal } : i));
       }
+      const cantidadFinal = maxCantidadNuevo > 0 ? Math.min(actual.cantidad, maxCantidadNuevo) : actual.cantidad;
       return prev.map((i) =>
-        i.idProducto === idProducto && i.tipoVenta === tipoActual ? { ...i, tipoVenta: nuevoTipo, precioUnitario: nuevoPrecio } : i
+        i.idProducto === idProducto && i.tipoVenta === tipoActual
+          ? { ...i, tipoVenta: nuevoTipo, precioUnitario: nuevoPrecio, cantidad: cantidadFinal }
+          : i
       );
     });
   };
@@ -714,7 +760,7 @@ export default function GenerarVentaPage() {
           <select
             value={tipoComprobante}
             onChange={(e) => setTipoComprobante(e.target.value as TipoComprobante)}
-            className="text-xs font-semibold text-zinc-700 bg-transparent outline-none cursor-pointer"
+            className="text-xs font-semibold text-zinc-700 bg-transparent outline-none cursor-pointer md:max-w-[120px]"
             title="Tipo de comprobante a emitir"
           >
             {COMPROBANTE_OPTIONS.map((op) => (
@@ -826,7 +872,7 @@ export default function GenerarVentaPage() {
         <div className="shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-700">
           <Info size={14} className="shrink-0" />
           <span>
-            Cargaste la cotización N° {String(cotizacionOrigenId).padStart(6, '0')}. Verifica precios y stock antes de cobrar.
+            Cargaste la cotización N° {String(cotizacionOrigenId).padStart(6, '0')}. Verifica precios y stock antes de cobrar, ya que pudieron cambiar desde que se generó.
           </span>
         </div>
       )}
@@ -865,45 +911,56 @@ export default function GenerarVentaPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {productosVisibles.map((p, idx) => (
-                  <tr
-                    key={p.id}
-                    ref={(el) => { rowRefs.current[idx] = el; }}
-                    onClick={() => setSelectedIndex(idx)}
-                    className={`transition-colors cursor-pointer ${
-                      idx === selectedIndex ? 'bg-primary/10' : 'hover:bg-zinc-50/60'
-                    }`}
-                  >
-                    <td className="px-4 py-2 text-zinc-700">
-                      <div className="font-medium text-zinc-800">{p.nombre}</div>
+                {productosVisibles.map((p, idx) => {
+                  const sinStock = p.stock <= 0;
+                  return (
+                    <tr
+                      key={p.id}
+                      ref={(el) => { rowRefs.current[idx] = el; }}
+                      onClick={() => setSelectedIndex(idx)}
+                      className={`transition-colors ${sinStock ? 'opacity-50' : 'cursor-pointer'} ${
+                        idx === selectedIndex ? 'bg-primary/10' : sinStock ? '' : 'hover:bg-zinc-50/60'
+                      }`}
+                    >
+                      <td className="px-4 py-2 text-zinc-700">
+                        <div className="font-medium text-zinc-800">{p.nombre}</div>
 
-                      {(p.principioActivo?.nombre || p.laboratorio?.nombre) && (
-                        <div className="text-xs text-zinc-400 font-normal italic flex items-center gap-1.5 flex-wrap">
-                          {p.principioActivo?.nombre && <span>{p.principioActivo.nombre}</span>}
-                          {p.principioActivo?.nombre && p.laboratorio?.nombre && <span>•</span>}
-                          {p.laboratorio?.nombre && <span className="text-zinc-500 font-medium">{p.laboratorio.nombre}</span>}
-                        </div>
-                      )}
+                        {(p.principioActivo?.nombre || p.laboratorio?.nombre) && (
+                          <div className="text-xs text-zinc-400 font-normal italic flex items-center gap-1.5 flex-wrap">
+                            {p.principioActivo?.nombre && <span>{p.principioActivo.nombre}</span>}
+                            {p.principioActivo?.nombre && p.laboratorio?.nombre && <span>•</span>}
+                            {p.laboratorio?.nombre && <span className="text-zinc-500 font-medium">{p.laboratorio.nombre}</span>}
+                          </div>
+                        )}
 
-                      {p.vende_por_presentaciones && (p.blister_habilitado || p.caja_habilitado) && (
-                        <div className="flex gap-1 mt-0.5">
-                          {p.blister_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">Blister</span>}
-                          {p.caja_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">Caja</span>}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-right text-zinc-700 font-semibold whitespace-nowrap">S/ {p.precio_venta.toFixed(2)}</td>
-                    <td className="px-4 py-2 text-right text-zinc-900 font-mono whitespace-nowrap">{p.stock}</td>
-                    <td className="px-4 py-2 text-right whitespace-nowrap">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); agregarProducto(p); }}
-                        className="px-3 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors cursor-pointer"
-                      >
-                        Agregar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                        {p.vende_por_presentaciones && (p.blister_habilitado || p.caja_habilitado) && (
+                          <div className="flex gap-1 mt-0.5">
+                            {p.blister_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">Blister</span>}
+                            {p.caja_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">Caja</span>}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-right text-zinc-700 font-semibold whitespace-nowrap">S/ {p.precio_venta.toFixed(2)}</td>
+                      <td className={`px-4 py-2 text-right font-mono whitespace-nowrap ${sinStock ? 'text-red-400 font-semibold' : 'text-zinc-900'}`}>
+                        {sinStock ? 'Sin stock' : p.stock}
+                      </td>
+                      <td className="px-4 py-2 text-right whitespace-nowrap">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); agregarProducto(p); }}
+                          disabled={sinStock}
+                          title={sinStock ? 'Sin stock disponible' : undefined}
+                          className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${
+                            sinStock
+                              ? 'text-zinc-300 bg-zinc-100 cursor-not-allowed'
+                              : 'text-primary bg-primary/10 hover:bg-primary/20 cursor-pointer'
+                          }`}
+                        >
+                          {sinStock ? 'Sin stock' : 'Agregar'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {productosVisibles.length === 0 && (
                   <tr><td colSpan={4} className="px-4 py-10 text-center text-zinc-400">No se encontraron productos disponibles.</td></tr>
                 )}
