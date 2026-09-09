@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { FileText, Printer, Loader2, Search, Check, ChevronDown, FileSpreadsheet } from 'lucide-react';
 
+import ModalAviso, { TipoAviso } from '@/components/ModalAviso';
+
 import * as api from '@/api/reportes';
 import { productosApi } from '@/api/productos';
 import { obtenerEmpresa } from '@/api/empresa';
@@ -191,10 +193,12 @@ function BuscadorProducto({
   label,
   productoSeleccionado,
   onSeleccionarProducto,
+  onError,
 }: {
   label: string;
   productoSeleccionado: Producto | null;
   onSeleccionarProducto: (prod: Producto | null) => void;
+  onError: (msg: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const [todosLosProductos, setTodosLosProductos] = useState<Producto[]>([]);
@@ -226,9 +230,11 @@ function BuscadorProducto({
           }))
         )
       )
-      .catch((err) => console.error('Error al cargar productos:', err))
+      .catch((err) => {
+        onError('No se pudieron cargar los productos.');
+      })
       .finally(() => setCargando(false));
-  }, []);
+  }, [onError]);
 
   const productosFiltrados = query.trim()
     ? todosLosProductos.filter((p) => {
@@ -302,10 +308,12 @@ function BuscadorLaboratorio({
   label,
   laboratorioSeleccionado,
   onSeleccionarLaboratorio,
+  onError,
 }: {
   label: string;
   laboratorioSeleccionado: api.LaboratorioResumen | null;
   onSeleccionarLaboratorio: (lab: api.LaboratorioResumen | null) => void;
+  onError: (msg: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const [laboratorios, setLaboratorios] = useState<api.LaboratorioResumen[]>([]);
@@ -328,9 +336,11 @@ function BuscadorLaboratorio({
     api
       .listarLaboratorios()
       .then(setLaboratorios)
-      .catch((err) => console.error('Error al cargar laboratorios:', err))
+      .catch((err) => {
+        onError('No se pudieron cargar los laboratorios.');
+      })
       .finally(() => setCargando(false));
-  }, []);
+  }, [onError]);
 
   const laboratoriosFiltrados = query.trim()
     ? laboratorios.filter((l) => l.nombreLaboratorio.toLowerCase().includes(query.toLowerCase()))
@@ -397,10 +407,12 @@ function BuscadorProveedor({
   label,
   proveedorSeleccionado,
   onSeleccionarProveedor,
+  onError,
 }: {
   label: string;
   proveedorSeleccionado: ProveedorItem | null;
   onSeleccionarProveedor: (prov: ProveedorItem | null) => void;
+  onError: (msg: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const [proveedores, setProveedores] = useState<ProveedorItem[]>([]);
@@ -432,9 +444,11 @@ function BuscadorProveedor({
         ).sort();
         setProveedores(nombresUnicos.map((nombre) => ({ nombre })));
       })
-      .catch((err) => console.error('Error al cargar proveedores:', err))
+      .catch((err) => {
+        onError('No se pudieron cargar los proveedores.');
+      })
       .finally(() => setCargando(false));
-  }, []);
+  }, [onError]);
 
   const proveedoresFiltrados = query.trim()
     ? proveedores.filter((p) => p.nombre.toLowerCase().includes(query.toLowerCase()))
@@ -498,10 +512,12 @@ function BuscadorPrincipioActivo({
   label,
   principioSeleccionado,
   onSeleccionarPrincipio,
+  onError,
 }: {
   label: string;
   principioSeleccionado: string | null;
   onSeleccionarPrincipio: (principio: string | null) => void;
+  onError: (msg: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const [principios, setPrincipios] = useState<string[]>([]);
@@ -533,9 +549,11 @@ function BuscadorPrincipioActivo({
         ).sort();
         setPrincipios(unicos);
       })
-      .catch((err) => console.error('Error al cargar principios activos:', err))
+      .catch((err) => {
+        onError('No se pudieron cargar los principios activos.');
+      })
       .finally(() => setCargando(false));
-  }, []);
+  }, [onError]);
 
   const principiosFiltrados = query.trim()
     ? principios.filter((p) => p.toLowerCase().includes(query.toLowerCase()))
@@ -611,10 +629,33 @@ export default function ReportesPage() {
 
   const [logoEmpresa, setLogoEmpresa] = useState<string | undefined>(undefined);
 
+  // Estado para controlar el ModalAviso
+  const [avisoState, setAvisoState] = useState<{
+    isOpen: boolean;
+    mensaje: string;
+    titulo?: string;
+    tipo?: TipoAviso;
+  }>({
+    isOpen: false,
+    mensaje: '',
+    titulo: 'Aviso',
+    tipo: 'warning',
+  });
+
+  const mostrarAviso = (mensaje: string, titulo = 'Aviso', tipo: TipoAviso = 'warning') => {
+    setAvisoState({ isOpen: true, mensaje, titulo, tipo });
+  };
+
+  const cerrarAviso = () => {
+    setAvisoState((prev) => ({ ...prev, isOpen: false }));
+  };
+
   useEffect(() => {
     obtenerEmpresa()
       .then((empresa) => setLogoEmpresa(empresa.logo || undefined))
-      .catch((err) => console.error('No se pudo cargar el logo de la empresa:', err));
+      .catch(() => {
+        mostrarAviso('No se pudo cargar la información de la empresa.', 'Error de carga', 'error');
+      });
   }, []);
 
   async function ejecutar(key: string, accion: () => Promise<void>) {
@@ -622,8 +663,8 @@ export default function ReportesPage() {
     try {
       await accion();
     } catch (err) {
-      console.error(err);
-      alert(err instanceof Error ? err.message : 'Ocurrió un error al generar el reporte.');
+      const msg = err instanceof Error ? err.message : 'Ocurrió un error al generar el reporte.';
+      mostrarAviso(msg, 'Error al generar reporte', 'error');
     } finally {
       setCargando(null);
     }
@@ -631,6 +672,14 @@ export default function ReportesPage() {
 
   return (
     <div className="space-y-6">
+      <ModalAviso
+        isOpen={avisoState.isOpen}
+        titulo={avisoState.titulo}
+        mensaje={avisoState.mensaje}
+        tipo={avisoState.tipo}
+        onClose={cerrarAviso}
+      />
+
       <div>
         <h1 className="text-2xl font-bold text-primary tracking-tight">Reportes</h1>
         <p className="text-sm text-zinc-500 mt-1">Genera y descarga los reportes del sistema en ticket, A4 o Excel.</p>
@@ -760,14 +809,18 @@ export default function ReportesPage() {
             cargando={cargando === 'ventas-producto'}
             onPos80={() =>
               ejecutar('ventas-producto', async () => {
-                if (!productoSeleccionado) return alert('Por favor, selecciona un producto.');
+                if (!productoSeleccionado) {
+                  return mostrarAviso('Por favor, selecciona un producto.');
+                }
                 const data = await api.obtenerVentasPorProducto(productoSeleccionado.id, fechaInicio, fechaFin);
                 abrirPdfEnNuevaPestana(await generarVentasPorProductoPos80(data, logoEmpresa));
               })
             }
             onA4={() =>
               ejecutar('ventas-producto', async () => {
-                if (!productoSeleccionado) return alert('Por favor, selecciona un producto.');
+                if (!productoSeleccionado) {
+                  return mostrarAviso('Por favor, selecciona un producto.');
+                }
                 const data = await api.obtenerVentasPorProducto(productoSeleccionado.id, fechaInicio, fechaFin);
                 descargarPdf(
                   await generarVentasPorProductoA4(data, logoEmpresa),
@@ -777,7 +830,9 @@ export default function ReportesPage() {
             }
             onExcel={() =>
               ejecutar('ventas-producto', async () => {
-                if (!productoSeleccionado) return alert('Por favor, selecciona un producto.');
+                if (!productoSeleccionado) {
+                  return mostrarAviso('Por favor, selecciona un producto.');
+                }
                 const data = await api.obtenerVentasPorProducto(productoSeleccionado.id, fechaInicio, fechaFin);
                 descargarExcel(
                   await generarVentasPorProductoExcel(data, logoEmpresa),
@@ -790,6 +845,7 @@ export default function ReportesPage() {
               label="Seleccionar Producto"
               productoSeleccionado={productoSeleccionado}
               onSeleccionarProducto={setProductoSeleccionado}
+              onError={(msg) => mostrarAviso(msg, 'Error de Carga', 'error')}
             />
           </ReporteCard>
         </div>
@@ -804,21 +860,27 @@ export default function ReportesPage() {
             cargando={cargando === 'arqueo'}
             onPos80={() =>
               ejecutar('arqueo', async () => {
-                if (!idArqueo) return alert('Ingresa el N° de arqueo/caja.');
+                if (!idArqueo) {
+                  return mostrarAviso('Ingresa el N° de arqueo/caja.');
+                }
                 const data = await api.obtenerReporteArqueo(Number(idArqueo));
                 abrirPdfEnNuevaPestana(await generarArqueoCajaPos80(data, logoEmpresa));
               })
             }
             onA4={() =>
               ejecutar('arqueo', async () => {
-                if (!idArqueo) return alert('Ingresa el N° de arqueo/caja.');
+                if (!idArqueo) {
+                  return mostrarAviso('Ingresa el N° de arqueo/caja.');
+                }
                 const data = await api.obtenerReporteArqueo(Number(idArqueo));
                 descargarPdf(await generarArqueoCajaA4(data, logoEmpresa), `arqueo-caja-${idArqueo}`);
               })
             }
             onExcel={() =>
               ejecutar('arqueo', async () => {
-                if (!idArqueo) return alert('Ingresa el N° de arqueo/caja.');
+                if (!idArqueo) {
+                  return mostrarAviso('Ingresa el N° de arqueo/caja.');
+                }
                 const data = await api.obtenerReporteArqueo(Number(idArqueo));
                 descargarExcel(await generarArqueoCajaExcel(data, logoEmpresa), `arqueo-caja-${idArqueo}`);
               })
@@ -909,6 +971,7 @@ export default function ReportesPage() {
               label="Seleccionar Proveedor (Opcional)"
               proveedorSeleccionado={proveedorSeleccionado}
               onSeleccionarProveedor={setProveedorSeleccionado}
+              onError={(msg) => mostrarAviso(msg, 'Error de Carga', 'error')}
             />
           </ReporteCard>
 
@@ -918,14 +981,18 @@ export default function ReportesPage() {
             cargando={cargando === 'analisis-costos'}
             onPos80={() =>
               ejecutar('analisis-costos', async () => {
-                if (!productoSeleccionado) return alert('Selecciona un producto.');
+                if (!productoSeleccionado) {
+                  return mostrarAviso('Selecciona un producto.');
+                }
                 const data = await api.obtenerAnalisisCostos(productoSeleccionado.id);
                 abrirPdfEnNuevaPestana(await generarAnalisisCostosPos80(data, logoEmpresa));
               })
             }
             onA4={() =>
               ejecutar('analisis-costos', async () => {
-                if (!productoSeleccionado) return alert('Selecciona un producto.');
+                if (!productoSeleccionado) {
+                  return mostrarAviso('Selecciona un producto.');
+                }
                 const data = await api.obtenerAnalisisCostos(productoSeleccionado.id);
                 descargarPdf(
                   await generarAnalisisCostosA4(data, logoEmpresa),
@@ -935,7 +1002,9 @@ export default function ReportesPage() {
             }
             onExcel={() =>
               ejecutar('analisis-costos', async () => {
-                if (!productoSeleccionado) return alert('Selecciona un producto.');
+                if (!productoSeleccionado) {
+                  return mostrarAviso('Selecciona un producto.');
+                }
                 const data = await api.obtenerAnalisisCostos(productoSeleccionado.id);
                 descargarExcel(
                   await generarAnalisisCostosExcel(data, logoEmpresa),
@@ -948,6 +1017,7 @@ export default function ReportesPage() {
               label="Seleccionar Producto"
               productoSeleccionado={productoSeleccionado}
               onSeleccionarProducto={setProductoSeleccionado}
+              onError={(msg) => mostrarAviso(msg, 'Error de Carga', 'error')}
             />
           </ReporteCard>
 
@@ -1082,6 +1152,7 @@ export default function ReportesPage() {
               label="Seleccionar Principio Activo"
               principioSeleccionado={principioSeleccionado}
               onSeleccionarPrincipio={setPrincipioSeleccionado}
+              onError={(msg) => mostrarAviso(msg, 'Error de Carga', 'error')}
             />
           </ReporteCard>
 
@@ -1091,14 +1162,18 @@ export default function ReportesPage() {
             cargando={cargando === 'productos-laboratorio'}
             onPos80={() =>
               ejecutar('productos-laboratorio', async () => {
-                if (!laboratorioSeleccionado) return alert('Selecciona un laboratorio.');
+                if (!laboratorioSeleccionado) {
+                  return mostrarAviso('Selecciona un laboratorio.');
+                }
                 const data = await api.obtenerProductosPorLaboratorio(laboratorioSeleccionado.idLaboratorio);
                 abrirPdfEnNuevaPestana(await generarProductosPorLaboratorioPos80(data, logoEmpresa));
               })
             }
             onA4={() =>
               ejecutar('productos-laboratorio', async () => {
-                if (!laboratorioSeleccionado) return alert('Selecciona un laboratorio.');
+                if (!laboratorioSeleccionado) {
+                  return mostrarAviso('Selecciona un laboratorio.');
+                }
                 const data = await api.obtenerProductosPorLaboratorio(laboratorioSeleccionado.idLaboratorio);
                 descargarPdf(
                   await generarProductosPorLaboratorioA4(data, logoEmpresa),
@@ -1108,7 +1183,9 @@ export default function ReportesPage() {
             }
             onExcel={() =>
               ejecutar('productos-laboratorio', async () => {
-                if (!laboratorioSeleccionado) return alert('Selecciona un laboratorio.');
+                if (!laboratorioSeleccionado) {
+                  return mostrarAviso('Selecciona un laboratorio.');
+                }
                 const data = await api.obtenerProductosPorLaboratorio(laboratorioSeleccionado.idLaboratorio);
                 descargarExcel(
                   await generarProductosPorLaboratorioExcel(data, logoEmpresa),
@@ -1121,6 +1198,7 @@ export default function ReportesPage() {
               label="Seleccionar Laboratorio"
               laboratorioSeleccionado={laboratorioSeleccionado}
               onSeleccionarLaboratorio={setLaboratorioSeleccionado}
+              onError={(msg) => mostrarAviso(msg, 'Error de Carga', 'error')}
             />
           </ReporteCard>
 
