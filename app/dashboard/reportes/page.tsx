@@ -1,14 +1,16 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { FileText, Printer, Loader2, Search, Check, ChevronDown } from 'lucide-react';
+import { FileText, Printer, Loader2, Search, Check, ChevronDown, FileSpreadsheet } from 'lucide-react';
 
 import * as api from '@/api/reportes';
 import { productosApi } from '@/api/productos';
-import { generarReporteAsistenciaPos80, generarReporteAsistenciaA4 } from '@/utils/reportes/reporteAsistencia';
 import { obtenerEmpresa } from '@/api/empresa';
 import { descargarPdf, abrirPdfEnNuevaPestana } from '@/utils/reportes/pdfBase';
+import { descargarExcel } from '@/utils/excel/excelBase';
 
+// PDF
+import { generarReporteAsistenciaPos80, generarReporteAsistenciaA4 } from '@/utils/reportes/reporteAsistencia';
 import { generarReporteVentasPeriodoPos80, generarReporteVentasPeriodoA4 } from '@/utils/reportes/reporteVentasPeriodo';
 import { generarVentasPorEmpleadoPos80, generarVentasPorEmpleadoA4 } from '@/utils/reportes/reporteVentasEmpleado';
 import { generarTopProductosPos80, generarTopProductosA4 } from '@/utils/reportes/reporteTopProductos';
@@ -21,10 +23,27 @@ import { generarInventarioValoradoPos80, generarInventarioValoradoA4 } from '@/u
 import { generarAlertaStockPos80, generarAlertaStockA4 } from '@/utils/reportes/reporteAlertaStock';
 import { generarCatalogoTerapeuticoPos80, generarCatalogoTerapeuticoA4 } from '@/utils/reportes/reporteCatalogoTerapeutico';
 import { generarConsolidadoGeneralPos80, generarConsolidadoGeneralA4 } from '@/utils/reportes/reporteConsolidadoGeneral';
-
 import { generarProductosPorLaboratorioPos80, generarProductosPorLaboratorioA4 } from '@/utils/reportes/reporteProductosPorLaboratorio';
 import { generarProductosPorVencerPos80, generarProductosPorVencerA4 } from '@/utils/reportes/reporteProductosPorVencer';
 import { generarVentasPorProductoPos80, generarVentasPorProductoA4 } from '@/utils/reportes/reporteVentasPorProducto';
+
+// Excel
+import { generarReporteAsistenciaExcel } from '@/utils/excel/reporteAsistencia';
+import { generarReporteVentasPeriodoExcel } from '@/utils/excel/reporteVentasPeriodo';
+import { generarVentasPorEmpleadoExcel } from '@/utils/excel/reporteVentasEmpleado';
+import { generarTopProductosExcel } from '@/utils/excel/reporteTopProductos';
+import { generarComprasPorProveedorExcel } from '@/utils/excel/reporteComprasProveedor';
+import { generarAnalisisCostosExcel } from '@/utils/excel/reporteAnalisisCostos';
+import { generarCuentasPorPagarExcel } from '@/utils/excel/reporteCuentasPorPagar';
+import { generarInventarioValoradoExcel } from '@/utils/excel/reporteInventarioValorado';
+import { generarAlertaStockExcel } from '@/utils/excel/reporteAlertaStock';
+import { generarCatalogoTerapeuticoExcel } from '@/utils/excel/reporteCatalogoTerapeutico';
+import { generarConsolidadoGeneralExcel } from '@/utils/excel/reporteConsolidadoGeneral';
+import { generarProductosPorLaboratorioExcel } from '@/utils/excel/reporteProductosPorLaboratorio';
+import { generarProductosPorVencerExcel } from '@/utils/excel/reporteProductosPorVencer';
+import { generarVentasPorProductoExcel } from '@/utils/excel/reporteVentasPorProducto';
+import { generarArqueoCajaExcel } from '@/utils/excel/reporteArqueoCaja';
+import { generarFlujoCajaExcel } from '@/utils/excel/reporteFlujoCaja';
 
 type Modulo = 'ventas' | 'caja' | 'compras' | 'inventario' | 'gestion';
 
@@ -56,6 +75,10 @@ function inicioDeMes() {
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
 }
 
+/* ============================================================
+   Card con 3 botones: POS80, A4, Excel
+   ============================================================ */
+
 function ReporteCard({
   titulo,
   descripcion,
@@ -63,6 +86,7 @@ function ReporteCard({
   cargando,
   onPos80,
   onA4,
+  onExcel,
 }: {
   titulo: string;
   descripcion: string;
@@ -70,6 +94,7 @@ function ReporteCard({
   cargando: boolean;
   onPos80: () => void;
   onA4: () => void;
+  onExcel: () => void;
 }) {
   return (
     <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs p-5 flex flex-col gap-4">
@@ -92,7 +117,7 @@ function ReporteCard({
           className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-zinc-300 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 transition-colors disabled:opacity-50 cursor-pointer"
         >
           {cargando ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
-          Ticket (POS80)
+          POS80
         </button>
         <button
           disabled={cargando}
@@ -100,7 +125,15 @@ function ReporteCard({
           className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 cursor-pointer"
         >
           {cargando ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-          Documento (A4)
+          A4
+        </button>
+        <button
+          disabled={cargando}
+          onClick={onExcel}
+          className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-emerald-300 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 transition-colors disabled:opacity-50 cursor-pointer"
+        >
+          {cargando ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />}
+          Excel
         </button>
       </div>
     </div>
@@ -360,7 +393,6 @@ function BuscadorLaboratorio({
   );
 }
 
-/* ===================== BUSCADOR PROVEEDOR (MISMA ESTRUCTURA QUE BUSCADOR PRODUCTO) ===================== */
 function BuscadorProveedor({
   label,
   proveedorSeleccionado,
@@ -462,7 +494,6 @@ function BuscadorProveedor({
   );
 }
 
-/* ===================== BUSCADOR PRINCIPIO ACTIVO (MISMA ESTRUCTURA QUE BUSCADOR PRODUCTO) ===================== */
 function BuscadorPrincipioActivo({
   label,
   principioSeleccionado,
@@ -602,7 +633,7 @@ export default function ReportesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-primary tracking-tight">Reportes</h1>
-        <p className="text-sm text-zinc-500 mt-1">Genera y descarga los reportes del sistema en formato ticket o A4.</p>
+        <p className="text-sm text-zinc-500 mt-1">Genera y descarga los reportes del sistema en ticket, A4 o Excel.</p>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -650,6 +681,15 @@ export default function ReportesPage() {
                 );
               })
             }
+            onExcel={() =>
+              ejecutar('ventas-periodo', async () => {
+                const data = await api.obtenerReporteVentasPeriodo(fechaInicio, fechaFin);
+                descargarExcel(
+                  await generarReporteVentasPeriodoExcel(data, logoEmpresa),
+                  `ventas-periodo-${fechaInicio}_${fechaFin}`
+                );
+              })
+            }
           />
 
           <ReporteCard
@@ -667,6 +707,15 @@ export default function ReportesPage() {
                 const data = await api.obtenerVentasPorEmpleado(fechaInicio, fechaFin);
                 descargarPdf(
                   await generarVentasPorEmpleadoA4(fechaInicio, fechaFin, data, logoEmpresa),
+                  `ventas-por-empleado-${fechaInicio}_${fechaFin}`
+                );
+              })
+            }
+            onExcel={() =>
+              ejecutar('ventas-empleado', async () => {
+                const data = await api.obtenerVentasPorEmpleado(fechaInicio, fechaFin);
+                descargarExcel(
+                  await generarVentasPorEmpleadoExcel(fechaInicio, fechaFin, data, logoEmpresa),
                   `ventas-por-empleado-${fechaInicio}_${fechaFin}`
                 );
               })
@@ -692,6 +741,15 @@ export default function ReportesPage() {
                 );
               })
             }
+            onExcel={() =>
+              ejecutar('top-productos', async () => {
+                const data = await api.obtenerTopProductos(fechaInicio, fechaFin, Number(limiteTop) || 20);
+                descargarExcel(
+                  await generarTopProductosExcel(fechaInicio, fechaFin, data, logoEmpresa),
+                  `top-productos-${fechaInicio}_${fechaFin}`
+                );
+              })
+            }
           >
             <InputNumero label="Límite (top N)" value={limiteTop} onChange={setLimiteTop} placeholder="20" />
           </ReporteCard>
@@ -713,6 +771,16 @@ export default function ReportesPage() {
                 const data = await api.obtenerVentasPorProducto(productoSeleccionado.id, fechaInicio, fechaFin);
                 descargarPdf(
                   await generarVentasPorProductoA4(data, logoEmpresa),
+                  `ventas-producto-${productoSeleccionado.id}-${fechaInicio}_${fechaFin}`
+                );
+              })
+            }
+            onExcel={() =>
+              ejecutar('ventas-producto', async () => {
+                if (!productoSeleccionado) return alert('Por favor, selecciona un producto.');
+                const data = await api.obtenerVentasPorProducto(productoSeleccionado.id, fechaInicio, fechaFin);
+                descargarExcel(
+                  await generarVentasPorProductoExcel(data, logoEmpresa),
                   `ventas-producto-${productoSeleccionado.id}-${fechaInicio}_${fechaFin}`
                 );
               })
@@ -748,6 +816,13 @@ export default function ReportesPage() {
                 descargarPdf(await generarArqueoCajaA4(data, logoEmpresa), `arqueo-caja-${idArqueo}`);
               })
             }
+            onExcel={() =>
+              ejecutar('arqueo', async () => {
+                if (!idArqueo) return alert('Ingresa el N° de arqueo/caja.');
+                const data = await api.obtenerReporteArqueo(Number(idArqueo));
+                descargarExcel(await generarArqueoCajaExcel(data, logoEmpresa), `arqueo-caja-${idArqueo}`);
+              })
+            }
           >
             <InputNumero label="N° de arqueo/caja" value={idArqueo} onChange={setIdArqueo} placeholder="Ej: 12" />
           </ReporteCard>
@@ -766,6 +841,15 @@ export default function ReportesPage() {
               ejecutar('flujo-caja', async () => {
                 const data = await api.obtenerFlujoCaja(fechaInicio, fechaFin);
                 descargarPdf(await generarFlujoCajaA4(data, logoEmpresa), `flujo-caja-${fechaInicio}_${fechaFin}`);
+              })
+            }
+            onExcel={() =>
+              ejecutar('flujo-caja', async () => {
+                const data = await api.obtenerFlujoCaja(fechaInicio, fechaFin);
+                descargarExcel(
+                  await generarFlujoCajaExcel(data, logoEmpresa),
+                  `flujo-caja-${fechaInicio}_${fechaFin}`
+                );
               })
             }
           />
@@ -806,6 +890,20 @@ export default function ReportesPage() {
                 );
               })
             }
+            onExcel={() =>
+              ejecutar('compras-proveedor', async () => {
+                let data = await api.obtenerComprasPorProveedor(fechaInicio, fechaFin);
+                if (proveedorSeleccionado) {
+                  data = data.filter((p) =>
+                    p.nombreProveedor.toLowerCase().includes(proveedorSeleccionado.nombre.toLowerCase())
+                  );
+                }
+                descargarExcel(
+                  await generarComprasPorProveedorExcel(fechaInicio, fechaFin, data, logoEmpresa),
+                  `compras-por-proveedor-${fechaInicio}_${fechaFin}`
+                );
+              })
+            }
           >
             <BuscadorProveedor
               label="Seleccionar Proveedor (Opcional)"
@@ -831,6 +929,16 @@ export default function ReportesPage() {
                 const data = await api.obtenerAnalisisCostos(productoSeleccionado.id);
                 descargarPdf(
                   await generarAnalisisCostosA4(data, logoEmpresa),
+                  `analisis-costos-producto-${productoSeleccionado.id}`
+                );
+              })
+            }
+            onExcel={() =>
+              ejecutar('analisis-costos', async () => {
+                if (!productoSeleccionado) return alert('Selecciona un producto.');
+                const data = await api.obtenerAnalisisCostos(productoSeleccionado.id);
+                descargarExcel(
+                  await generarAnalisisCostosExcel(data, logoEmpresa),
                   `analisis-costos-producto-${productoSeleccionado.id}`
                 );
               })
@@ -862,6 +970,15 @@ export default function ReportesPage() {
                 );
               })
             }
+            onExcel={() =>
+              ejecutar('cuentas-por-pagar', async () => {
+                const data = await api.obtenerCuentasPorPagar(fechaInicio, fechaFin);
+                descargarExcel(
+                  await generarCuentasPorPagarExcel(data, logoEmpresa),
+                  `cuentas-por-pagar-${fechaInicio}_${fechaFin}`
+                );
+              })
+            }
           />
         </div>
       )}
@@ -885,6 +1002,12 @@ export default function ReportesPage() {
                 descargarPdf(await generarInventarioValoradoA4(data, logoEmpresa), 'inventario-valorado');
               })
             }
+            onExcel={() =>
+              ejecutar('inventario-valorado', async () => {
+                const data = await api.obtenerInventarioValorado();
+                descargarExcel(await generarInventarioValoradoExcel(data, logoEmpresa), 'inventario-valorado');
+              })
+            }
           />
 
           <ReporteCard
@@ -903,6 +1026,12 @@ export default function ReportesPage() {
                 descargarPdf(await generarAlertaStockA4(data, logoEmpresa), 'alerta-stock-minimo');
               })
             }
+            onExcel={() =>
+              ejecutar('alerta-stock', async () => {
+                const data = await api.obtenerAlertaStockMinimo();
+                descargarExcel(await generarAlertaStockExcel(data, logoEmpresa), 'alerta-stock-minimo');
+              })
+            }
           />
 
           <ReporteCard
@@ -918,9 +1047,7 @@ export default function ReportesPage() {
                 const tituloRpt = principioSeleccionado
                   ? `CATÁLOGO: ${principioSeleccionado.toUpperCase()}`
                   : 'CATÁLOGO TERAPÉUTICO';
-                abrirPdfEnNuevaPestana(
-                  await generarCatalogoTerapeuticoPos80(data, tituloRpt, logoEmpresa)
-                );
+                abrirPdfEnNuevaPestana(await generarCatalogoTerapeuticoPos80(data, tituloRpt, logoEmpresa));
               })
             }
             onA4={() =>
@@ -932,8 +1059,20 @@ export default function ReportesPage() {
                 const tituloRpt = principioSeleccionado
                   ? `Catálogo de Productos - ${principioSeleccionado}`
                   : 'Catálogo por Principio Activo y Acción Terapéutica';
-                descargarPdf(
-                  await generarCatalogoTerapeuticoA4(data, tituloRpt, logoEmpresa),
+                descargarPdf(await generarCatalogoTerapeuticoA4(data, tituloRpt, logoEmpresa), 'catalogo-terapeutico');
+              })
+            }
+            onExcel={() =>
+              ejecutar('catalogo-terapeutico', async () => {
+                let data = await api.obtenerCatalogoTerapeutico();
+                if (principioSeleccionado) {
+                  data = data.filter((item) => item.principioActivo === principioSeleccionado);
+                }
+                const tituloRpt = principioSeleccionado
+                  ? `Catálogo de Productos - ${principioSeleccionado}`
+                  : 'Catálogo por Principio Activo y Acción Terapéutica';
+                descargarExcel(
+                  await generarCatalogoTerapeuticoExcel(data, tituloRpt, logoEmpresa),
                   'catalogo-terapeutico'
                 );
               })
@@ -967,6 +1106,16 @@ export default function ReportesPage() {
                 );
               })
             }
+            onExcel={() =>
+              ejecutar('productos-laboratorio', async () => {
+                if (!laboratorioSeleccionado) return alert('Selecciona un laboratorio.');
+                const data = await api.obtenerProductosPorLaboratorio(laboratorioSeleccionado.idLaboratorio);
+                descargarExcel(
+                  await generarProductosPorLaboratorioExcel(data, logoEmpresa),
+                  `productos-laboratorio-${laboratorioSeleccionado.idLaboratorio}`
+                );
+              })
+            }
           >
             <BuscadorLaboratorio
               label="Seleccionar Laboratorio"
@@ -992,6 +1141,15 @@ export default function ReportesPage() {
                 const data = await api.obtenerProductosPorVencer(Number(diasVencer) || 30);
                 descargarPdf(
                   await generarProductosPorVencerA4(data, Number(diasVencer) || 30, logoEmpresa),
+                  `productos-por-vencer-${diasVencer}-dias`
+                );
+              })
+            }
+            onExcel={() =>
+              ejecutar('productos-por-vencer', async () => {
+                const data = await api.obtenerProductosPorVencer(Number(diasVencer) || 30);
+                descargarExcel(
+                  await generarProductosPorVencerExcel(data, Number(diasVencer) || 30, logoEmpresa),
                   `productos-por-vencer-${diasVencer}-dias`
                 );
               })
@@ -1024,6 +1182,15 @@ export default function ReportesPage() {
                 );
               })
             }
+            onExcel={() =>
+              ejecutar('consolidado', async () => {
+                const data = await api.obtenerConsolidadoGeneral(fechaInicio, fechaFin);
+                descargarExcel(
+                  await generarConsolidadoGeneralExcel(data, logoEmpresa),
+                  `consolidado-general-${fechaInicio}_${fechaFin}`
+                );
+              })
+            }
           />
 
           <ReporteCard
@@ -1033,9 +1200,7 @@ export default function ReportesPage() {
             onPos80={() =>
               ejecutar('asistencia', async () => {
                 const data = await api.obtenerReporteAsistencia(fechaInicio, fechaFin);
-                abrirPdfEnNuevaPestana(
-                  await generarReporteAsistenciaPos80(fechaInicio, fechaFin, data, logoEmpresa)
-                );
+                abrirPdfEnNuevaPestana(await generarReporteAsistenciaPos80(fechaInicio, fechaFin, data, logoEmpresa));
               })
             }
             onA4={() =>
@@ -1043,6 +1208,15 @@ export default function ReportesPage() {
                 const data = await api.obtenerReporteAsistencia(fechaInicio, fechaFin);
                 descargarPdf(
                   await generarReporteAsistenciaA4(fechaInicio, fechaFin, data, logoEmpresa),
+                  `reporte-asistencia-${fechaInicio}_${fechaFin}`
+                );
+              })
+            }
+            onExcel={() =>
+              ejecutar('asistencia', async () => {
+                const data = await api.obtenerReporteAsistencia(fechaInicio, fechaFin);
+                descargarExcel(
+                  await generarReporteAsistenciaExcel(fechaInicio, fechaFin, data, logoEmpresa),
                   `reporte-asistencia-${fechaInicio}_${fechaFin}`
                 );
               })

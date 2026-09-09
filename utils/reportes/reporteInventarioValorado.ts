@@ -1,4 +1,3 @@
-// reporteInventarioValorado.ts
 import type { ReporteInventarioValorado, InventarioValoradoItem } from '@/api/reportes';
 import { crearPos80Builder, crearA4Builder, formatEmision, formatMoneda, ColumnaReporte } from './pdfBase';
 
