@@ -119,6 +119,12 @@ export interface VentaRequest {
   items: ItemVentaRequest[];
 }
 
+export interface VentaResponse {
+  venta: Venta;
+  comprobanteEstado?: 'GENERADO' | 'ERROR_GENERACION';
+  comprobanteMensaje?: string;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -135,7 +141,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const ventasApi = {
   listar: () => request<Venta[]>('/ventas'),
   obtener: (id: number) => request<Venta>(`/ventas/${id}`),
-  crear: (data: VentaRequest) => request<Venta>('/ventas', { method: 'POST', body: JSON.stringify(data) }),
+  crear: (data: VentaRequest) => request<VentaResponse>('/ventas', { method: 'POST', body: JSON.stringify(data) }),
   anular: (id: number) => request<void>(`/ventas/${id}/anular`, { method: 'PUT' }),
 };
 

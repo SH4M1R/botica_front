@@ -215,11 +215,11 @@ export default function VentasPage() {
 
               <table className="w-full text-sm">
                 <colgroup>
-                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '13%' }} />
                   <col style={{ width: '20%' }} />
                   {esAdministrador && <col style={{ width: '15%' }} />}
                   <col style={{ width: '10%' }} />
-                  <col style={{ width: '15%' }} />
+                  <col style={{ width: '12%' }} />
                   <col style={{ width: '10%' }} />
                   <col style={{ width: '15%' }} />
                 </colgroup>
@@ -229,7 +229,7 @@ export default function VentasPage() {
                     <th className="px-5 py-3">CLIENTE</th>
                     {esAdministrador && <th className="px-5 py-3">VENDEDOR</th>}
                     <th className="px-5 py-3">HORA</th>
-                    <th className="px-5 py-3">MÉTODO DE PAGO</th>
+                    <th className="px-5 py-3">MÉTODO PAGO</th>
                     <th className="px-5 py-3 text-right">TOTAL</th>
                     <th className="px-5 py-3">ESTADO</th>
                     <th className="px-5 py-3 text-right">ACCIONES</th>
@@ -238,7 +238,11 @@ export default function VentasPage() {
                 <tbody className="divide-y divide-zinc-100">
                   {itemsPaginados.map((v) => (
                     <tr key={v.id} className="hover:bg-zinc-50/60 transition-colors">
-                      <td className="px-5 py-3 font-mono text-zinc-600">#{String(v.id).padStart(6, '0')}</td>
+                      <td className="px-5 py-3 font-mono text-zinc-600">
+                        {v.serie && v.numeroComprobante
+                          ? `${v.serie}-${v.numeroComprobante}`
+                          : `#${String(v.id).padStart(6, '0')}`}
+                      </td>
                       <td className="px-5 py-3 font-medium text-zinc-800">
                         {v.cliente ? getNombreCompleto(v.cliente) : 'No registrado'}
                       </td>

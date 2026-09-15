@@ -89,8 +89,7 @@ function renderBoleta(
     y += lineas.length * (size * 0.35 + 1.2) + 1;
   };
 
-  // Logo: ancho completo del ticket, alto limitado (evita empujar demasiado
-  // el contenido si el logo es muy vertical)
+  // Logo: ancho completo del ticket, alto limitado
   if (imgLogo) {
     let anchoImg = ANCHO_UTIL;
     let altoImg = anchoImg * imgLogo.ratio;
@@ -115,15 +114,17 @@ function renderBoleta(
 
   linea();
 
-  // Encabezado del comprobante: usa el tipo/serie/número reales que asignó
-  // el backend (Venta.tipoVenta, Venta.serie, Venta.numeroComprobante) en
-  // vez del "NV01" fijo que se usaba antes. Si por algún motivo faltara la
-  // serie o el número (comprobantes antiguos), cae de vuelta al id de venta.
+  // Encabezado del comprobante dividido en dos líneas
   const titulo = labelComprobante[venta.tipoVenta] ?? 'COMPROBANTE DE VENTA';
   const numeroFormateado = venta.serie
     ? `${venta.serie}-${String(venta.numeroComprobante ?? venta.id).padStart(8, '0')}`
     : String(venta.id).padStart(8, '0');
-  texto(`${titulo} ${numeroFormateado}`, { align: 'center', bold: true, size: 10 });
+
+  // Imprime el nombre del comprobante en una línea
+  texto(titulo, { align: 'center', bold: true, size: 10 });
+  // Imprime la serie y correlativo en la línea siguiente
+  texto(numeroFormateado, { align: 'center', bold: true, size: 10 });
+  
   linea();
 
   const fecha = new Date(venta.fecha).toLocaleString('es-PE', {
@@ -168,9 +169,6 @@ function renderBoleta(
   doc.text(`S/ ${venta.total.toFixed(2)}`, ANCHO - MARGEN, y, { align: 'right' });
   y += 5;
 
-  // El vuelto puede venir explícito (recién cobrado, en el mismo flujo de
-  // venta) o, si se reimprime el comprobante más tarde, desde el propio
-  // registro de la venta (venta.vuelto), que el backend ya calculó y guardó.
   const vueltoAMostrar = vuelto ?? venta.vuelto;
   if (vueltoAMostrar && vueltoAMostrar > 0) {
     doc.text('VUELTO:', MARGEN, y);
@@ -202,7 +200,7 @@ export async function generarBoletaPdf(venta: Venta, empresa: EmpresaForm, vuelt
   const docMedida = new jsPDF({ unit: 'mm', format: [ANCHO, 1000] });
   const finalY = renderBoleta(docMedida, venta, empresa, vuelto, imgLogo);
 
-  // PASADA 2: crear la hoja con la altura EXACTA (+3mm de margen final, no +10)
+  // PASADA 2: crear la hoja con la altura EXACTA (+3mm de margen final)
   const ALTO_FINAL = Math.ceil(finalY) + 3;
   const doc = new jsPDF({ unit: 'mm', format: [ANCHO, ALTO_FINAL] });
   renderBoleta(doc, venta, empresa, vuelto, imgLogo);

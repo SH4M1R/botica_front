@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { UserCircle, LogOut, AlertTriangle, ExternalLink, X, Menu, Clock } from 'lucide-react';
+import { UserCircle, LogOut, AlertTriangle, ExternalLink, X, Menu, Clock, Power, Loader2, Inbox } from 'lucide-react';
 import { useCompanyName } from '@/hooks/useCompanyName';
 import { useSession } from '@/hooks/useSession';
+import { useSfsEstado } from '@/hooks/useSfsEstado';
 
 interface NavbarProps {
   onToggleSidebar?: () => void;
@@ -17,6 +18,17 @@ export default function Navbar({ onToggleSidebar }: NavbarProps) {
   const { empleado, cerrarSesion } = useSession();
   const [modalDigemidOpen, setModalDigemidOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+
+
+  const {
+    sfsDisponible,
+    iniciando,
+    mensajeIniciar,
+    iniciarSfs,
+    abriendoBandeja,
+    mensajeBandeja,
+    abrirBandeja,
+  } = useSfsEstado();
 
   // Reloj del sistema: null en el server y en el primer render del cliente,
   // para que el HTML inicial coincida y evitar el hydration mismatch.
@@ -41,6 +53,9 @@ export default function Navbar({ onToggleSidebar }: NavbarProps) {
     cerrarSesion();
     router.push('/');
   };
+
+  // Mensaje visible: prioriza el de la acción más reciente que tenga texto.
+  const mensajeSfs = mensajeBandeja || mensajeIniciar;
 
   return (
     <>
@@ -78,6 +93,58 @@ export default function Navbar({ onToggleSidebar }: NavbarProps) {
             <AlertTriangle size={16} className="text-amber-600" />
             <span className="hidden md:inline">Alertas DIGEMID</span>
           </button>
+
+          {/* Estado del SFS: si está activo, muestra un indicador + botón
+              para abrir la Bandeja; si está apagado, muestra un botón
+              para encenderlo (ejecuta EjecutarSFS.bat desde el backend). */}
+          {mounted && (
+            <div className="hidden sm:flex items-center gap-1.5 shrink-0">
+              {sfsDisponible ? (
+                <div
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs sm:text-sm font-semibold"
+                  title="El SFS está activo: se pueden emitir Boletas Electrónicas"
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                  <span className="hidden md:inline">SFS Activo</span>
+                </div>
+              ) : (
+                <button
+                  onClick={iniciarSfs}
+                  disabled={iniciando}
+                  title={iniciando ? 'Encendiendo el SFS...' : 'El SFS está apagado: clic para encenderlo'}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 text-xs sm:text-sm font-semibold transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+                >
+                  {iniciando ? <Loader2 size={16} className="animate-spin" /> : <Power size={16} />}
+                  <span className="hidden md:inline">{iniciando ? 'Encendiendo...' : 'Encender SFS'}</span>
+                </button>
+              )}
+
+              {/* Ver Bandeja: para comprobar a simple vista que el SFS
+                  está procesando/enviando los comprobantes. Solo tiene
+                  sentido si el SFS ya está corriendo. */}
+              <button
+                onClick={abrirBandeja}
+                disabled={!sfsDisponible || abriendoBandeja}
+                title={
+                  !sfsDisponible
+                    ? 'Enciende primero el SFS para poder ver la Bandeja'
+                    : abriendoBandeja
+                    ? 'Abriendo la Bandeja...'
+                    : 'Abrir la Bandeja del SFS para verificar los envíos'
+                }
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 text-xs sm:text-sm font-semibold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {abriendoBandeja ? <Loader2 size={16} className="animate-spin" /> : <Inbox size={16} />}
+                <span className="hidden md:inline">{abriendoBandeja ? 'Abriendo...' : 'Ver Boletas'}</span>
+              </button>
+            </div>
+          )}
+
+          {mounted && mensajeSfs && (
+            <span className="hidden lg:inline text-xs text-zinc-500 italic truncate max-w-[220px]">
+              {mensajeSfs}
+            </span>
+          )}
         </div>
 
         {/* Reloj del sistema: solo se renderiza una vez montado en cliente */}
