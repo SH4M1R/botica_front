@@ -23,7 +23,6 @@ import {
   type ProductoConCodigo,
   tiposDisponibles,
   precioPorTipo,
-  unidadesBasePorTipo,
   PrecioInput,
 } from '@/components/ventaShared';
 
@@ -132,20 +131,25 @@ export default function GenerarCotizacionPage() {
   const productosVisibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
 
-    const conStock = productos.filter((p) => p.stock > 0);
+    // Al igual que en "Generar venta", los productos sin stock ya NO se
+    // ocultan: se muestran igual (al final de la lista) pero deshabilitados
+    // para agregar, ya que una cotización puede servir para avisar al
+    // cliente que el producto está agotado por el momento.
+    const filtrados = !q
+      ? productos
+      : productos.filter((p) => {
+          const producto = p as ProductoConCodigo;
+          const nombreMatch = producto.nombre.toLowerCase().includes(q);
+          const principioMatch = producto.principioActivo?.nombre?.toLowerCase().includes(q);
+          const codigoBarrasMatch = producto.codigo_barras?.toLowerCase().includes(q);
 
-    if (!q) return conStock.slice(0, 30);
+          return nombreMatch || principioMatch || codigoBarrasMatch;
+        });
 
-    const base = conStock.filter((p) => {
-      const producto = p as ProductoConCodigo;
-      const nombreMatch = producto.nombre.toLowerCase().includes(q);
-      const principioMatch = producto.principioActivo?.nombre?.toLowerCase().includes(q);
-      const codigoBarrasMatch = producto.codigo_barras?.toLowerCase().includes(q);
+    const conStock = filtrados.filter((p) => p.stock > 0);
+    const sinStock = filtrados.filter((p) => p.stock <= 0);
 
-      return nombreMatch || principioMatch || codigoBarrasMatch;
-    });
-
-    return base.slice(0, 30);
+    return [...conStock, ...sinStock].slice(0, 30);
   }, [busqueda, productos]);
 
   useEffect(() => {
@@ -187,7 +191,15 @@ export default function GenerarCotizacionPage() {
     [carrito]
   );
 
+  // Etiqueta legible para mensajes de stock según el tipo de venta (igual
+  // que en "Generar venta", para mantener el mismo tono de mensajes).
+  const etiquetaTipo = (tipoVenta: TipoVenta) => (tipoVenta === 'unidad' ? 'unidad(es)' : `${tipoVenta}(s)`);
+
   const agregarProducto = (producto: Producto) => {
+    if (producto.stock <= 0) {
+      setError(`"${producto.nombre}" no tiene stock disponible.`);
+      return;
+    }
     const existente = carrito.find((c) => c.idProducto === producto.id && c.tipoVenta === 'unidad');
     if (existente) {
       cambiarCantidad(producto.id, 'unidad', existente.cantidad + 1);
@@ -197,6 +209,7 @@ export default function GenerarCotizacionPage() {
       ...prev,
       { idProducto: producto.id, cantidad: 1, tipoVenta: 'unidad', precioUnitario: producto.precio_venta, producto },
     ]);
+    setError('');
   };
 
   const agregarProductoConDetalle = (
@@ -205,6 +218,10 @@ export default function GenerarCotizacionPage() {
     cantidad: number,
     precioUnitarioManual?: number
   ) => {
+    if (producto.stock <= 0) {
+      setError(`"${producto.nombre}" no tiene stock disponible.`);
+      return;
+    }
     setCarrito((prev) => {
       const existente = prev.find((c) => c.idProducto === producto.id && c.tipoVenta === tipoVenta);
       if (existente) {
@@ -229,6 +246,7 @@ export default function GenerarCotizacionPage() {
         },
       ];
     });
+    setError('');
   };
 
   const cambiarCantidad = (idProducto: number, tipoVenta: TipoVenta, cantidad: number) => {
@@ -382,7 +400,7 @@ export default function GenerarCotizacionPage() {
       searchInputRef.current?.focus();
     } catch (err) {
       console.error(err);
-      setError('Ocurrió un error al guardar o generar la cotización.');
+      setError(err instanceof Error && err.message ? err.message : 'Ocurrió un error al guardar o generar la cotización.');
     } finally {
       setGenerandoCotizacion(false);
     }
@@ -701,47 +719,58 @@ export default function GenerarCotizacionPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {productosVisibles.map((p, idx) => (
-                  <tr
-                    key={p.id}
-                    ref={(el) => { rowRefs.current[idx] = el; }}
-                    onClick={() => setSelectedIndex(idx)}
-                    className={`transition-colors cursor-pointer ${
-                      idx === selectedIndex ? 'bg-primary/10' : 'hover:bg-zinc-50/60'
-                    }`}
-                  >
-                    <td className="px-4 py-2 text-zinc-700">
-                      <div className="font-medium text-zinc-800">{p.nombre}</div>
+                {productosVisibles.map((p, idx) => {
+                  const sinStock = p.stock <= 0;
+                  return (
+                    <tr
+                      key={p.id}
+                      ref={(el) => { rowRefs.current[idx] = el; }}
+                      onClick={() => setSelectedIndex(idx)}
+                      className={`transition-colors ${sinStock ? 'opacity-50' : 'cursor-pointer'} ${
+                        idx === selectedIndex ? 'bg-primary/10' : sinStock ? '' : 'hover:bg-zinc-50/60'
+                      }`}
+                    >
+                      <td className="px-4 py-2 text-zinc-700">
+                        <div className="font-medium text-zinc-800">{p.nombre}</div>
 
-                      {(p.principioActivo?.nombre || p.laboratorio?.nombre) && (
-                        <div className="text-xs text-zinc-400 font-normal italic flex items-center gap-1.5 flex-wrap">
-                          {p.principioActivo?.nombre && <span>{p.principioActivo.nombre}</span>}
-                          {p.principioActivo?.nombre && p.laboratorio?.nombre && <span>•</span>}
-                          {p.laboratorio?.nombre && <span className="text-zinc-500 font-medium">{p.laboratorio.nombre}</span>}
-                        </div>
-                      )}
+                        {(p.principioActivo?.nombre || p.laboratorio?.nombre) && (
+                          <div className="text-xs text-zinc-400 font-normal italic flex items-center gap-1.5 flex-wrap">
+                            {p.principioActivo?.nombre && <span>{p.principioActivo.nombre}</span>}
+                            {p.principioActivo?.nombre && p.laboratorio?.nombre && <span>•</span>}
+                            {p.laboratorio?.nombre && <span className="text-zinc-500 font-medium">{p.laboratorio.nombre}</span>}
+                          </div>
+                        )}
 
-                      {p.vende_por_presentaciones && (p.blister_habilitado || p.caja_habilitado) && (
-                        <div className="flex gap-1 mt-0.5">
-                          {p.blister_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">Blister</span>}
-                          {p.caja_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">Caja</span>}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-right text-zinc-700 font-semibold whitespace-nowrap">S/ {p.precio_venta.toFixed(2)}</td>
-                    <td className="px-4 py-2 text-right text-zinc-900 font-mono whitespace-nowrap">{p.stock}</td>
-                    <td className="px-4 py-2 text-right whitespace-nowrap">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); agregarProducto(p); }}
-                        className="px-3 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors cursor-pointer"
-                      >
-                        Agregar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                        {p.vende_por_presentaciones && (p.blister_habilitado || p.caja_habilitado) && (
+                          <div className="flex gap-1 mt-0.5">
+                            {p.blister_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">Blister</span>}
+                            {p.caja_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">Caja</span>}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-right text-zinc-700 font-semibold whitespace-nowrap">S/ {p.precio_venta.toFixed(2)}</td>
+                      <td className={`px-4 py-2 text-right font-mono whitespace-nowrap ${sinStock ? 'text-red-400 font-semibold' : 'text-zinc-900'}`}>
+                        {sinStock ? 'Sin stock' : p.stock}
+                      </td>
+                      <td className="px-4 py-2 text-right whitespace-nowrap">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); agregarProducto(p); }}
+                          disabled={sinStock}
+                          title={sinStock ? 'Sin stock disponible' : undefined}
+                          className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${
+                            sinStock
+                              ? 'text-zinc-300 bg-zinc-100 cursor-not-allowed'
+                              : 'text-primary bg-primary/10 hover:bg-primary/20 cursor-pointer'
+                          }`}
+                        >
+                          {sinStock ? 'Sin stock' : 'Agregar'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {productosVisibles.length === 0 && (
-                  <tr><td colSpan={4} className="px-4 py-10 text-center text-zinc-400">No se encontraron productos disponibles.</td></tr>
+                  <tr><td colSpan={4} className="px-4 py-10 text-center text-zinc-400">No se encontraron productos.</td></tr>
                 )}
               </tbody>
             </table>

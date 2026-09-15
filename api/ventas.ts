@@ -2,6 +2,11 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export type TipoVenta = 'unidad' | 'blister' | 'caja';
 
+// Tipo de comprobante emitido por el backend (Venta.tipoVenta en el modelo Java).
+// No confundir con el TipoVenta de arriba, que es el tipo de venta de cada
+// DetalleVenta (unidad/blister/caja).
+export type TipoComprobanteVenta = 'nota_venta' | 'boleta' | 'factura';
+
 export interface Producto {
   id: number;
   nombre: string;
@@ -85,6 +90,12 @@ export interface Venta {
   total: number;
   estado: boolean;
   metodoPago: string;
+  // --- NUEVO: reflejan las columnas agregadas en el backend (Venta.java) ---
+  tipoVenta: TipoComprobanteVenta;
+  serie?: string;
+  numeroComprobante?: number;
+  vuelto?: number;
+  codigoIzipay?: string;
   empleado: Empleado;
   cliente: Cliente | null;
   detalles: DetalleVenta[];
@@ -101,6 +112,10 @@ export interface VentaRequest {
   idEmpleado: number;
   idCliente?: number | null;
   metodoPago: string;
+  // --- NUEVO: coinciden con los campos que ahora espera VentaRequest.java ---
+  tipoVenta: TipoComprobanteVenta;
+  montoPagado?: number;
+  codigoIzipay?: string;
   items: ItemVentaRequest[];
 }
 

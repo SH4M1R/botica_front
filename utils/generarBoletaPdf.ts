@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import type { Venta, TipoVenta } from '@/api/ventas';
+import type { Venta, TipoVenta, TipoComprobanteVenta } from '@/api/ventas';
 import { getNombreCompleto } from '@/api/ventas';
 import type { EmpresaForm } from '@/api/empresa';
 import { montoEnLetras } from './Montoenletras';
@@ -8,6 +8,14 @@ const labelTipo: Record<TipoVenta, string> = {
   unidad: '',
   blister: 'Blister',
   caja: 'Caja',
+};
+
+// Encabezado del comprobante según el tipo de venta guardado en el backend
+// (Venta.tipoVenta: nota_venta / boleta / factura).
+const labelComprobante: Record<TipoComprobanteVenta, string> = {
+  nota_venta: 'NOTA DE VENTA',
+  boleta: 'BOLETA DE VENTA ELECTRÓNICA',
+  factura: 'FACTURA ELECTRÓNICA',
 };
 
 const ANCHO = 80; // mm
@@ -106,7 +114,16 @@ function renderBoleta(
   }
 
   linea();
-  texto(`NOTA DE VENTA NV01 - ${String(venta.id).padStart(8, '0')}`, { align: 'center', bold: true, size: 10 });
+
+  // Encabezado del comprobante: usa el tipo/serie/número reales que asignó
+  // el backend (Venta.tipoVenta, Venta.serie, Venta.numeroComprobante) en
+  // vez del "NV01" fijo que se usaba antes. Si por algún motivo faltara la
+  // serie o el número (comprobantes antiguos), cae de vuelta al id de venta.
+  const titulo = labelComprobante[venta.tipoVenta] ?? 'COMPROBANTE DE VENTA';
+  const numeroFormateado = venta.serie
+    ? `${venta.serie}-${String(venta.numeroComprobante ?? venta.id).padStart(8, '0')}`
+    : String(venta.id).padStart(8, '0');
+  texto(`${titulo} ${numeroFormateado}`, { align: 'center', bold: true, size: 10 });
   linea();
 
   const fecha = new Date(venta.fecha).toLocaleString('es-PE', {
@@ -151,9 +168,13 @@ function renderBoleta(
   doc.text(`S/ ${venta.total.toFixed(2)}`, ANCHO - MARGEN, y, { align: 'right' });
   y += 5;
 
-  if (vuelto && vuelto > 0) {
+  // El vuelto puede venir explícito (recién cobrado, en el mismo flujo de
+  // venta) o, si se reimprime el comprobante más tarde, desde el propio
+  // registro de la venta (venta.vuelto), que el backend ya calculó y guardó.
+  const vueltoAMostrar = vuelto ?? venta.vuelto;
+  if (vueltoAMostrar && vueltoAMostrar > 0) {
     doc.text('VUELTO:', MARGEN, y);
-    doc.text(`S/ ${vuelto.toFixed(2)}`, ANCHO - MARGEN, y, { align: 'right' });
+    doc.text(`S/ ${vueltoAMostrar.toFixed(2)}`, ANCHO - MARGEN, y, { align: 'right' });
     y += 5;
   }
 
@@ -161,6 +182,9 @@ function renderBoleta(
 
   linea();
   textoMultilinea(`Metodo Pago: ${venta.metodoPago}`, { size: 9 });
+  if (venta.codigoIzipay) {
+    textoMultilinea(`Cód. Izipay: ${venta.codigoIzipay}`, { size: 9 });
+  }
   linea();
 
   texto('¡Gracias por su compra!', { align: 'center', bold: true, size: 10 });

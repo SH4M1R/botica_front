@@ -6,7 +6,7 @@ import { Search, Trash2, Wallet, ShoppingCart, UserPlus, Plus, X as XIcon, FileT
 import { productosApi } from '@/api/productos';
 import type { Producto } from '@/api/productos';
 import { ventasApi, clientesApi, getNombreCompleto, splitNombreCompleto } from '@/api/ventas';
-import type { Venta, Cliente } from '@/api/ventas';
+import type { Venta, Cliente, TipoComprobanteVenta } from '@/api/ventas';
 import { arqueoApi } from '@/api/arqueo';
 import type { ArqueoCaja } from '@/api/arqueo';
 import { permisosApi } from '@/api/permisos';
@@ -44,6 +44,14 @@ const COMPROBANTE_OPTIONS: { value: TipoComprobante; label: string; disabled?: b
   { value: 'boleta', label: 'Boleta Electrónica (próximamente)', disabled: true },
   { value: 'factura', label: 'Factura Electrónica (próximamente)', disabled: true },
 ];
+
+// Mapea el selector local (nota/boleta/factura) al valor que espera el
+// backend en Venta.tipoVenta / VentaRequest.tipoVenta (nota_venta/boleta/factura).
+const TIPO_VENTA_BACKEND: Record<TipoComprobante, TipoComprobanteVenta> = {
+  nota: 'nota_venta',
+  boleta: 'boleta',
+  factura: 'factura',
+};
 
 export default function GenerarVentaPage() {
   const router = useRouter();
@@ -177,11 +185,9 @@ export default function GenerarVentaPage() {
   const productosVisibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
 
-    // Ya NO se excluyen los productos sin stock: se muestran igual, pero
-    // deshabilitados para agregar (ver render de la tabla y agregarProducto).
-    if (!q) return productos.slice(0, 30);
-
-    const base = productos.filter((p) => {
+    // 1. Filtrado inicial según la búsqueda
+    const filtrados = productos.filter((p) => {
+      if (!q) return true;
       const producto = p as ProductoConCodigo;
       const nombreMatch = producto.nombre.toLowerCase().includes(q);
       const principioMatch = producto.principioActivo?.nombre?.toLowerCase().includes(q);
@@ -190,12 +196,16 @@ export default function GenerarVentaPage() {
       return nombreMatch || principioMatch || codigoBarrasMatch;
     });
 
-    return base.slice(0, 30);
-  }, [busqueda, productos]);
+    // 2. Ordenamiento: productos con stock > 0 primero, sin stock (<= 0) al final
+    const ordenados = [...filtrados].sort((a, b) => {
+      const aSinStock = a.stock <= 0 ? 1 : 0;
+      const bSinStock = b.stock <= 0 ? 1 : 0;
+      return aSinStock - bSinStock;
+    });
 
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [productosVisibles]);
+    // 3. Devolver los primeros 30 resultados ordenados
+    return ordenados.slice(0, 30);
+  }, [busqueda, productos]);
 
   // Precarga el carrito y los datos del cliente desde una cotización
   // guardada cuando la venta se abre con ?cotizacionId=25. Espera a que
@@ -507,10 +517,24 @@ export default function GenerarVentaPage() {
         idCliente = nuevoCliente.id;
       }
 
+      // El backend calcula el vuelto a partir de montoPagado - total, así que
+      // solo tiene sentido enviarlo cuando hubo un pago en Efectivo. Si no
+      // hubo vuelto (pago exacto o sin efectivo), enviamos el total como
+      // montoPagado para que el vuelto quede en 0.
+      const montoPagado = total + vuelto;
+
+      // El código de boleta de Izipay va en la parte de pago correspondiente,
+      // no en el string de metodoPago (que ahora queda corto y legible, ej.
+      // "Efectivo (100.00), Yape/Plin (50.00)").
+      const codigoIzipay = pagos.find((p) => p.metodo === 'Izipay')?.codigoIzipay;
+
       const venta = await ventasApi.crear({
         idEmpleado: empleado.id,
         idCliente,
         metodoPago: metodoPagoFormateado,
+        tipoVenta: TIPO_VENTA_BACKEND[tipoComprobante],
+        montoPagado,
+        codigoIzipay,
         items: carrito.map(({ idProducto, cantidad, tipoVenta, precioUnitario }) => ({
           idProducto, cantidad, tipoVenta, precioUnitario,
         })),

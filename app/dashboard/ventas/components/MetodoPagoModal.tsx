@@ -7,7 +7,8 @@ export interface PagoParte {
   metodo: string;
   monto: number;
   detalle: string;
-  vuelto?: number; // --- NUEVO ---
+  vuelto?: number;
+  codigoIzipay?: string; // --- NUEVO: código de boleta cuando el método es Izipay ---
 }
 
 interface MetodoPagoModalProps {
@@ -15,7 +16,7 @@ interface MetodoPagoModalProps {
   total: number;
   tieneCliente: boolean;
   onClose: () => void;
-  onConfirmarVenta: (pagos: PagoParte[], metodoPagoFormateado: string, vuelto: number) => Promise<void>; // --- CAMBIO: +vuelto ---
+  onConfirmarVenta: (pagos: PagoParte[], metodoPagoFormateado: string, vuelto: number) => Promise<void>;
 }
 
 const METODOS = [
@@ -103,7 +104,8 @@ export default function MetodoPagoModal({ open, total, tieneCliente, onClose, on
         metodo: metodoActivo,
         monto: montoCobrado,
         detalle,
-        vuelto: metodoActivo === 'Efectivo' ? vueltoCalculado : undefined, // --- NUEVO ---
+        vuelto: metodoActivo === 'Efectivo' ? vueltoCalculado : undefined,
+        codigoIzipay: metodoActivo === 'Izipay' ? codigo.trim() : undefined, // --- NUEVO ---
       },
     ]);
     setMetodoActivo(null);
@@ -125,7 +127,7 @@ export default function MetodoPagoModal({ open, total, tieneCliente, onClose, on
       .map((p) => `${p.metodo} (${p.monto.toFixed(2)})`)
       .join(', ');
 
-    // --- NUEVO: suma el vuelto de todas las partes (normalmente solo Efectivo lo tiene) ---
+    // Suma el vuelto de todas las partes (normalmente solo Efectivo lo tiene)
     const vueltoTotal = pagosConfirmados.reduce((sum, p) => sum + (p.vuelto ?? 0), 0);
 
     try {
