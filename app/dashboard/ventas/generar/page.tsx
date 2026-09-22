@@ -11,7 +11,6 @@ import { arqueoApi } from '@/api/arqueo';
 import type { ArqueoCaja } from '@/api/arqueo';
 import { permisosApi } from '@/api/permisos';
 import { cotizacionesApi } from '@/api/cotizaciones';
-import { sfsApi } from '@/api/sfs';
 import { PERMISO_EDITAR_PRECIO_VENTA } from '@/constants/permisos';
 import { useSession } from '@/hooks/useSession';
 import MetodoPagoModal, { PagoParte } from '../components/MetodoPagoModal';
@@ -28,35 +27,17 @@ import {
   PrecioInput,
 } from '@/components/ventaShared';
 
-// Re-exportados por compatibilidad, por si algún otro archivo los importaba
-// directamente desde esta página (antes vivían acá).
 export type { TipoVenta, CarritoItem, ProductoConCodigo };
 export { tiposDisponibles, precioPorTipo, unidadesBasePorTipo };
 
-// Tipo de comprobante a emitir. La "Boleta Electrónica" solo se habilita
-// si detectamos que el SFS (Sistema de Facturación SUNAT) está corriendo;
-// "Factura Electrónica" queda bloqueada hasta que se implemente (Cliente
-// no tiene RUC aún). La "Cotización de Venta" ahora vive en su propia
-// página: /dashboard/ventas/cotizacion
 export type TipoComprobante = 'nota' | 'boleta' | 'factura';
 
-// Etiquetas/valores base de cada opción del selector de comprobante. El
-// campo "disabled" real de cada una (sobre todo el de "boleta") se calcula
-// dinámicamente dentro del componente en función de si el SFS está activo
-// (ver `comprobanteOptions` más abajo), así que aquí no se define.
-const COMPROBANTE_OPTIONS_BASE: { value: TipoComprobante; label: string }[] = [
+const COMPROBANTE_OPTIONS: { value: TipoComprobante; label: string; disabled?: boolean }[] = [
   { value: 'nota', label: 'Nota de Venta' },
-  { value: 'boleta', label: 'Boleta Electrónica' },
-  { value: 'factura', label: 'Factura Electrónica (próximamente)' },
+  { value: 'boleta', label: 'Boleta Electrónica (próximamente)', disabled: true },
+  { value: 'factura', label: 'Factura Electrónica (próximamente)', disabled: true },
 ];
 
-const UMBRAL_IDENTIFICACION_BOLETA = 700;
-
-// Cada cuánto se vuelve a consultar si el SFS sigue activo (ms).
-const INTERVALO_VERIFICACION_SFS = 15000;
-
-// Mapea el selector local (nota/boleta/factura) al valor que espera el
-// backend en Venta.tipoVenta / VentaRequest.tipoVenta (nota_venta/boleta/factura).
 const TIPO_VENTA_BACKEND: Record<TipoComprobante, TipoComprobanteVenta> = {
   nota: 'nota_venta',
   boleta: 'boleta',
@@ -88,25 +69,10 @@ export default function GenerarVentaPage() {
   const [, setVentaConfirmada] = useState<Venta | null>(null);
 
   const [mostrarConfirmVaciar, setMostrarConfirmVaciar] = useState(false);
-
   const [modoSinMouse, setModoSinMouse] = useState(false);
-
   const [cajaAbierta, setCajaAbierta] = useState<ArqueoCaja | null | undefined>(undefined);
-
-  // Permiso: si el empleado puede modificar manualmente el precio unitario / subtotal
-  // en el detalle de venta. Los Administradores siempre lo tienen habilitado.
   const [puedeEditarPrecio, setPuedeEditarPrecio] = useState(false);
-
   const [tipoComprobante, setTipoComprobante] = useState<TipoComprobante>('nota');
-
-  // Indica si el SFS (Sistema de Facturación SUNAT) está activo/corriendo.
-  // Mientras no lo esté, la opción "Boleta Electrónica" queda deshabilitada
-  // en el selector. Se verifica al montar la página y luego periódicamente.
-  const [sfsDisponible, setSfsDisponible] = useState(false);
-
-  // Si esta venta se inició cargando una cotización guardada
-  // (?cotizacionId=25), guardamos su id para marcarla como "convertida"
-  // una vez que la venta se confirme, y para mostrar un aviso al usuario.
   const [cotizacionOrigenId, setCotizacionOrigenId] = useState<number | null>(null);
   const cotizacionProcesadaRef = useRef(false);
 
@@ -145,8 +111,6 @@ export default function GenerarVentaPage() {
 
   const verificarPermisoEditarPrecio = async () => {
     if (!empleado) return;
-    // Los administradores no tienen registros de permisos individuales
-    // (se excluyen en la pantalla de asignación), así que siempre pueden.
     if (empleado.rol === 'Administrador') {
       setPuedeEditarPrecio(true);
       return;
@@ -156,19 +120,6 @@ export default function GenerarVentaPage() {
       setPuedeEditarPrecio(rutas.includes(PERMISO_EDITAR_PRECIO_VENTA));
     } catch {
       setPuedeEditarPrecio(false);
-    }
-  };
-
-  // Consulta si el SFS está corriendo. Se llama al montar la página y
-  // luego se repite periódicamente (ver useEffect de abajo) para que el
-  // selector de comprobante reaccione si el servicio se cae o se levanta
-  // mientras el cajero está trabajando.
-  const verificarSfs = async () => {
-    try {
-      const activo = await sfsApi.verificarEstado();
-      setSfsDisponible(activo);
-    } catch {
-      setSfsDisponible(false);
     }
   };
 
@@ -201,26 +152,7 @@ export default function GenerarVentaPage() {
     cargarClientes();
     verificarCaja();
     verificarPermisoEditarPrecio();
-    verificarSfs();
-
-    // Reintenta la verificación del SFS periódicamente: el servicio puede
-    // apagarse o levantarse mientras el cajero ya está en esta pantalla.
-    const intervaloSfs = setInterval(verificarSfs, INTERVALO_VERIFICACION_SFS);
-    return () => clearInterval(intervaloSfs);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empleado, cargando, router]);
-
-  // Si el cajero ya tenía seleccionada "Boleta Electrónica" y el SFS deja
-  // de estar disponible (se detecta en la siguiente verificación), volvemos
-  // automáticamente a "Nota de Venta" y avisamos, para no dejar seleccionada
-  // una opción que ya no se puede cobrar.
-  useEffect(() => {
-    if (tipoComprobante === 'boleta' && !sfsDisponible) {
-      setTipoComprobante('nota');
-      setError('El SFS no está disponible en este momento, así que no se pueden emitir Boletas Electrónicas. Se cambió a Nota de Venta.');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sfsDisponible]);
 
   useEffect(() => {
     if (cajaAbierta && !modoSinMouse) {
@@ -228,54 +160,28 @@ export default function GenerarVentaPage() {
     }
   }, [cajaAbierta, modoSinMouse]);
 
-  // Opciones del selector de comprobante con el "disabled" calculado en
-  // vivo: "boleta" solo se habilita si el SFS está corriendo; "factura"
-  // sigue bloqueada hasta que se implemente la facturación electrónica.
-  const comprobanteOptions = useMemo(() => {
-    return COMPROBANTE_OPTIONS_BASE.map((op) => {
-      if (op.value === 'factura') {
-        return { ...op, disabled: true }; // pendiente: Cliente no tiene RUC aún
-      }
-      if (op.value === 'boleta') {
-        return {
-          ...op,
-          disabled: !sfsDisponible,
-          label: sfsDisponible ? 'Boleta Electrónica' : 'Boleta Electrónica (SFS no disponible)',
-        };
-      }
-      return { ...op, disabled: false };
-    });
-  }, [sfsDisponible]);
-
   const productosVisibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
 
-    // 1. Filtrado inicial según la búsqueda
     const filtrados = productos.filter((p) => {
       if (!q) return true;
-      const producto = p as ProductoConCodigo;
+      const producto = p as ProductoConCodigo & { barras?: string };
       const nombreMatch = producto.nombre.toLowerCase().includes(q);
       const principioMatch = producto.principioActivo?.nombre?.toLowerCase().includes(q);
-      const codigoBarrasMatch = producto.codigo_barras?.toLowerCase().includes(q);
+      const codigoBarrasMatch = (producto.barras ?? producto.codigo_barras)?.toLowerCase().includes(q);
 
       return nombreMatch || principioMatch || codigoBarrasMatch;
     });
 
-    // 2. Ordenamiento: productos con stock > 0 primero, sin stock (<= 0) al final
     const ordenados = [...filtrados].sort((a, b) => {
       const aSinStock = a.stock <= 0 ? 1 : 0;
       const bSinStock = b.stock <= 0 ? 1 : 0;
       return aSinStock - bSinStock;
     });
 
-    // 3. Devolver los primeros 30 resultados ordenados
     return ordenados.slice(0, 30);
   }, [busqueda, productos]);
 
-  // Precarga el carrito y los datos del cliente desde una cotización
-  // guardada cuando la venta se abre con ?cotizacionId=25. Espera a que
-  // el catálogo de productos ya esté cargado para poder usar el producto
-  // completo (con sus opciones de blister/caja) en vez del snapshot.
   useEffect(() => {
     if (cotizacionProcesadaRef.current) return;
     const idParam = searchParams.get('cotizacionId');
@@ -298,11 +204,6 @@ export default function GenerarVentaPage() {
 
         const nuevoCarrito: CarritoItem[] = cot.detalles.map((d) => {
           const productoCompleto = productos.find((p) => p.id === d.producto.id);
-          // Si el producto ya no está activo o fue eliminado, armamos un
-          // snapshot mínimo con lo que sabemos de la cotización, para no
-          // romper la pantalla. Se castea porque el tipo Producto real
-          // tiene más campos (laboratorio, categoría, etc.) que aquí no
-          // conocemos.
           const productoBase = (productoCompleto ?? {
             id: d.producto.id,
             nombre: d.producto.nombre,
@@ -368,8 +269,6 @@ export default function GenerarVentaPage() {
   );
 
   const tieneCliente = !!(idClienteSeleccionado || nombreCliente.trim());
-
-  // Etiqueta legible para mensajes de stock según el tipo de venta.
   const etiquetaTipo = (tipoVenta: TipoVenta) => (tipoVenta === 'unidad' ? 'unidad(es)' : `${tipoVenta}(s)`);
 
   const agregarProducto = (producto: Producto) => {
@@ -550,30 +449,9 @@ export default function GenerarVentaPage() {
     setError('');
     if (carrito.length === 0) return setError('Agrega al menos un producto.');
 
-    // Factura Electrónica aún no está implementada (Cliente no tiene RUC).
-    if (tipoComprobante === 'factura') {
-      setError('La Factura Electrónica todavía no está disponible.');
+    if (tipoComprobante === 'boleta' || tipoComprobante === 'factura') {
+      setError('Este tipo de comprobante todavía no está disponible.');
       return;
-    }
-
-    // Boleta Electrónica requiere que el SFS esté corriendo. Esta es una
-    // segunda validación de respaldo: el selector ya debería impedir
-    // llegar a este estado, pero el SFS pudo caerse justo entre medio.
-    if (tipoComprobante === 'boleta' && !sfsDisponible) {
-      setError('El SFS no está disponible en este momento, así que no se pueden emitir Boletas Electrónicas.');
-      return;
-    }
-
-    // Regla SUNAT (Art. 8 RCP): boletas desde el umbral requieren DNI del cliente.
-    // Debe coincidir con la validación equivalente en VentaServiceImpl.crearVenta.
-    if (tipoComprobante === 'boleta' && total >= UMBRAL_IDENTIFICACION_BOLETA) {
-      const tieneDni = idClienteSeleccionado !== null || dniCliente.trim().length > 0;
-      if (!tieneDni) {
-        setError(
-          `Las boletas desde S/ ${UMBRAL_IDENTIFICACION_BOLETA.toFixed(2)} requieren el DNI del cliente (norma de SUNAT). Completa el campo "DNI / RUC".`
-        );
-        return;
-      }
     }
 
     const excedeStock = carrito.find(
@@ -582,7 +460,7 @@ export default function GenerarVentaPage() {
     if (excedeStock) return setError(`Stock insuficiente para "${excedeStock.producto.nombre}".`);
 
     setModalPagoAbierto(true);
-};
+  };
 
   const handleConfirmarVenta = async (pagos: PagoParte[], metodoPagoFormateado: string, vuelto: number) => {
     if (!empleado) throw new Error('Sesión expirada. Vuelve a iniciar sesión.');
@@ -602,18 +480,10 @@ export default function GenerarVentaPage() {
         idCliente = nuevoCliente.id;
       }
 
-      // El backend calcula el vuelto a partir de montoPagado - total, así que
-      // solo tiene sentido enviarlo cuando hubo un pago en Efectivo. Si no
-      // hubo vuelto (pago exacto o sin efectivo), enviamos el total como
-      // montoPagado para que el vuelto quede en 0.
       const montoPagado = total + vuelto;
-
-      // El código de boleta de Izipay va en la parte de pago correspondiente,
-      // no en el string de metodoPago (que ahora queda corto y legible, ej.
-      // "Efectivo (100.00), Yape/Plin (50.00)").
       const codigoIzipay = pagos.find((p) => p.metodo === 'Izipay')?.codigoIzipay;
 
-      const resultado = await ventasApi.crear({
+      const venta = await ventasApi.crear({
         idEmpleado: empleado.id,
         idCliente,
         metodoPago: metodoPagoFormateado,
@@ -624,20 +494,6 @@ export default function GenerarVentaPage() {
           idProducto, cantidad, tipoVenta, precioUnitario,
         })),
       });
-
-      const venta = resultado.venta;
-
-      // La venta YA se guardó correctamente aunque el comprobante electrónico
-      // haya fallado (ver comentario en VentaServiceImpl.generarComprobanteElectronico).
-      // Avisamos al cajero sin bloquear el flujo, para que se sepa que hay que
-      // revisar/reenviar manualmente ese comprobante desde la Bandeja del SFS.
-      if (resultado.comprobanteEstado === 'ERROR_GENERACION') {
-        alert(
-          `La venta #${venta.id} se registró correctamente, pero hubo un problema generando el comprobante electrónico:\n\n` +
-          `${resultado.comprobanteMensaje ?? 'Error desconocido'}\n\n` +
-          `Avisa a soporte para corregirlo. La venta ya quedó guardada en el sistema.`
-        );
-      }
 
       if (pestanaBoleta) pestanaBoleta.location.href = `/dashboard/ventas/boleta?id=${venta.id}&vuelto=${vuelto.toFixed(2)}`;
       else abrirBoletaImprimible(venta.id, vuelto);
@@ -665,21 +521,26 @@ export default function GenerarVentaPage() {
     }
   };
 
+  // --- Búsqueda y Lectora de Código de Barras ---
   const intentarAgregarPorCodigoBarras = (valor: string): boolean => {
     const q = valor.trim().toLowerCase();
     if (!q) return false;
-    const match = (productos as ProductoConCodigo[]).find(
-      (p) => p.codigo_barras && p.codigo_barras.toLowerCase() === q
-    );
-    if (match && match.stock > 0) {
-      agregarProducto(match);
-      setBusqueda('');
-      setError('');
-      return true;
-    }
-    if (match && match.stock <= 0) {
-      setError(`"${match.nombre}" no tiene stock disponible.`);
-      setBusqueda('');
+
+    // Busca coincidencia exacta considerando tanto 'barras' como 'codigo_barras'
+    const match = (productos as (ProductoConCodigo & { barras?: string })[]).find((p) => {
+      const codigo = p.barras ?? p.codigo_barras;
+      return codigo && codigo.toLowerCase() === q;
+    });
+
+    if (match) {
+      if (match.stock > 0) {
+        agregarProducto(match);
+        setBusqueda('');
+        setError('');
+      } else {
+        setError(`"${match.nombre}" no tiene stock disponible.`);
+        setBusqueda('');
+      }
       return true;
     }
     return false;
@@ -698,9 +559,12 @@ export default function GenerarVentaPage() {
     }
     if (e.key === 'Enter') {
       e.preventDefault();
+      
+      // 1. Prioriza la lectura por código de barras
       const agregadoPorCodigo = intentarAgregarPorCodigoBarras(busqueda);
       if (agregadoPorCodigo) return;
 
+      // 2. Si no es un código de barras exacto, agrega el producto seleccionado en la tabla
       const seleccionado = productosVisibles[selectedIndex];
       if (seleccionado) {
         agregarProducto(seleccionado);
@@ -729,8 +593,7 @@ export default function GenerarVentaPage() {
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [carrito, modalPagoAbierto, mostrarConfirmVaciar, modoSinMouse, tipoComprobante, sfsDisponible]);
+  }, [carrito, modalPagoAbierto, mostrarConfirmVaciar, modoSinMouse, tipoComprobante]);
 
   const inputClass = "w-full px-3 py-2 rounded-lg border border-zinc-300 bg-zinc-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all";
 
@@ -874,43 +737,27 @@ export default function GenerarVentaPage() {
           </div>
         </div>
 
-        {/* Selector de tipo de comprobante. "Boleta Electrónica" se
-            habilita/deshabilita según si el SFS está corriendo
-            (sfsDisponible); el punto de color indica ese estado. */}
         <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-50 border border-zinc-200 shrink-0">
           <FileText size={15} className="text-primary shrink-0" />
           <select
             value={tipoComprobante}
             onChange={(e) => setTipoComprobante(e.target.value as TipoComprobante)}
-            className="text-xs font-semibold text-zinc-700 bg-transparent outline-none cursor-pointer md:max-w-[140px]"
+            className="text-xs font-semibold text-zinc-700 bg-transparent outline-none cursor-pointer md:max-w-[120px]"
             title="Tipo de comprobante a emitir"
           >
-            {comprobanteOptions.map((op) => (
+            {COMPROBANTE_OPTIONS.map((op) => (
               <option key={op.value} value={op.value} disabled={op.disabled}>
                 {op.label}
               </option>
             ))}
           </select>
-          <span
-            className={`inline-block w-2 h-2 rounded-full shrink-0 ${sfsDisponible ? 'bg-emerald-500' : 'bg-red-400'}`}
-            title={
-              sfsDisponible
-                ? 'SFS activo: la Boleta Electrónica está disponible'
-                : 'SFS inactivo: la Boleta Electrónica no está disponible'
-            }
-          />
         </div>
 
         <div className="w-full md:w-auto md:min-w-[250px] md:max-w-[350px] md:flex-1 xl:flex-none space-y-1">
           <div className="flex items-center justify-between text-xs">
             <div className="flex items-center gap-1.5 font-medium text-zinc-700">
               <UserPlus size={14} className="text-primary" />
-              <span>
-                Cliente{' '}
-                {tipoComprobante === 'boleta' && total >= UMBRAL_IDENTIFICACION_BOLETA
-                  ? '(obligatorio, boleta ≥ S/700)'
-                  : '(opcional)'}
-              </span>
+              <span>Cliente (opcional)</span>
             </div>
 
             {idClienteSeleccionado && (
@@ -1135,7 +982,7 @@ export default function GenerarVentaPage() {
                       <button
                         onClick={() => quitarProducto(item.idProducto, item.tipoVenta)}
                         className="p-1 text-zinc-400 hover:text-red-500 transition-colors shrink-0 cursor-pointer"
-                        title="Quitar producto (o navega con Tab y presiona Enter)"
+                        title="Quitar producto"
                       >
                         <Trash2 size={14} />
                       </button>

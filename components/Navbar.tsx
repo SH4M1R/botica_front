@@ -34,8 +34,6 @@ export default function Navbar({ onToggleSidebar }: NavbarProps) {
   // para que el HTML inicial coincida y evitar el hydration mismatch.
   const [horaActual, setHoraActual] = useState<Date | null>(null);
 
-  const URL_DIGEMID = "https://www.digemid.minsa.gob.pe/webDigemid/publicaciones/alertas-modificaciones/alertas/";
-
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -84,15 +82,6 @@ export default function Navbar({ onToggleSidebar }: NavbarProps) {
               {companyName}
             </span>
           </div>
-
-          <button
-            onClick={() => setModalDigemidOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 text-xs sm:text-sm font-semibold transition-colors shrink-0 cursor-pointer ml-1 sm:ml-2"
-            title="Ver Alertas DIGEMID"
-          >
-            <AlertTriangle size={16} className="text-amber-600" />
-            <span className="hidden md:inline">Alertas DIGEMID</span>
-          </button>
 
           {/* Estado del SFS: si está activo, muestra un indicador + botón
               para abrir la Bandeja; si está apagado, muestra un botón
@@ -183,48 +172,6 @@ export default function Navbar({ onToggleSidebar }: NavbarProps) {
           </button>
         </div>
       </header>
-
-      {mounted && modalDigemidOpen && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-2 sm:p-6 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden border border-zinc-200 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 text-white shrink-0">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="text-amber-400" size={20} />
-                <h3 className="font-semibold text-sm sm:text-base">Alertas y Modificaciones - DIGEMID</h3>
-              </div>
-              <div className="flex items-center gap-2">
-                <a
-                  href={URL_DIGEMID}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors flex items-center gap-1 text-xs"
-                  title="Abrir en nueva pestaña"
-                >
-                  <ExternalLink size={16} />
-                  <span className="hidden sm:inline">Abrir web</span>
-                </a>
-                <button
-                  onClick={() => setModalDigemidOpen(false)}
-                  className="p-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
-                  title="Cerrar"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 w-full h-full bg-zinc-100 relative">
-              <iframe
-                src={URL_DIGEMID}
-                title="Alertas DIGEMID"
-                className="w-full h-full border-none"
-                loading="lazy"
-              />
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
     </>
   );
 }
