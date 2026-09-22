@@ -4,11 +4,10 @@ import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import {
-  Package, TrendingUp, ShoppingBag, ArrowUpRight, ArrowDownRight, Minus,
+  TrendingUp, ShoppingBag, ArrowUpRight, ArrowDownRight, Minus,
   Wallet, CalendarDays, AlertTriangle, Bell, Pill, ExternalLink,
-  FileText, Building2, Receipt, Inbox,
+  FileText, Building2, Receipt, Inbox, Users,
 } from 'lucide-react';
-import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import { productosApi, type Producto as ProductoCatalogo } from '@/api/productos';
 import { empleadosCrudApi } from '@/api/empleados';
 import { ventasApi, type Venta } from '@/api/ventas';
@@ -56,7 +55,6 @@ const TONOS: Record<string, { bg: string; text: string }> = {
   rose: { bg: 'bg-rose-500/10', text: 'text-rose-500' },
 };
 
-// 1. En la lista ENLACES_EXTERNOS mantienes tu bandera de alerta:
 const ENLACES_EXTERNOS = [
   { label: 'Cargar precio', sub: 'DIGEMID', url: 'https://opm-digemid.minsa.gob.pe/#/precio-productos/nuevo-cargar-precio/011605404', icon: FileText, tono: 'sky' as const },
   { label: 'Establecimientos', sub: 'DIGEMID', url: 'https://serviciosweb-digemid.minsa.gob.pe/Consultas/Establecimientos', icon: Building2, tono: 'sky' as const },
@@ -65,6 +63,16 @@ const ENLACES_EXTERNOS = [
   { label: 'Buzón y menú SOL', sub: 'SUNAT', url: 'https://e-menu.sunat.gob.pe/cl-ti-itmenu/MenuInternet.htm?pestana=*&agrupacion=*&exe=buzon', icon: Inbox, tono: 'orange' as const },
   { label: 'Alertas y modificaciones', sub: 'DIGEMID', url: 'https://www.digemid.minsa.gob.pe/webDigemid/publicaciones/alertas-modificaciones/alertas/', icon: Bell, tono: 'rose' as const, alerta: true },
 ];
+
+const METODOS_CONOCIDOS = ['Efectivo', 'Izipay', 'Transferencia', 'Yape/Plin', 'Yape', 'Plin', 'Crédito'];
+
+function extraerMetodoPrincipal(cadena?: string): string {
+  if (!cadena) return 'Otro';
+  for (const m of METODOS_CONOCIDOS) {
+    if (cadena.toLowerCase().includes(m.toLowerCase())) return m;
+  }
+  return cadena.split(' ')[0] || 'Otro';
+}
 
 function formatMoneda(valor: number) {
   return `S/ ${valor.toFixed(2)}`;
@@ -106,17 +114,6 @@ function usePrimaryColor(fallback = '#16a34a') {
   return color;
 }
 
-function MiniSparkline({ data, color }: { data: number[]; color: string }) {
-  const puntos = data.map((v, i) => ({ i, v }));
-  return (
-    <ResponsiveContainer width="100%" height={36}>
-      <LineChart data={puntos} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
-        <Line type="monotone" dataKey="v" stroke={color} strokeWidth={2} dot={false} isAnimationActive={false} />
-      </LineChart>
-    </ResponsiveContainer>
-  );
-}
-
 function InsigniaVariacion({ variacion }: { variacion?: number | null }) {
   if (variacion === undefined || variacion === null) {
     return <span className="inline-flex items-center gap-1 text-xs font-semibold text-zinc-400"><Minus size={12} /> 0%</span>;
@@ -139,12 +136,13 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const primaryColor = usePrimaryColor();
 
-  const [totalProductos, setTotalProductos] = useState(0);
   const [empleadosActivos, setEmpleadosActivos] = useState(0);
   const [ventasMensuales, setVentasMensuales] = useState(0);
   const [comprasMensuales, setComprasMensuales] = useState(0);
   const [ventasMesAnterior, setVentasMesAnterior] = useState(0);
   const [comprasMesAnterior, setComprasMesAnterior] = useState(0);
+  const [cantidadVentasMensual, setCantidadVentasMensual] = useState(0);
+  const [cantidadVentasMesAnterior, setCantidadVentasMesAnterior] = useState(0);
 
   const [ventas, setVentas] = useState<Venta[]>([]);
   const [compras, setCompras] = useState<Compra[]>([]);
@@ -172,10 +170,14 @@ export default function DashboardPage() {
         const ahora = new Date();
         const mesAnterior = new Date(ahora.getFullYear(), ahora.getMonth() - 1, 1);
 
-        setTotalProductos(productos.length);
+        const ventasMesActualArr = ventasData.filter((v) => v.estado && esMismoMes(v.fecha, ahora));
+        const ventasMesAnteriorArr = ventasData.filter((v) => v.estado && esMismoMes(v.fecha, mesAnterior));
+
         setEmpleadosActivos(empleados.filter((e) => e.estado).length);
-        setVentasMensuales(ventasData.filter((v) => v.estado && esMismoMes(v.fecha, ahora)).reduce((s, v) => s + v.total, 0));
-        setVentasMesAnterior(ventasData.filter((v) => v.estado && esMismoMes(v.fecha, mesAnterior)).reduce((s, v) => s + v.total, 0));
+        setVentasMensuales(ventasMesActualArr.reduce((s, v) => s + v.total, 0));
+        setVentasMesAnterior(ventasMesAnteriorArr.reduce((s, v) => s + v.total, 0));
+        setCantidadVentasMensual(ventasMesActualArr.length);
+        setCantidadVentasMesAnterior(ventasMesAnteriorArr.length);
         setComprasMensuales(comprasData.filter((c) => c.estado && esMismoMes(c.fechaEmision, ahora)).reduce((s, c) => s + c.total, 0));
         setComprasMesAnterior(comprasData.filter((c) => c.estado && esMismoMes(c.fechaEmision, mesAnterior)).reduce((s, c) => s + c.total, 0));
         setVentas(ventasData);
@@ -183,8 +185,9 @@ export default function DashboardPage() {
         setProductosCatalogo(productos);
       } catch {
         if (cancelado) return;
-        setTotalProductos(0); setEmpleadosActivos(0); setVentasMensuales(0); setComprasMensuales(0);
-        setVentasMesAnterior(0); setComprasMesAnterior(0); setVentas([]); setCompras([]); setProductosCatalogo([]);
+        setEmpleadosActivos(0); setVentasMensuales(0); setComprasMensuales(0);
+        setVentasMesAnterior(0); setComprasMesAnterior(0); setCantidadVentasMensual(0); setCantidadVentasMesAnterior(0);
+        setVentas([]); setCompras([]); setProductosCatalogo([]);
       } finally {
         if (!cancelado) setLoading(false);
       }
@@ -206,39 +209,133 @@ export default function DashboardPage() {
       .catch(() => setHorario({ apertura: 0, cierre: 23 }));
   }, []);
 
-  const serieUltimos7Dias = useMemo(() => {
-    const dias: { fecha: Date; label: string; ventas: number; compras: number }[] = [];
-    const hoy = new Date();
-    for (let i = 6; i >= 0; i--) {
-      const fecha = new Date(hoy);
-      fecha.setDate(hoy.getDate() - i);
-      dias.push({ fecha, label: fecha.toLocaleDateString('es-PE', { weekday: 'short', day: 'numeric' }), ventas: 0, compras: 0 });
-    }
-    ventas.forEach((v) => { if (v.estado) { const d = dias.find((d) => esMismoDia(v.fecha, d.fecha)); if (d) d.ventas += v.total; } });
-    compras.forEach((c) => { if (c.estado) { const d = dias.find((d) => esMismoDia(c.fechaEmision, d.fecha)); if (d) d.compras += c.total; } });
-    return dias;
-  }, [ventas, compras]);
-
   const gananciaMensual = ventasMensuales - comprasMensuales;
   const gananciaMesAnterior = ventasMesAnterior - comprasMesAnterior;
   const variacionVentas = variacionPorcentual(ventasMensuales, ventasMesAnterior);
   const variacionCompras = variacionPorcentual(comprasMensuales, comprasMesAnterior);
   const variacionGanancia = variacionPorcentual(gananciaMensual, gananciaMesAnterior);
 
+  // Promedios diarios: el mes en curso se divide entre los días ya transcurridos,
+  // y el mes anterior (ya cerrado) entre su total de días, para comparar "ritmo diario" real.
+  const diasTranscurridosMes = new Date().getDate();
+  const diasMesAnteriorTotal = new Date(new Date().getFullYear(), new Date().getMonth(), 0).getDate();
+
+  const promedioVentaDiaria = diasTranscurridosMes > 0 ? ventasMensuales / diasTranscurridosMes : 0;
+  const promedioVentaDiariaAnterior = diasMesAnteriorTotal > 0 ? ventasMesAnterior / diasMesAnteriorTotal : 0;
+  const variacionPromedioVenta = variacionPorcentual(promedioVentaDiaria, promedioVentaDiariaAnterior);
+
+  const promedioClientesDiario = diasTranscurridosMes > 0 ? cantidadVentasMensual / diasTranscurridosMes : 0;
+  const promedioClientesDiarioAnterior = diasMesAnteriorTotal > 0 ? cantidadVentasMesAnterior / diasMesAnteriorTotal : 0;
+  const variacionPromedioClientes = variacionPorcentual(promedioClientesDiario, promedioClientesDiarioAnterior);
+
+  // Ticket promedio: cuánto gasta en promedio cada cliente por venta
+  const ticketPromedio = cantidadVentasMensual > 0 ? ventasMensuales / cantidadVentasMensual : 0;
+  const ticketPromedioAnterior = cantidadVentasMesAnterior > 0 ? ventasMesAnterior / cantidadVentasMesAnterior : 0;
+  const variacionTicketPromedio = variacionPorcentual(ticketPromedio, ticketPromedioAnterior);
+
+  // Margen de ganancia: rentabilidad relativa, no solo el monto en soles
+  const margenActual = ventasMensuales > 0 ? (gananciaMensual / ventasMensuales) * 100 : 0;
+  const margenMesAnterior = ventasMesAnterior > 0 ? (gananciaMesAnterior / ventasMesAnterior) * 100 : 0;
+  const variacionMargen = variacionPorcentual(margenActual, margenMesAnterior);
+
+  const metodoPagoStats = useMemo(() => {
+    const contarPorMetodo = (lista: Venta[]) => {
+      const conteo = new Map<string, number>();
+      lista.forEach((v) => {
+        const metodo = extraerMetodoPrincipal(v.metodoPago);
+        conteo.set(metodo, (conteo.get(metodo) ?? 0) + 1);
+      });
+      return conteo;
+    };
+
+    const ahora = new Date();
+    const mesAnterior = new Date(ahora.getFullYear(), ahora.getMonth() - 1, 1);
+    const ventasMesActualArr = ventas.filter((v) => v.estado && esMismoMes(v.fecha, ahora));
+    const ventasMesAnteriorArr = ventas.filter((v) => v.estado && esMismoMes(v.fecha, mesAnterior));
+
+    const conteoActual = contarPorMetodo(ventasMesActualArr);
+    const totalActual = ventasMesActualArr.length;
+
+    let metodoTop = 'Sin datos';
+    let cantidadTop = 0;
+    conteoActual.forEach((cant, metodo) => {
+      if (cant > cantidadTop) { cantidadTop = cant; metodoTop = metodo; }
+    });
+
+    const porcentajeActual = totalActual > 0 ? (cantidadTop / totalActual) * 100 : 0;
+
+    const conteoAnterior = contarPorMetodo(ventasMesAnteriorArr);
+    const totalAnterior = ventasMesAnteriorArr.length;
+    const cantidadTopMesAnterior = conteoAnterior.get(metodoTop) ?? 0;
+    const porcentajeAnterior = totalAnterior > 0 ? (cantidadTopMesAnterior / totalAnterior) * 100 : 0;
+
+    return {
+      metodoTop,
+      porcentaje: porcentajeActual,
+      variacion: variacionPorcentual(porcentajeActual, porcentajeAnterior),
+    };
+  }, [ventas]);
+
   const stats = useMemo(() => [
-    { title: 'Total de productos', value: totalProductos.toLocaleString('es-PE'), icon: Package, href: '/dashboard/productos', variacion: null, tono: 'violet' as const },
-    { title: 'Ventas del mes', value: formatMoneda(ventasMensuales), icon: TrendingUp, href: '/dashboard/ventas/generar', variacion: variacionVentas, sparkline: serieUltimos7Dias.map((d) => d.ventas), tono: 'emerald' as const },
-    { title: 'Compras del mes', value: formatMoneda(comprasMensuales), icon: ShoppingBag, href: '/dashboard/compras', variacion: variacionCompras, sparkline: serieUltimos7Dias.map((d) => d.compras), tono: 'orange' as const },
+    { title: 'Ventas del mes', value: formatMoneda(ventasMensuales), icon: TrendingUp, href: '/dashboard/ventas/generar', variacion: variacionVentas, tono: 'emerald' as const },
+    { title: 'Compras del mes', value: formatMoneda(comprasMensuales), icon: ShoppingBag, href: '/dashboard/compras', variacion: variacionCompras, tono: 'orange' as const },
     {
       title: 'Ganancia estimada',
       value: formatMoneda(gananciaMensual),
       icon: Wallet,
       href: '/dashboard/ventas/generar',
       variacion: variacionGanancia,
-      sparkline: serieUltimos7Dias.map((d) => d.ventas - d.compras),
-      tono: gananciaMensual >= 0 ? ('primary' as const) : ('rose' as const), // <-- as const en cada rama
+      tono: gananciaMensual >= 0 ? ('primary' as const) : ('rose' as const),
     },
-  ], [totalProductos, ventasMensuales, comprasMensuales, gananciaMensual, variacionVentas, variacionCompras, variacionGanancia, serieUltimos7Dias]);
+    {
+      title: 'Promedio de venta diaria',
+      value: formatMoneda(promedioVentaDiaria),
+      icon: TrendingUp,
+      href: '/dashboard/ventas',
+      variacion: variacionPromedioVenta,
+      tono: 'sky' as const,
+    },
+    {
+      title: 'Clientes atendidos por día',
+      value: `${promedioClientesDiario.toFixed(1)} /día`,
+      icon: Users,
+      href: '/dashboard/clientes',
+      variacion: variacionPromedioClientes,
+      tono: 'violet' as const,
+    },
+    {
+      title: 'Ticket promedio por venta',
+      value: formatMoneda(ticketPromedio),
+      icon: Receipt,
+      href: '/dashboard/ventas',
+      variacion: variacionTicketPromedio,
+      tono: 'violet' as const,
+    },
+    {
+      title: 'Margen de ganancia',
+      value: `${margenActual.toFixed(1)}%`,
+      icon: Wallet,
+      href: '/dashboard/ventas',
+      variacion: variacionMargen,
+      tono: margenActual >= 0 ? ('primary' as const) : ('rose' as const),
+    },
+    {
+      title: 'Método de pago más usado',
+      value: `${metodoPagoStats.metodoTop} (${metodoPagoStats.porcentaje.toFixed(0)}%)`,
+      icon: Wallet,
+      href: '/dashboard/ventas',
+      variacion: metodoPagoStats.variacion,
+      tono: 'sky' as const,
+    },
+  ], [
+    ventasMensuales, comprasMensuales, gananciaMensual,
+    variacionVentas, variacionCompras, variacionGanancia,
+    promedioVentaDiaria, variacionPromedioVenta,
+    promedioClientesDiario, variacionPromedioClientes,
+    ticketPromedio, variacionTicketPromedio,
+    margenActual, variacionMargen,
+    metodoPagoStats,
+  ]);
 
   const evolucionVentas = useMemo<EvolucionVentasItem[]>(() => {
     const hoy = new Date();
@@ -408,7 +505,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Tarjetas de métricas principales */}
+      {/* Tarjetas de métricas principales — 8 tarjetas, 4x2 en pantallas grandes */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-6">
         {stats.map((stat, index) => {
           const Icon = stat.icon;
@@ -428,17 +525,11 @@ export default function DashboardPage() {
                 <InsigniaVariacion variacion={stat.variacion} />
                 <span className="text-[10px] text-zinc-400">vs. mes anterior</span>
               </div>
-              {stat.sparkline && (
-                <div className="mt-2 -mx-1">
-                  <MiniSparkline data={stat.sparkline} color={stat.tono === 'rose' ? '#f43f5e' : primaryColor} />
-                </div>
-              )}
             </button>
           );
         })}
       </div>
 
-      {/* 2. En el render de tu componente: */}
       <div className="bg-white p-5 rounded-2xl border border-zinc-200 shadow-xs">
         <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider mb-4">Accesos rápidos</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -454,7 +545,6 @@ export default function DashboardPage() {
                 className="group flex items-center gap-3 bg-white border border-zinc-200 rounded-xl px-4 py-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-transparent"
               >
                 <div className={`relative p-2.5 rounded-xl ${tono.bg} ${tono.text} shrink-0 transition-transform group-hover:scale-110`}>
-                  {/* Si es alerta, agrega un aro de parpadeo exterior constante */}
                   {enlace.alerta && (
                     <span className="absolute inset-0 rounded-xl bg-rose-500/40 animate-ping pointer-events-none" />
                   )}
