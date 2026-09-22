@@ -22,8 +22,6 @@ export default function Navbar({ onToggleSidebar }: NavbarProps) {
   // para que el HTML inicial coincida y evitar el hydration mismatch.
   const [horaActual, setHoraActual] = useState<Date | null>(null);
 
-  const URL_DIGEMID = "https://www.digemid.minsa.gob.pe/webDigemid/publicaciones/alertas-modificaciones/alertas/";
-
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -69,15 +67,6 @@ export default function Navbar({ onToggleSidebar }: NavbarProps) {
               {companyName}
             </span>
           </div>
-
-          <button
-            onClick={() => setModalDigemidOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 text-xs sm:text-sm font-semibold transition-colors shrink-0 cursor-pointer ml-1 sm:ml-2"
-            title="Ver Alertas DIGEMID"
-          >
-            <AlertTriangle size={16} className="text-amber-600" />
-            <span className="hidden md:inline">Alertas DIGEMID</span>
-          </button>
         </div>
 
         {/* Reloj del sistema: solo se renderiza una vez montado en cliente */}
@@ -125,34 +114,6 @@ export default function Navbar({ onToggleSidebar }: NavbarProps) {
                 <AlertTriangle className="text-amber-400" size={20} />
                 <h3 className="font-semibold text-sm sm:text-base">Alertas y Modificaciones - DIGEMID</h3>
               </div>
-              <div className="flex items-center gap-2">
-                <a
-                  href={URL_DIGEMID}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors flex items-center gap-1 text-xs"
-                  title="Abrir en nueva pestaña"
-                >
-                  <ExternalLink size={16} />
-                  <span className="hidden sm:inline">Abrir web</span>
-                </a>
-                <button
-                  onClick={() => setModalDigemidOpen(false)}
-                  className="p-1.5 text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
-                  title="Cerrar"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 w-full h-full bg-zinc-100 relative">
-              <iframe
-                src={URL_DIGEMID}
-                title="Alertas DIGEMID"
-                className="w-full h-full border-none"
-                loading="lazy"
-              />
             </div>
           </div>
         </div>,
