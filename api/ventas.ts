@@ -99,6 +99,8 @@ export interface Venta {
   empleado: Empleado;
   cliente: Cliente | null;
   detalles: DetalleVenta[];
+  recetaPath?: string | null;
+  requiereReceta?: boolean;
 }
 
 export interface ItemVentaRequest {
@@ -159,3 +161,16 @@ export const empleadosApi = {
 };
 
 export const METODOS_PAGO = ['Efectivo', 'Izipay', 'Transferencia', 'Yape/Plin'];
+
+export const recetasApi = {
+  subir: async (idVenta: number, archivo: File): Promise<void> => {
+    const formData = new FormData();
+    formData.append('archivo', archivo);
+    const res = await fetch(`${API_URL}/ventas/${idVenta}/receta`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) throw new Error('No se pudo subir la receta.');
+  },
+  urlVer: (idVenta: number) => `${API_URL}/ventas/${idVenta}/receta`,
+};

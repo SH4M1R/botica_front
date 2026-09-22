@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Eye, Ban, Receipt, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Eye, Ban, Receipt, Calendar, ChevronLeft, ChevronRight, FileImage } from 'lucide-react';
 import { ventasApi, getNombreCompleto } from '@/api/ventas';
 import type { Venta } from '@/api/ventas';
 import { useSession } from '@/hooks/useSession';
 import VentaDetalleModal from './components/VentaDetalleModal';
 import Paginacion from '@/components/Paginacion';
 import AnularModal from '@/components/AnularModal';
+import RecetaModal from './components/RecetaModal';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
@@ -52,6 +53,8 @@ export default function VentasPage() {
   // Paginación de tabla por día
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
+
+  const [ventaReceta, setVentaReceta] = useState<Venta | null>(null);
 
   const cargarVentas = async () => {
     setLoading(true);
@@ -238,7 +241,11 @@ export default function VentasPage() {
                 <tbody className="divide-y divide-zinc-100">
                   {itemsPaginados.map((v) => (
                     <tr key={v.id} className="hover:bg-zinc-50/60 transition-colors">
-                      <td className="px-5 py-3 font-mono text-zinc-600">#{String(v.id).padStart(6, '0')}</td>
+                      <td className="px-5 py-3 font-mono text-zinc-600">
+                        {v.serie && v.numeroComprobante
+                          ? `${v.serie}-${v.numeroComprobante}`
+                          : `#${String(v.id).padStart(6, '0')}`}
+                      </td>
                       <td className="px-5 py-3 font-medium text-zinc-800">
                         {v.cliente ? getNombreCompleto(v.cliente) : 'No registrado'}
                       </td>
@@ -259,6 +266,19 @@ export default function VentasPage() {
                       </td>
                       <td className="px-5 py-3">
                         <div className="flex justify-end gap-1">
+
+                        {v.requiereReceta && (
+                          <button
+                            onClick={() => setVentaReceta(v)}
+                            className={`p-2 rounded-lg transition-colors border-2 ${
+                              v.recetaPath ? 'text-amber-600 hover:bg-amber-50' : 'text-zinc-400 hover:bg-zinc-50'
+                            }`}
+                            title={v.recetaPath ? 'Ver/reemplazar receta' : 'Agregar receta'}
+                          >
+                            <FileImage size={16} />
+                          </button>
+                        )}
+
                           <button 
                             onClick={() => setVentaDetalle(v)} 
                             className="p-2 text-green-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors border-2" 
@@ -319,6 +339,14 @@ export default function VentasPage() {
         titulo="Anular venta"
         mensaje={`¿Anular la venta #${String(ventaAAnular?.id ?? '').padStart(6, '0')}? El stock se devolverá.`}
         errorMensajeDefault="Ocurrió un error al intentar anular esta venta."
+      />
+
+      <RecetaModal
+        open={!!ventaReceta}
+        idVenta={ventaReceta?.id ?? null}
+        tieneReceta={!!ventaReceta?.recetaPath}
+        onClose={() => setVentaReceta(null)}
+        onSubido={cargarVentas}
       />
     </div>
   );

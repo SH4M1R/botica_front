@@ -74,6 +74,7 @@ export default function ConfiguracionPage() {
     backupAutomaticoActivo: true,
     frecuenciaBackup: 'DIARIO',
     ultimoBackupEnviado: '',
+    rutaRecetas: '',
   });
 
   useEffect(() => {
@@ -97,6 +98,7 @@ export default function ConfiguracionPage() {
             backupAutomaticoActivo: data.backupAutomaticoActivo ?? true,
             frecuenciaBackup: data.frecuenciaBackup ?? 'DIARIO',
             ultimoBackupEnviado: data.ultimoBackupEnviado ?? '',
+            rutaRecetas: data.rutaRecetas ?? '',
           };
           setForm(datosLimpios);
 
@@ -151,6 +153,7 @@ export default function ConfiguracionPage() {
         backupAutomaticoActivo: data?.backupAutomaticoActivo ?? true,
         frecuenciaBackup: data?.frecuenciaBackup ?? 'DIARIO',
         ultimoBackupEnviado: data?.ultimoBackupEnviado ?? '',
+        rutaRecetas: data?.rutaRecetas ?? '',
       };
 
       setForm(datosLimpios);
@@ -488,6 +491,21 @@ export default function ConfiguracionPage() {
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl border border-zinc-200 shadow-xs space-y-4">
+            <div className="space-y-1">
+              <span className="flex items-center gap-2 text-sm font-bold text-zinc-800">
+                <Save className="text-primary" size={16} />Carpeta para guardar recetas</span>
+              <input
+                name="rutaRecetas"
+                value={form.rutaRecetas}
+                onChange={handleChange}
+                placeholder="Ej. C:\Botica\Recetas o /var/botica/recetas"
+                className="w-full px-3 py-2 rounded-lg border border-zinc-300 bg-zinc-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+              />
+              <p className="text-xs text-zinc-500">Ruta absoluta donde se guardan las fotos de recetas subidas.</p>
             </div>
           </div>
 

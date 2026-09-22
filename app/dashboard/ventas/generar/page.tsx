@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search, Trash2, Wallet, ShoppingCart, UserPlus, Plus, X as XIcon, FileText, AlertTriangle, ExternalLink, Barcode, MousePointerClick, Info } from 'lucide-react';
+import { Search, Trash2, Wallet, ShoppingCart, UserPlus, Plus, X as XIcon, FileText, AlertTriangle, ExternalLink, Barcode, MousePointerClick, Info, FileImage } from 'lucide-react';
 import { productosApi } from '@/api/productos';
 import type { Producto } from '@/api/productos';
-import { ventasApi, clientesApi, getNombreCompleto, splitNombreCompleto } from '@/api/ventas';
+import { ventasApi, recetasApi, clientesApi, getNombreCompleto, splitNombreCompleto } from '@/api/ventas';
 import type { Venta, Cliente, TipoComprobanteVenta } from '@/api/ventas';
 import { arqueoApi } from '@/api/arqueo';
 import type { ArqueoCaja } from '@/api/arqueo';
@@ -75,6 +75,9 @@ export default function GenerarVentaPage() {
   const [tipoComprobante, setTipoComprobante] = useState<TipoComprobante>('nota');
   const [cotizacionOrigenId, setCotizacionOrigenId] = useState<number | null>(null);
   const cotizacionProcesadaRef = useRef(false);
+
+  const [archivoRecetaPendiente, setArchivoRecetaPendiente] = useState<File | null>(null);
+  const requiereRecetaEnCarrito = carrito.some((item) => item.producto.requiere_receta);
 
   const fechaHoy = useMemo(
     () => new Date().toLocaleDateString('es-PE', { weekday: 'long', day: '2-digit', month: 'long'}),
@@ -495,6 +498,16 @@ export default function GenerarVentaPage() {
         })),
       });
 
+      // Subir la receta si el usuario adjuntó una foto antes de confirmar la venta
+      if (archivoRecetaPendiente) {
+        try {
+          await recetasApi.subir(venta.id, archivoRecetaPendiente);
+        } catch (err) {
+          console.error('Error subiendo receta:', err);
+          setError('La venta se registró, pero no se pudo subir la receta. Agrégala luego desde el listado de ventas.');
+        }
+      }
+
       if (pestanaBoleta) pestanaBoleta.location.href = `/dashboard/ventas/boleta?id=${venta.id}&vuelto=${vuelto.toFixed(2)}`;
       else abrirBoletaImprimible(venta.id, vuelto);
 
@@ -510,7 +523,8 @@ export default function GenerarVentaPage() {
       limpiarClienteSeleccionado();
       setBusqueda('');
       setError('');
-
+      setArchivoRecetaPendiente(null);
+      
       cargarProductos();
       cargarClientes();
       searchInputRef.current?.focus();
@@ -957,6 +971,21 @@ export default function GenerarVentaPage() {
               <ShoppingCart size={16} className="text-primary transition-colors duration-300" />
               <span className="text-sm font-bold text-zinc-700">Detalle de venta</span>
             </div>
+
+            {requiereRecetaEnCarrito && (
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-lg cursor-pointer hover:bg-amber-100 transition-colors">
+                <FileImage size={14} />
+                {archivoRecetaPendiente ? 'Receta lista ✓' : 'Subir receta'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => setArchivoRecetaPendiente(e.target.files?.[0] ?? null)}
+                />
+              </label>
+            )}
+            
             {carrito.length > 0 && (
               <button
                 type="button"
