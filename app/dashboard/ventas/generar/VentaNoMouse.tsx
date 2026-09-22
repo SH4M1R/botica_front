@@ -65,11 +65,11 @@ export default function VentaNoMouse({
   onAbrirPago,
   onVolverModoNormal,
 }: VentaNoMouseProps) {
-  // ---------- Línea de ingreso (una sola línea) ----------
+  // ---------- Línea de ingreso ----------
   const [criterio, setCriterio] = useState<CriterioBusqueda>('nombre');
   const [codigoBarras, setCodigoBarras] = useState('');
   const [textoBusqueda, setTextoBusqueda] = useState('');
-  const [productoSeleccionado, setProductoSeleccionado] = useState<ProductoConCodigo | null>(null);
+  const [productoSeleccionado, setProductoSeleccionado] = useState<(ProductoConCodigo & { barras?: string }) | null>(null);
   const [tipoVentaEntrada, setTipoVentaEntrada] = useState<TipoVenta>('unidad');
   const [cantidad, setCantidad] = useState<number | ''>('');
   const [sugerenciaIndex, setSugerenciaIndex] = useState(0);
@@ -101,13 +101,11 @@ export default function VentaNoMouse({
   }, [filaSeleccionada]);
 
   // ---------- Sugerencias de producto (por nombre / principio activo) ----------
-  // Ya NO se excluyen los productos sin stock: se muestran igual, pero
-  // deshabilitados para seleccionar (ver render de la lista y handleNombreKeyDown).
   const sugerencias = useMemo(() => {
     const q = textoBusqueda.trim().toLowerCase();
     if (!q) return [];
     const filtradas = productos.filter((p) => {
-      const producto = p as ProductoConCodigo;
+      const producto = p as ProductoConCodigo & { barras?: string };
       if (criterio === 'principio') {
         return producto.principioActivo?.nombre?.toLowerCase().includes(q);
       }
@@ -121,9 +119,6 @@ export default function VentaNoMouse({
   }, [sugerencias]);
 
   const opcionesTipo = productoSeleccionado ? tiposDisponibles(productoSeleccionado) : [];
-
-  const unidCaja = productoSeleccionado?.unidades_caja ?? 0;
-  const unidBlister = productoSeleccionado?.unidades_blister ?? 0;
   const stockDisponible = productoSeleccionado?.stock ?? 0;
   const tieneCaja = !!productoSeleccionado?.caja_habilitado && !!productoSeleccionado?.vende_por_presentaciones;
   const tieneBlister = !!productoSeleccionado?.blister_habilitado && !!productoSeleccionado?.vende_por_presentaciones;
@@ -133,31 +128,26 @@ export default function VentaNoMouse({
   const cantidadNum = typeof cantidad === 'number' ? cantidad : 0;
   const importeCalculado = productoSeleccionado ? precioActivo * cantidadNum : 0;
 
-  // Máxima cantidad que se puede ingresar para la presentación elegida,
-  // según el stock real del producto seleccionado.
   const maxCantidad = productoSeleccionado
     ? Math.floor(stockDisponible / unidadesBasePorTipo(productoSeleccionado, tipoVentaEntrada))
     : undefined;
 
-  // Si el usuario cambia de presentación (unidad/blister/caja) y la
-  // cantidad ya ingresada supera el nuevo máximo permitido, la recorta.
   useEffect(() => {
     if (!productoSeleccionado || typeof cantidad !== 'number') return;
     if (maxCantidad !== undefined && maxCantidad > 0 && cantidad > maxCantidad) {
       setCantidad(maxCantidad);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tipoVentaEntrada]);
 
   // ---------- Selección de producto (agregar uno nuevo) ----------
-  const seleccionarProducto = (producto: ProductoConCodigo) => {
+  const seleccionarProducto = (producto: ProductoConCodigo & { barras?: string }) => {
     if (producto.stock <= 0) {
       setError(`"${producto.nombre}" no tiene stock disponible.`);
       return;
     }
     setProductoSeleccionado(producto);
     setTextoBusqueda(producto.nombre);
-    setCodigoBarras(producto.codigo_barras ?? '');
+    setCodigoBarras(producto.barras ?? producto.codigo_barras ?? '');
     setTipoVentaEntrada('unidad');
     setCantidad('');
     setPrecioUnidadValor(producto.precio_venta);
@@ -187,10 +177,10 @@ export default function VentaNoMouse({
   const iniciarEdicion = () => {
     const item = carrito[filaSeleccionada];
     if (!item) return;
-    const producto = item.producto as ProductoConCodigo;
+    const producto = item.producto as ProductoConCodigo & { barras?: string };
     setProductoSeleccionado(producto);
     setTextoBusqueda(producto.nombre);
-    setCodigoBarras(producto.codigo_barras ?? '');
+    setCodigoBarras(producto.barras ?? producto.codigo_barras ?? '');
     setTipoVentaEntrada(item.tipoVenta);
     setCantidad(item.cantidad);
     setPrecioUnidadValor(item.tipoVenta === 'unidad' ? item.precioUnitario : producto.precio_venta);
@@ -209,7 +199,6 @@ export default function VentaNoMouse({
     codigoBarrasRef.current?.focus();
   };
 
-  // ---------- Cantidad: se ajusta sola al máximo permitido por el stock ----------
   const handleCantidadChange = (valor: string) => {
     if (valor === '') {
       setCantidad('');
@@ -224,7 +213,7 @@ export default function VentaNoMouse({
     setCantidad(nueva);
   };
 
-  // ---------- Grabar / Actualizar (agrega o reemplaza la línea actual) ----------
+  // ---------- Grabar / Actualizar ----------
   const grabarLinea = () => {
     if (!productoSeleccionado) {
       setError('Escanea o busca un producto antes de grabar.');
@@ -256,24 +245,29 @@ export default function VentaNoMouse({
     codigoBarrasRef.current?.focus();
   };
 
-  // ---------- Código de barras: Enter agrega DIRECTO al detalle ----------
+  // ---------- Código de barras con Pistola Lectora ----------
   const handleCodigoBarrasKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       const q = codigoBarras.trim().toLowerCase();
       if (!q) return;
-      const match = (productos as ProductoConCodigo[]).find(
-        (p) => p.codigo_barras && p.codigo_barras.toLowerCase() === q
-      );
+
+      const match = (productos as (ProductoConCodigo & { barras?: string })[]).find((p) => {
+        const codigo = p.barras ?? p.codigo_barras;
+        return codigo && codigo.toLowerCase() === q;
+      });
+
       if (!match) {
         setError('No se encontró ningún producto con ese código de barras.');
         return;
       }
       if (match.stock <= 0) {
         setError(`"${match.nombre}" no tiene stock disponible.`);
+        setCodigoBarras('');
         return;
       }
-      // Escaneo = venta directa por unidad, cantidad 1, sin pasos intermedios.
+
+      // Escaneo directo: se agrega 1 unidad limpia al detalle
       agregarProductoConDetalle(match, 'unidad', 1, match.precio_venta);
       setError('');
       limpiarLinea();
@@ -286,7 +280,7 @@ export default function VentaNoMouse({
     }
   };
 
-  // ---------- Nombre comercial / principio activo: búsqueda con sugerencias ----------
+  // ---------- Búsqueda por Nombre / Principio Activo ----------
   const handleNombreKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -306,7 +300,7 @@ export default function VentaNoMouse({
         setError(`"${producto.nombre}" no tiene stock disponible.`);
         return;
       }
-      seleccionarProducto(producto as ProductoConCodigo);
+      seleccionarProducto(producto as ProductoConCodigo & { barras?: string });
       return;
     }
     if (e.key === 'Escape') {
@@ -315,7 +309,6 @@ export default function VentaNoMouse({
     }
   };
 
-  // ---------- Cantidad: Enter graba/actualiza la línea directamente ----------
   const handleCantidadKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -332,7 +325,7 @@ export default function VentaNoMouse({
     }
   };
 
-  // ---------- Atajos globales del modo sin mouse ----------
+  // ---------- Atajos Globales Sin Mouse ----------
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       const activo = document.activeElement;
@@ -356,7 +349,6 @@ export default function VentaNoMouse({
         return;
       }
 
-      // Enter sin ningún campo enfocado -> va directo a código de barras.
       if (e.key === 'Enter' && !enCampoDeTexto) {
         e.preventDefault();
         codigoBarrasRef.current?.focus();
@@ -364,7 +356,6 @@ export default function VentaNoMouse({
         return;
       }
 
-      // Ya en código de barras pero vacío + Enter -> pasa al buscador.
       if (e.key === 'Enter' && activo === codigoBarrasRef.current && codigoBarras.trim() === '') {
         e.preventDefault();
         nombreRef.current?.focus();
@@ -372,8 +363,6 @@ export default function VentaNoMouse({
         return;
       }
 
-      // Navegación y borrado de filas del detalle: solo si el foco NO está
-      // en un campo de texto (para no interferir con la línea de ingreso).
       if (!enCampoDeTexto && carrito.length > 0) {
         if (e.key === 'ArrowDown') {
           e.preventDefault();
@@ -496,7 +485,7 @@ export default function VentaNoMouse({
         </div>
       </div>
 
-      {/* LÍNEA DE INGRESO — con z-index para flotar sobre el detalle */}
+      {/* LÍNEA DE INGRESO */}
       <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs p-3 shrink-0 space-y-2 relative z-20 overflow-visible">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-4 text-xs font-medium text-zinc-600">
@@ -529,7 +518,7 @@ export default function VentaNoMouse({
         </div>
 
         <div className="grid grid-cols-12 gap-2 items-end pb-1 overflow-visible">
-          {/* Código de Barras (1 columna) */}
+          {/* Código de Barras */}
           <div className="col-span-1">
             <label className="text-[10px] font-semibold text-zinc-500 truncate block">Código</label>
             <input
@@ -545,7 +534,7 @@ export default function VentaNoMouse({
             <p className="text-[9px] text-zinc-400 mt-0.5 truncate">[ Enter ]</p>
           </div>
 
-          {/* Buscador (4 columnas - Ocupa la mayor parte) */}
+          {/* Buscador */}
           <div className="col-span-4 relative">
             <label className="text-[10px] font-semibold text-zinc-500 truncate block">
               {criterio === 'principio' ? 'Principio Activo' : 'Nombre Comercial'}
@@ -565,7 +554,6 @@ export default function VentaNoMouse({
             />
             <p className="text-[9px] text-zinc-400 mt-0.5 truncate">[ ↑ ↓ navega · Enter selecciona ]</p>
 
-            {/* Sugerencias con ancho fijo de 600px */}
             {!editandoKey && sugerencias.length > 0 && (
               <div className="absolute left-0 w-[600px] z-50 mt-1 max-h-56 overflow-y-auto bg-white border border-zinc-200 rounded-lg shadow-xl divide-y divide-zinc-100">
                 {sugerencias.map((p, idx) => {
@@ -574,7 +562,7 @@ export default function VentaNoMouse({
                     <button
                       key={p.id}
                       type="button"
-                      onMouseDown={() => { if (!sinStock) seleccionarProducto(p as ProductoConCodigo); }}
+                      onMouseDown={() => { if (!sinStock) seleccionarProducto(p as ProductoConCodigo & { barras?: string }); }}
                       disabled={sinStock}
                       title={sinStock ? 'Sin stock disponible' : undefined}
                       className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left transition-colors ${
@@ -601,7 +589,7 @@ export default function VentaNoMouse({
             )}
           </div>
 
-          {/* Presentación (1 columna) */}
+          {/* Presentación */}
           <div className="col-span-1">
             <label className="text-[10px] font-semibold text-zinc-500 truncate block">Presentación</label>
             <select
@@ -622,7 +610,7 @@ export default function VentaNoMouse({
             </select>
           </div>
 
-          {/* Cantidad (1 columna) */}
+          {/* Cantidad */}
           <div className="col-span-1">
             <label className="text-[10px] font-semibold text-zinc-500 truncate block">Cant.</label>
             <input
@@ -639,7 +627,7 @@ export default function VentaNoMouse({
             />
           </div>
 
-          {/* Precio Unidad (1 columna) */}
+          {/* Precio Unidad */}
           <div className="col-span-1">
             <label className="text-[10px] font-semibold text-zinc-500 truncate block">P. Unid</label>
             <input
@@ -654,7 +642,7 @@ export default function VentaNoMouse({
             />
           </div>
 
-          {/* Precio Caja (1 columna) */}
+          {/* Precio Caja */}
           <div className="col-span-1">
             <label className="text-[10px] font-semibold text-zinc-500 truncate block">P. Caja</label>
             <input
@@ -669,7 +657,7 @@ export default function VentaNoMouse({
             />
           </div>
 
-          {/* Precio Blister (1 columna) */}
+          {/* Precio Blister */}
           <div className="col-span-1">
             <label className="text-[10px] font-semibold text-zinc-500 truncate block">P. Blister</label>
             <input
@@ -684,13 +672,13 @@ export default function VentaNoMouse({
             />
           </div>
 
-          {/* Stock (1 columna) */}
+          {/* Stock */}
           <div className="col-span-1">
             <label className="text-[10px] font-semibold text-zinc-500 truncate block">Stock</label>
             <input readOnly value={stockDisponible} className={`${inputBase} bg-zinc-50 text-right font-mono`} />
           </div>
 
-          {/* Botón Grabar (1 columna) */}
+          {/* Botón Grabar */}
           <div className="col-span-1">
             <button
               type="button"

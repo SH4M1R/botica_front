@@ -56,14 +56,14 @@ const TONOS: Record<string, { bg: string; text: string }> = {
   rose: { bg: 'bg-rose-500/10', text: 'text-rose-500' },
 };
 
-// Accesos rápidos a portales de consulta institucional
+// 1. En la lista ENLACES_EXTERNOS mantienes tu bandera de alerta:
 const ENLACES_EXTERNOS = [
   { label: 'Cargar precio', sub: 'DIGEMID', url: 'https://opm-digemid.minsa.gob.pe/#/precio-productos/nuevo-cargar-precio/011605404', icon: FileText, tono: 'sky' as const },
   { label: 'Establecimientos', sub: 'DIGEMID', url: 'https://serviciosweb-digemid.minsa.gob.pe/Consultas/Establecimientos', icon: Building2, tono: 'sky' as const },
   { label: 'Productos farmacéuticos', sub: 'DIGEMID', url: 'https://www.digemid.minsa.gob.pe/rsProductosFarmaceuticos/', icon: Pill, tono: 'sky' as const },
   { label: 'Emitir boleta', sub: 'SUNAT', url: 'https://ww1.sunat.gob.pe/xssecurity/SignOnVerification.htm?signonForwardAction=https%3A%2F%2Fww1.sunat.gob.pe%2Fol-ti-itemisionboletaresp%2Femitirbvsimp.do', icon: Receipt, tono: 'orange' as const },
   { label: 'Buzón y menú SOL', sub: 'SUNAT', url: 'https://e-menu.sunat.gob.pe/cl-ti-itmenu/MenuInternet.htm?pestana=*&agrupacion=*&exe=buzon', icon: Inbox, tono: 'orange' as const },
-  { label: 'Alertas y modificaciones', sub: 'DIGEMID', url: 'https://www.digemid.minsa.gob.pe/webDigemid/publicaciones/alertas-modificaciones/alertas/', icon: Bell, tono: 'rose' as const },
+  { label: 'Alertas y modificaciones', sub: 'DIGEMID', url: 'https://www.digemid.minsa.gob.pe/webDigemid/publicaciones/alertas-modificaciones/alertas/', icon: Bell, tono: 'rose' as const, alerta: true },
 ];
 
 function formatMoneda(valor: number) {
@@ -397,7 +397,7 @@ export default function DashboardPage() {
     <div className="space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-extrabold text-primary">Bienvenido a JPFarma</h1>
+          <h1 className="text-xl font-extrabold text-primary">Bienvenido al panel administrativo de JPFarma</h1>
           <p className="text-sm text-zinc-500">Resumen general de tu negocio</p>
         </div>
         <div className="flex items-center gap-3">
@@ -438,7 +438,7 @@ export default function DashboardPage() {
         })}
       </div>
 
-      {/* Accesos rápidos a portales de consulta */}
+      {/* 2. En el render de tu componente: */}
       <div className="bg-white p-5 rounded-2xl border border-zinc-200 shadow-xs">
         <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider mb-4">Accesos rápidos</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -453,8 +453,12 @@ export default function DashboardPage() {
                 rel="noopener noreferrer"
                 className="group flex items-center gap-3 bg-white border border-zinc-200 rounded-xl px-4 py-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-transparent"
               >
-                <div className={`p-2.5 rounded-xl ${tono.bg} ${tono.text} shrink-0 transition-transform group-hover:scale-110`}>
-                  <Icon size={18} />
+                <div className={`relative p-2.5 rounded-xl ${tono.bg} ${tono.text} shrink-0 transition-transform group-hover:scale-110`}>
+                  {/* Si es alerta, agrega un aro de parpadeo exterior constante */}
+                  {enlace.alerta && (
+                    <span className="absolute inset-0 rounded-xl bg-rose-500/40 animate-ping pointer-events-none" />
+                  )}
+                  <Icon size={18} className={enlace.alerta ? 'relative z-10 animate-pulse text-rose-600' : ''} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">{enlace.sub}</p>

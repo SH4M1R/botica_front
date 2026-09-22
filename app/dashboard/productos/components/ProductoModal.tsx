@@ -165,12 +165,22 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
     }
   };
 
-  // --- Cálculo de costo unitario y % de ganancia ---
-  // precio_costo = costo ingresado (de la caja si factor > 1, o directo si factor = 1)
-  // precio_venta = precio de venta por unidad
+  // --- Cálculos Financieros Unificados ---
   const factorValido = form.factor && form.factor > 0 ? form.factor : 1;
   const costoUnitario = form.precio_costo > 0 ? form.precio_costo / factorValido : 0;
-  const gananciaPct = costoUnitario > 0 ? ((form.precio_venta - costoUnitario) / costoUnitario) * 100 : 0;
+  const gananciaUnidadPct = costoUnitario > 0 ? ((form.precio_venta - costoUnitario) / costoUnitario) * 100 : 0;
+
+  // Blister
+  const costoBlister = costoUnitario * (form.unidades_blister ?? 0);
+  const gananciaBlisterPct = costoBlister > 0 && form.precio_blister
+    ? ((form.precio_blister - costoBlister) / costoBlister) * 100
+    : 0;
+
+  // Caja
+  const costoCaja = costoUnitario * (form.unidades_caja ?? factorValido);
+  const gananciaCajaPct = costoCaja > 0 && form.precio_caja
+    ? ((form.precio_caja - costoCaja) / costoCaja) * 100
+    : 0;
 
   const inputClass = "w-full px-3 py-2 rounded-lg border border-zinc-300 bg-zinc-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all";
   const calculatedInputClass = "w-full px-3 py-2 rounded-lg border border-zinc-200 bg-zinc-100 text-sm font-semibold text-zinc-700 cursor-not-allowed";
@@ -266,7 +276,7 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
             {/* Código Digemid | Registro Sanitario | Lote | Fecha de vencimiento */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="space-y-1">
-                <label className={labelClass}>Código Digemid (Solamente si requiere)</label>
+                <label className={labelClass}>Código Digemid</label>
                 <input value={form.codigo_digemid} onChange={(e) => set('codigo_digemid', e.target.value)} className={inputClass} />
               </div>
               <div className="space-y-1">
@@ -280,7 +290,7 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
                 />
               </div>
               <div className="space-y-1">
-                <label className={labelClass}>Lote (Solamente si requiere)</label>
+                <label className={labelClass}>Lote</label>
                 <input value={form.lote} onChange={(e) => set('lote', e.target.value)} className={inputClass} />
               </div>
               <div className="space-y-1">
@@ -297,29 +307,35 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
             {/* Precio costo | Factor | Precio costo unidad (calculado) | % Ganancia (calculado) */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="space-y-1">
-                <label className={labelClass}>Precio costo</label>
+                <label className={labelClass}>Precio costo empaque</label>
                 <input type="number" step="0.01" min="0" value={form.precio_costo} onChange={(e) => set('precio_costo', Number(e.target.value))} className={inputClass} />
               </div>
               <div className="space-y-1">
-                <label className={labelClass}>Factor (unid. por caja)</label>
+                <label className={labelClass}>Factor (unid. por empaque)</label>
                 <input
                   type="number" min="1"
                   value={form.factor ?? 1}
-                  onChange={(e) => set('factor', e.target.value ? Number(e.target.value) : 1)}
+                  onChange={(e) => {
+                    const newFactor = e.target.value ? Number(e.target.value) : 1;
+                    set('factor', newFactor);
+                    if (!form.unidades_caja) {
+                      set('unidades_caja', newFactor);
+                    }
+                  }}
                   className={inputClass}
                 />
               </div>
               <div className="space-y-1">
-                <label className={labelClass}>Precio costo unidad</label>
+                <label className={labelClass}>Costo por unidad</label>
                 <input type="text" disabled value={`S/ ${costoUnitario.toFixed(2)}`} className={calculatedInputClass} />
               </div>
               <div className="space-y-1">
-                <label className={labelClass}>% Ganancia</label>
+                <label className={labelClass}>% Ganancia (Unidades)</label>
                 <input
                   type="text"
                   disabled
-                  value={`${gananciaPct >= 0 ? '+' : ''}${gananciaPct.toFixed(1)}%`}
-                  className={`${calculatedInputClass} ${gananciaPct < 0 ? 'text-red-500' : 'text-primary'}`}
+                  value={`${gananciaUnidadPct >= 0 ? '+' : ''}${gananciaUnidadPct.toFixed(1)}%`}
+                  className={`${calculatedInputClass} ${gananciaUnidadPct < 0 ? 'text-red-500' : 'text-primary'}`}
                 />
               </div>
             </div>
@@ -327,11 +343,11 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
             {/* Precio venta | Stock | Stock mínimo | Producto activo | Requiere receta */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 items-end">
               <div className="space-y-1">
-                <label className={labelClass}>Precio venta</label>
+                <label className={labelClass}>Precio venta unidad</label>
                 <input type="number" step="0.01" min="0" value={form.precio_venta} onChange={(e) => set('precio_venta', Number(e.target.value))} className={inputClass} />
               </div>
               <div className="space-y-1">
-                <label className={labelClass}>Stock</label>
+                <label className={labelClass}>Stock (Unidades)</label>
                 <input type="number" min="0" value={form.stock} onChange={(e) => set('stock', Number(e.target.value))} className={inputClass} />
               </div>
               <div className="space-y-1">
@@ -353,7 +369,7 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
             </div>
           </div>
 
-          {/* Bloque: Presentaciones de venta (blister / caja) — sin cambios */}
+          {/* Bloque: Presentaciones de venta (blister / caja) */}
           <div className="space-y-4 pt-2 border-t border-zinc-100">
             <div className="flex items-center justify-between">
               <div>
@@ -387,27 +403,34 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
                   </label>
 
                   {form.blister_habilitado && (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <label className={labelClass}>Unidades por blister</label>
-                        <input
-                          type="number" min="1"
-                          value={form.unidades_blister ?? ''}
-                          onChange={(e) => set('unidades_blister', e.target.value ? Number(e.target.value) : null)}
-                          className={inputClass}
-                          placeholder="Ej. 10"
-                        />
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className={labelClass}>Unidades por blister</label>
+                          <input
+                            type="number" min="1"
+                            value={form.unidades_blister ?? ''}
+                            onChange={(e) => set('unidades_blister', e.target.value ? Number(e.target.value) : null)}
+                            className={inputClass}
+                            placeholder="Ej. 10"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className={labelClass}>Precio por blister</label>
+                          <input
+                            type="number" step="0.01" min="0"
+                            value={form.precio_blister ?? ''}
+                            onChange={(e) => set('precio_blister', e.target.value ? Number(e.target.value) : null)}
+                            className={inputClass}
+                            placeholder="S/ 0.00"
+                          />
+                        </div>
                       </div>
-                      <div className="space-y-1">
-                        <label className={labelClass}>Precio por blister</label>
-                        <input
-                          type="number" step="0.01" min="0"
-                          value={form.precio_blister ?? ''}
-                          onChange={(e) => set('precio_blister', e.target.value ? Number(e.target.value) : null)}
-                          className={inputClass}
-                          placeholder="S/ 0.00"
-                        />
-                      </div>
+                      {form.precio_blister && form.unidades_blister ? (
+                        <p className="text-xs text-zinc-500 font-medium">
+                          Costo estimado: S/ {costoBlister.toFixed(2)} | Ganancia: <span className={gananciaBlisterPct < 0 ? 'text-red-500 font-bold' : 'text-primary font-bold'}>{gananciaBlisterPct >= 0 ? '+' : ''}{gananciaBlisterPct.toFixed(1)}%</span>
+                        </p>
+                      ) : null}
                     </div>
                   )}
                 </div>
@@ -425,27 +448,34 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
                   </label>
 
                   {form.caja_habilitado && (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <label className={labelClass}>Unidades por caja</label>
-                        <input
-                          type="number" min="1"
-                          value={form.unidades_caja ?? ''}
-                          onChange={(e) => set('unidades_caja', e.target.value ? Number(e.target.value) : null)}
-                          className={inputClass}
-                          placeholder="Ej. 100"
-                        />
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className={labelClass}>Unidades por caja</label>
+                          <input
+                            type="number" min="1"
+                            value={form.unidades_caja ?? form.factor ?? ''}
+                            onChange={(e) => set('unidades_caja', e.target.value ? Number(e.target.value) : null)}
+                            className={inputClass}
+                            placeholder="Ej. 100"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className={labelClass}>Precio por caja</label>
+                          <input
+                            type="number" step="0.01" min="0"
+                            value={form.precio_caja ?? ''}
+                            onChange={(e) => set('precio_caja', e.target.value ? Number(e.target.value) : null)}
+                            className={inputClass}
+                            placeholder="S/ 0.00"
+                          />
+                        </div>
                       </div>
-                      <div className="space-y-1">
-                        <label className={labelClass}>Precio por caja</label>
-                        <input
-                          type="number" step="0.01" min="0"
-                          value={form.precio_caja ?? ''}
-                          onChange={(e) => set('precio_caja', e.target.value ? Number(e.target.value) : null)}
-                          className={inputClass}
-                          placeholder="S/ 0.00"
-                        />
-                      </div>
+                      {form.precio_caja && (
+                        <p className="text-xs text-zinc-500 font-medium">
+                          Costo estimado: S/ {costoCaja.toFixed(2)} | Ganancia: <span className={gananciaCajaPct < 0 ? 'text-red-500 font-bold' : 'text-primary font-bold'}>{gananciaCajaPct >= 0 ? '+' : ''}{gananciaCajaPct.toFixed(1)}%</span>
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>

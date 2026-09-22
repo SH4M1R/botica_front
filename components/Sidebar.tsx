@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Package, Settings, ShoppingCart, Contact, ChevronDown,
@@ -58,6 +59,24 @@ interface SidebarProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
   onCajaCerrada: () => void;
+}
+
+/**
+ * Función helper para generar el enlace dinámico a WhatsApp
+ * con el mensaje predeterminado según la hora local.
+ */
+function obtenerWhatsAppLink() {
+  const hora = new Date().getHours();
+  let saludo = 'Buenos días';
+
+  if (hora >= 12 && hora < 19) {
+    saludo = 'Buenas tardes';
+  } else if (hora >= 19 || hora < 5) {
+    saludo = 'Buenas noches';
+  }
+
+  const mensaje = `${saludo}, tengo una consulta`;
+  return `https://wa.me/51907845855?text=${encodeURIComponent(mensaje)}`;
 }
 
 export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCerrada }: SidebarProps) {
@@ -600,6 +619,26 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
           </Link>
         ))}
       </nav>
+
+      {/* Botón de WhatsApp al final del Sidebar */}
+      <div className="p-3 border-t border-white/20">
+        <a
+          href={obtenerWhatsAppLink()}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={collapsed ? 'Comunícate Con Nosotros' : undefined}
+          className={`flex items-center gap-3 rounded-lg text-md font-semibold transition-all text-white hover:bg-white/20 ${
+            collapsed ? 'justify-center px-0 py-2.5' : 'px-4 py-2.5'
+          }`}
+        >
+          <img
+            src="/JPSYSTEMS.png"
+            alt="JPSYSTEMS"
+            className="w-6 h-6 rounded-full object-cover shrink-0 border border-white/30"
+          />
+          {!collapsed && <span className="truncate">Soporte o Consultas</span>}
+        </a>
+      </div>
     </div>
   );
 }

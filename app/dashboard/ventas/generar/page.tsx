@@ -27,16 +27,9 @@ import {
   PrecioInput,
 } from '@/components/ventaShared';
 
-// Re-exportados por compatibilidad, por si algún otro archivo los importaba
-// directamente desde esta página (antes vivían acá).
 export type { TipoVenta, CarritoItem, ProductoConCodigo };
 export { tiposDisponibles, precioPorTipo, unidadesBasePorTipo };
 
-// Tipo de comprobante a emitir. Por ahora solo "Nota de Venta" está
-// disponible; Boleta y Factura Electrónica quedan bloqueadas en el
-// selector hasta que se implemente la facturación electrónica. La
-// "Cotización de Venta" ahora vive en su propia página:
-// /dashboard/ventas/cotizacion
 export type TipoComprobante = 'nota' | 'boleta' | 'factura';
 
 const COMPROBANTE_OPTIONS: { value: TipoComprobante; label: string; disabled?: boolean }[] = [
@@ -45,8 +38,6 @@ const COMPROBANTE_OPTIONS: { value: TipoComprobante; label: string; disabled?: b
   { value: 'factura', label: 'Factura Electrónica (próximamente)', disabled: true },
 ];
 
-// Mapea el selector local (nota/boleta/factura) al valor que espera el
-// backend en Venta.tipoVenta / VentaRequest.tipoVenta (nota_venta/boleta/factura).
 const TIPO_VENTA_BACKEND: Record<TipoComprobante, TipoComprobanteVenta> = {
   nota: 'nota_venta',
   boleta: 'boleta',
@@ -78,20 +69,10 @@ export default function GenerarVentaPage() {
   const [, setVentaConfirmada] = useState<Venta | null>(null);
 
   const [mostrarConfirmVaciar, setMostrarConfirmVaciar] = useState(false);
-
   const [modoSinMouse, setModoSinMouse] = useState(false);
-
   const [cajaAbierta, setCajaAbierta] = useState<ArqueoCaja | null | undefined>(undefined);
-
-  // Permiso: si el empleado puede modificar manualmente el precio unitario / subtotal
-  // en el detalle de venta. Los Administradores siempre lo tienen habilitado.
   const [puedeEditarPrecio, setPuedeEditarPrecio] = useState(false);
-
   const [tipoComprobante, setTipoComprobante] = useState<TipoComprobante>('nota');
-
-  // Si esta venta se inició cargando una cotización guardada
-  // (?cotizacionId=25), guardamos su id para marcarla como "convertida"
-  // una vez que la venta se confirme, y para mostrar un aviso al usuario.
   const [cotizacionOrigenId, setCotizacionOrigenId] = useState<number | null>(null);
   const cotizacionProcesadaRef = useRef(false);
 
@@ -130,8 +111,6 @@ export default function GenerarVentaPage() {
 
   const verificarPermisoEditarPrecio = async () => {
     if (!empleado) return;
-    // Los administradores no tienen registros de permisos individuales
-    // (se excluyen en la pantalla de asignación), así que siempre pueden.
     if (empleado.rol === 'Administrador') {
       setPuedeEditarPrecio(true);
       return;
@@ -173,7 +152,6 @@ export default function GenerarVentaPage() {
     cargarClientes();
     verificarCaja();
     verificarPermisoEditarPrecio();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empleado, cargando, router]);
 
   useEffect(() => {
@@ -185,32 +163,25 @@ export default function GenerarVentaPage() {
   const productosVisibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
 
-    // 1. Filtrado inicial según la búsqueda
     const filtrados = productos.filter((p) => {
       if (!q) return true;
-      const producto = p as ProductoConCodigo;
+      const producto = p as ProductoConCodigo & { barras?: string };
       const nombreMatch = producto.nombre.toLowerCase().includes(q);
       const principioMatch = producto.principioActivo?.nombre?.toLowerCase().includes(q);
-      const codigoBarrasMatch = producto.codigo_barras?.toLowerCase().includes(q);
+      const codigoBarrasMatch = (producto.barras ?? producto.codigo_barras)?.toLowerCase().includes(q);
 
       return nombreMatch || principioMatch || codigoBarrasMatch;
     });
 
-    // 2. Ordenamiento: productos con stock > 0 primero, sin stock (<= 0) al final
     const ordenados = [...filtrados].sort((a, b) => {
       const aSinStock = a.stock <= 0 ? 1 : 0;
       const bSinStock = b.stock <= 0 ? 1 : 0;
       return aSinStock - bSinStock;
     });
 
-    // 3. Devolver los primeros 30 resultados ordenados
     return ordenados.slice(0, 30);
   }, [busqueda, productos]);
 
-  // Precarga el carrito y los datos del cliente desde una cotización
-  // guardada cuando la venta se abre con ?cotizacionId=25. Espera a que
-  // el catálogo de productos ya esté cargado para poder usar el producto
-  // completo (con sus opciones de blister/caja) en vez del snapshot.
   useEffect(() => {
     if (cotizacionProcesadaRef.current) return;
     const idParam = searchParams.get('cotizacionId');
@@ -233,11 +204,6 @@ export default function GenerarVentaPage() {
 
         const nuevoCarrito: CarritoItem[] = cot.detalles.map((d) => {
           const productoCompleto = productos.find((p) => p.id === d.producto.id);
-          // Si el producto ya no está activo o fue eliminado, armamos un
-          // snapshot mínimo con lo que sabemos de la cotización, para no
-          // romper la pantalla. Se castea porque el tipo Producto real
-          // tiene más campos (laboratorio, categoría, etc.) que aquí no
-          // conocemos.
           const productoBase = (productoCompleto ?? {
             id: d.producto.id,
             nombre: d.producto.nombre,
@@ -303,8 +269,6 @@ export default function GenerarVentaPage() {
   );
 
   const tieneCliente = !!(idClienteSeleccionado || nombreCliente.trim());
-
-  // Etiqueta legible para mensajes de stock según el tipo de venta.
   const etiquetaTipo = (tipoVenta: TipoVenta) => (tipoVenta === 'unidad' ? 'unidad(es)' : `${tipoVenta}(s)`);
 
   const agregarProducto = (producto: Producto) => {
@@ -485,7 +449,6 @@ export default function GenerarVentaPage() {
     setError('');
     if (carrito.length === 0) return setError('Agrega al menos un producto.');
 
-    // Boleta y Factura Electrónica aún no están implementadas.
     if (tipoComprobante === 'boleta' || tipoComprobante === 'factura') {
       setError('Este tipo de comprobante todavía no está disponible.');
       return;
@@ -517,15 +480,7 @@ export default function GenerarVentaPage() {
         idCliente = nuevoCliente.id;
       }
 
-      // El backend calcula el vuelto a partir de montoPagado - total, así que
-      // solo tiene sentido enviarlo cuando hubo un pago en Efectivo. Si no
-      // hubo vuelto (pago exacto o sin efectivo), enviamos el total como
-      // montoPagado para que el vuelto quede en 0.
       const montoPagado = total + vuelto;
-
-      // El código de boleta de Izipay va en la parte de pago correspondiente,
-      // no en el string de metodoPago (que ahora queda corto y legible, ej.
-      // "Efectivo (100.00), Yape/Plin (50.00)").
       const codigoIzipay = pagos.find((p) => p.metodo === 'Izipay')?.codigoIzipay;
 
       const venta = await ventasApi.crear({
@@ -543,9 +498,6 @@ export default function GenerarVentaPage() {
       if (pestanaBoleta) pestanaBoleta.location.href = `/dashboard/ventas/boleta?id=${venta.id}&vuelto=${vuelto.toFixed(2)}`;
       else abrirBoletaImprimible(venta.id, vuelto);
 
-      // Si esta venta se generó a partir de una cotización cargada, la
-      // marcamos como convertida para que no pueda volver a cargarse.
-      // No debe bloquear el flujo de venta si esto falla.
       if (cotizacionOrigenId) {
         cotizacionesApi.marcarConvertida(cotizacionOrigenId).catch(() => {});
         setCotizacionOrigenId(null);
@@ -569,21 +521,26 @@ export default function GenerarVentaPage() {
     }
   };
 
+  // --- Búsqueda y Lectora de Código de Barras ---
   const intentarAgregarPorCodigoBarras = (valor: string): boolean => {
     const q = valor.trim().toLowerCase();
     if (!q) return false;
-    const match = (productos as ProductoConCodigo[]).find(
-      (p) => p.codigo_barras && p.codigo_barras.toLowerCase() === q
-    );
-    if (match && match.stock > 0) {
-      agregarProducto(match);
-      setBusqueda('');
-      setError('');
-      return true;
-    }
-    if (match && match.stock <= 0) {
-      setError(`"${match.nombre}" no tiene stock disponible.`);
-      setBusqueda('');
+
+    // Busca coincidencia exacta considerando tanto 'barras' como 'codigo_barras'
+    const match = (productos as (ProductoConCodigo & { barras?: string })[]).find((p) => {
+      const codigo = p.barras ?? p.codigo_barras;
+      return codigo && codigo.toLowerCase() === q;
+    });
+
+    if (match) {
+      if (match.stock > 0) {
+        agregarProducto(match);
+        setBusqueda('');
+        setError('');
+      } else {
+        setError(`"${match.nombre}" no tiene stock disponible.`);
+        setBusqueda('');
+      }
       return true;
     }
     return false;
@@ -602,9 +559,12 @@ export default function GenerarVentaPage() {
     }
     if (e.key === 'Enter') {
       e.preventDefault();
+      
+      // 1. Prioriza la lectura por código de barras
       const agregadoPorCodigo = intentarAgregarPorCodigoBarras(busqueda);
       if (agregadoPorCodigo) return;
 
+      // 2. Si no es un código de barras exacto, agrega el producto seleccionado en la tabla
       const seleccionado = productosVisibles[selectedIndex];
       if (seleccionado) {
         agregarProducto(seleccionado);
@@ -633,7 +593,6 @@ export default function GenerarVentaPage() {
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carrito, modalPagoAbierto, mostrarConfirmVaciar, modoSinMouse, tipoComprobante]);
 
   const inputClass = "w-full px-3 py-2 rounded-lg border border-zinc-300 bg-zinc-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all";
@@ -778,7 +737,6 @@ export default function GenerarVentaPage() {
           </div>
         </div>
 
-        {/* Selector de tipo de comprobante (Boleta/Factura llegan luego) */}
         <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-50 border border-zinc-200 shrink-0">
           <FileText size={15} className="text-primary shrink-0" />
           <select
@@ -1024,7 +982,7 @@ export default function GenerarVentaPage() {
                       <button
                         onClick={() => quitarProducto(item.idProducto, item.tipoVenta)}
                         className="p-1 text-zinc-400 hover:text-red-500 transition-colors shrink-0 cursor-pointer"
-                        title="Quitar producto (o navega con Tab y presiona Enter)"
+                        title="Quitar producto"
                       >
                         <Trash2 size={14} />
                       </button>
