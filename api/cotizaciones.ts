@@ -68,3 +68,5 @@ export const cotizacionesApi = {
   marcarConvertida: (id: number) =>
     apiFetch<void>(`/cotizaciones/${id}/convertir`, { method: 'PUT' }),
 };
+
+export const CLIENTE_VARIOS_LABEL = 'Clientes Varios';

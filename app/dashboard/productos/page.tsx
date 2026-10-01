@@ -24,7 +24,7 @@ const productoToPayload = (p: Producto): ProductoPayload => ({
   requiere_receta: p.requiere_receta,
   fecha_vencimiento: p.fecha_vencimiento ?? '',
   lote: p.lote ?? '',
-  laboratorio: { id: p.laboratorio.id },
+  laboratorio: p.laboratorio ? { id: p.laboratorio.id } : null,
   categoria: { id: p.categoria.id },
   principioActivo: p.principioActivo ? { id: p.principioActivo.id } : null,
   accionTerapeutica: p.accionTerapeutica ? { id: p.accionTerapeutica.id } : null,

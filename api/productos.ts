@@ -33,7 +33,7 @@ export interface Producto {
   requiere_receta: boolean;
   fecha_vencimiento?: string;
   lote?: string;
-  laboratorio: Laboratorio;
+  laboratorio: Laboratorio | null;
   categoria: Categoria;
   principioActivo?: PrincipioActivo | null;
   accionTerapeutica?: AccionTerapeutica | null;
@@ -49,7 +49,7 @@ export interface Producto {
 }
 
 export type ProductoPayload = Omit<Producto, 'id' | 'laboratorio' | 'categoria' | 'principioActivo' | 'accionTerapeutica'> & {
-  laboratorio: { id: number };
+  laboratorio: { id: number } | null;
   categoria: { id: number };
   principioActivo?: { id: number } | null;
   accionTerapeutica?: { id: number } | null;

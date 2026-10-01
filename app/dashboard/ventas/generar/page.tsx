@@ -84,6 +84,12 @@ export default function GenerarVentaPage() {
     []
   );
 
+  // Detecta si el producto pertenece a una categoría de tipo "servicio" (sin stock físico)
+  function esCategoriaServicio(nombreCategoria?: string | null): boolean {
+    if (!nombreCategoria) return false;
+    return nombreCategoria.toLowerCase().includes('servicio');
+  }
+
   useEffect(() => {
     const esPopup = window.opener !== null || new URLSearchParams(window.location.search).get('popup') === 'true';
     if (esPopup) {
@@ -177,8 +183,8 @@ export default function GenerarVentaPage() {
     });
 
     const ordenados = [...filtrados].sort((a, b) => {
-      const aSinStock = a.stock <= 0 ? 1 : 0;
-      const bSinStock = b.stock <= 0 ? 1 : 0;
+      const aSinStock = !esCategoriaServicio(a.categoria?.nombre) && a.stock <= 0 ? 1 : 0;
+      const bSinStock = !esCategoriaServicio(b.categoria?.nombre) && b.stock <= 0 ? 1 : 0;
       return aSinStock - bSinStock;
     });
 
@@ -228,8 +234,12 @@ export default function GenerarVentaPage() {
 
         setCarrito(nuevoCarrito);
         if (cot.idCliente) setIdClienteSeleccionado(cot.idCliente);
-        setNombreCliente(cot.clienteNombre ?? '');
-        setDniCliente(cot.clienteDni ?? '');
+
+        // Si la cotización no tenía un cliente real (idCliente null) y el nombre
+        // guardado es la etiqueta genérica "Clientes Varios", no la propagamos
+        const nombreReal = cot.idCliente || cot.clienteNombre !== 'Clientes Varios' ? (cot.clienteNombre ?? '') : '';
+        setNombreCliente(nombreReal);
+        setDniCliente(cot.idCliente ? (cot.clienteDni ?? '') : '');
         setCotizacionOrigenId(cot.id);
         setError('');
       })
@@ -275,13 +285,15 @@ export default function GenerarVentaPage() {
   const etiquetaTipo = (tipoVenta: TipoVenta) => (tipoVenta === 'unidad' ? 'unidad(es)' : `${tipoVenta}(s)`);
 
   const agregarProducto = (producto: Producto) => {
-    if (producto.stock <= 0) {
+  const esServicio = esCategoriaServicio(producto.categoria?.nombre);
+
+    if (!esServicio && producto.stock <= 0) {
       setError(`"${producto.nombre}" no tiene stock disponible.`);
       return;
     }
     const existente = carrito.find((c) => c.idProducto === producto.id && c.tipoVenta === 'unidad');
     const cantidadDeseada = (existente?.cantidad ?? 0) + 1;
-    if (cantidadDeseada > producto.stock) {
+    if (!esServicio && cantidadDeseada > producto.stock) {
       setError(`Solo hay ${producto.stock} unidad(es) disponibles de "${producto.nombre}".`);
       return;
     }
@@ -302,13 +314,15 @@ export default function GenerarVentaPage() {
     cantidad: number,
     precioUnitarioManual?: number
   ) => {
-    if (producto.stock <= 0) {
+    const esServicio = esCategoriaServicio(producto.categoria?.nombre);
+
+    if (!esServicio && producto.stock <= 0) {
       setError(`"${producto.nombre}" no tiene stock disponible.`);
       return;
     }
 
     const unidadesBase = unidadesBasePorTipo(producto, tipoVenta);
-    const maxCantidad = Math.floor(producto.stock / unidadesBase);
+    const maxCantidad = esServicio ? 0 : Math.floor(producto.stock / unidadesBase);
     const existente = carrito.find((c) => c.idProducto === producto.id && c.tipoVenta === tipoVenta);
     const cantidadDeseadaTotal = (existente?.cantidad ?? 0) + cantidad;
 
@@ -458,7 +472,9 @@ export default function GenerarVentaPage() {
     }
 
     const excedeStock = carrito.find(
-      (item) => item.cantidad * unidadesBasePorTipo(item.producto, item.tipoVenta) > item.producto.stock
+      (item) =>
+        !esCategoriaServicio(item.producto.categoria?.nombre) &&
+        item.cantidad * unidadesBasePorTipo(item.producto, item.tipoVenta) > item.producto.stock
     );
     if (excedeStock) return setError(`Stock insuficiente para "${excedeStock.producto.nombre}".`);
 
@@ -472,7 +488,7 @@ export default function GenerarVentaPage() {
       const pestanaBoleta = window.open('', '_blank');
 
       let idCliente: number | null = idClienteSeleccionado;
-      if (!idCliente && nombreCliente.trim()) {
+      if (!idCliente && nombreCliente.trim() && nombreCliente.trim() !== 'Clientes Varios') {
         const { nombres, apellidoPaterno, apellidoMaterno } = splitNombreCompleto(nombreCliente.trim());
         const nuevoCliente = await clientesApi.crear({
           nombres,
@@ -908,7 +924,8 @@ export default function GenerarVentaPage() {
               </thead>
               <tbody className="divide-y divide-zinc-100">
                 {productosVisibles.map((p, idx) => {
-                  const sinStock = p.stock <= 0;
+                  const esServicio = esCategoriaServicio(p.categoria?.nombre);
+                  const sinStock = !esServicio && p.stock <= 0;
                   return (
                     <tr
                       key={p.id}
@@ -929,6 +946,10 @@ export default function GenerarVentaPage() {
                           </div>
                         )}
 
+                        {esServicio && (
+                          <span className="inline-block mt-0.5 text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">Servicio</span>
+                        )}
+
                         {p.vende_por_presentaciones && (p.blister_habilitado || p.caja_habilitado) && (
                           <div className="flex gap-1 mt-0.5">
                             {p.blister_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">Blister</span>}
@@ -938,14 +959,14 @@ export default function GenerarVentaPage() {
                       </td>
                       <td className="px-4 py-2 text-right text-zinc-700 font-semibold whitespace-nowrap">S/ {p.precio_venta.toFixed(2)}</td>
                       <td className={`px-4 py-2 text-right font-mono whitespace-nowrap ${sinStock ? 'text-red-400 font-semibold' : 'text-zinc-900'}`}>
-                        {sinStock ? 'Sin stock' : p.stock}
+                        {esServicio ? '—' : sinStock ? 'Sin stock' : p.stock}
                       </td>
                       <td className="px-4 py-2 text-right whitespace-nowrap">
                         <button
                           onClick={(e) => { e.stopPropagation(); agregarProducto(p); }}
                           disabled={sinStock}
                           title={sinStock ? 'Sin stock disponible' : undefined}
-                          className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${
+                          className={`px-3 py-1 text-sm font-semibold rounded-lg transition-colors ${
                             sinStock
                               ? 'text-zinc-300 bg-zinc-100 cursor-not-allowed'
                               : 'text-primary bg-primary/10 hover:bg-primary/20 cursor-pointer'
@@ -990,7 +1011,7 @@ export default function GenerarVentaPage() {
               <button
                 type="button"
                 onClick={solicitarVaciarDetalle}
-                className="flex items-center gap-1 text-xs font-semibold text-red-500 hover:text-red-600 transition-colors cursor-pointer"
+                className="flex items-center gap-1 text-xs font-semibold text-red-500 hover:text-red-600 transition-colors cursor-pointer p-2 hover:bg-red-50 rounded-lg"
               >
                 <Trash2 size={13} /> Vaciar
               </button>
@@ -1010,7 +1031,7 @@ export default function GenerarVentaPage() {
                       <p className="text-xs font-semibold text-zinc-800 truncate flex-1">{item.producto.nombre}</p>
                       <button
                         onClick={() => quitarProducto(item.idProducto, item.tipoVenta)}
-                        className="p-1 text-zinc-400 hover:text-red-500 transition-colors shrink-0 cursor-pointer"
+                        className="p-1 text-red-500 hover:text-red-600 hover:bg-red-100 rounded-lg transition-colors shrink-0 cursor-pointer"
                         title="Quitar producto"
                       >
                         <Trash2 size={14} />
@@ -1031,7 +1052,7 @@ export default function GenerarVentaPage() {
                       )}
 
                       <div className="flex flex-col gap-0.5">
-                        <span className="text-[10px] text-zinc-400 font-medium">Cant.</span>
+                        <span className="text-[10px] text-zinc-500 font-medium">Cant.</span>
                         <input
                           type="number"
                           min={1}
@@ -1042,7 +1063,7 @@ export default function GenerarVentaPage() {
                       </div>
 
                       <div className="flex flex-col gap-0.5">
-                        <span className="text-[10px] text-zinc-400 font-medium">P. Unit.</span>
+                        <span className="text-[10px] text-zinc-500 font-medium">P. Unit.</span>
                         <div className="flex items-center gap-0.5">
                           <span className="text-xs text-zinc-400">S/</span>
                           {puedeEditarPrecio ? (
@@ -1064,7 +1085,7 @@ export default function GenerarVentaPage() {
                       </div>
 
                       <div className="flex flex-col gap-0.5">
-                        <span className="text-[10px] text-zinc-400 font-medium">Subtotal</span>
+                        <span className="text-[10px] text-zinc-500 font-medium">Subtotal</span>
                         <div className="flex items-center gap-0.5">
                           <span className="text-xs text-zinc-400">S/</span>
                           {puedeEditarPrecio ? (

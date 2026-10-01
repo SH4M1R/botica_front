@@ -265,16 +265,16 @@ export default function GenerarCompraPage() {
       </div>
 
       {/* Contenedor Principal flexible */}
-      <div className="flex-1 flex flex-col justify-between rounded-2xl border border-zinc-200 bg-white p-4 shadow-xs overflow-hidden">
-        <div className="space-y-3 overflow-y-auto pr-1">
+      <div className="flex-1 flex flex-col justify-between rounded-2xl border border-zinc-200 bg-white p-4 shadow-xs overflow-hidden min-h-0">
+        <div className="flex-1 flex flex-col min-h-0 gap-3">
           {error && (
-            <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600 font-medium">
+            <p className="shrink-0 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600 font-medium">
               {error}
             </p>
           )}
 
           {/* Fila 1 - Comprobante / Datos Básicos / Método de Pago */}
-          <div className="grid grid-cols-12 items-end gap-3">
+          <div className="shrink-0 grid grid-cols-12 items-end gap-3">
             <div className="col-span-12 sm:col-span-2">
               <label className="mb-1 block text-xs font-semibold text-zinc-600">Comprobante*</label>
               <select
@@ -346,7 +346,7 @@ export default function GenerarCompraPage() {
           </div>
 
           {/* Fila 2 - Proveedor & Acciones de Producto */}
-          <div className="grid grid-cols-12 items-end gap-4">
+          <div className="shrink-0 grid grid-cols-12 items-end gap-4">
             <div className="relative col-span-12 lg:col-span-4">
               <label className="mb-1 block text-xs font-semibold text-zinc-600">Proveedor*</label>
               <div className="flex gap-1.5">
@@ -429,9 +429,8 @@ export default function GenerarCompraPage() {
           </div>
 
           {/* TABLA CON TAMAÑO FIJO Y SCROLL INTERNO */}
-          <div className="rounded-xl border border-zinc-200 overflow-hidden">
-            {/* Altura fija con scroll vertical */}
-            <div className="h-56 overflow-y-auto">
+      <div className="flex-1 min-h-[180px] flex flex-col rounded-xl border border-zinc-200 overflow-hidden">
+            <div className="flex-1 overflow-y-auto">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-zinc-100 shadow-xs">
                   <tr className="border-b border-zinc-200 text-left text-[11px] font-bold uppercase tracking-wider text-zinc-500">
@@ -448,7 +447,7 @@ export default function GenerarCompraPage() {
                 <tbody className="divide-y divide-zinc-100 bg-white">
                   {detalles.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-3 py-16 text-center text-zinc-400 text-xs">
+                      <td colSpan={8} className="px-3 py-16 text-center text-zinc-400 text-sm">
                         Aún no has agregado productos a la compra
                       </td>
                     </tr>

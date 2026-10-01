@@ -305,9 +305,9 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
 
   return (
     <div className="flex flex-col h-full bg-primary text-white shadow-2xl">
-      {/* Top Header con WhatsApp y Botón de Colapsar */}
+      {/* Top Header con WhatsApp, Separador y Botón de Colapsar */}
       <div
-        className={`hidden md:flex items-center border-b border-white/50 px-3 py-3 ${
+        className={`hidden md:flex items-center border-b border-white px-3 py-3 ${
           collapsed ? 'flex-col gap-2 justify-center' : 'justify-between'
         }`}
       >
@@ -315,18 +315,25 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
           href={obtenerWhatsAppLink()}
           target="_blank"
           rel="noopener noreferrer"
-          title={collapsed ? 'Comunícate Con Nosotros' : 'Comunícate Con Nosotros'}
-          className={`flex items-center gap-2 rounded-lg text-sm font-semibold transition-all text-white hover:bg-white/20 p-1.5 ${
+          title={collapsed ? 'Comunícate con JPSYSTEMS' : 'Comunícate con JPSYSTEMS'}
+          className={`flex items-center gap-2 rounded-lg text-sm font-semibold transition-all text-white hover:bg-white/20 p-0.5 ${
             collapsed ? 'justify-center' : 'flex-1 min-w-0 mr-1'
           }`}
         >
           <img
             src="/JPSYSTEMS.png"
             alt="JPSYSTEMS"
-            className="w-6 h-6 rounded-full object-cover shrink-0 border border-white/30"
+            className="w-10 h-10 rounded-full object-cover shrink-0 border border-white/30"
           />
-          {!collapsed && <span className="truncate text-xs">Comunícate con nosotros</span>}
+          {!collapsed && <span className="truncate text-xs">Contactanos</span>}
         </a>
+
+        {/* Línea de separación (Vertical en expandido, Horizontal en colapsado) */}
+        <div
+          className={`bg-white shrink-0 ${
+            collapsed ? 'w-full h-[1px]' : 'h-8 w-[1px] mx-1'
+          }`}
+        />
 
         <button
           type="button"
