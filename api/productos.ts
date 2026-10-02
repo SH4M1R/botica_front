@@ -26,13 +26,12 @@ export interface Producto {
   codigo_digemid?: string;
   precio_costo: number;
   precio_venta: number;
-  stock: number;
+  stock?: number;
+  fecha_vencimiento?: string | null;
   stock_minimo?: number;
   barras?: string;
   estado: boolean;
   requiere_receta: boolean;
-  fecha_vencimiento?: string;
-  lote?: string;
   laboratorio: Laboratorio | null;
   categoria: Categoria;
   principioActivo?: PrincipioActivo | null;
@@ -48,7 +47,7 @@ export interface Producto {
   registro_sanitario?: string | null;
 }
 
-export type ProductoPayload = Omit<Producto, 'id' | 'laboratorio' | 'categoria' | 'principioActivo' | 'accionTerapeutica'> & {
+export type ProductoPayload = Omit<Producto, 'id' | 'laboratorio' | 'categoria' | 'principioActivo' | 'accionTerapeutica' | 'stock' | 'fecha_vencimiento'> & {
   laboratorio: { id: number } | null;
   categoria: { id: number };
   principioActivo?: { id: number } | null;
@@ -60,7 +59,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     ...options,
   });
-  if (!res.ok) throw new Error(`Error ${res.status} en ${path}`);
+  if (!res.ok) {
+    const cuerpo = await res.text().catch(() => '');
+    throw new Error(cuerpo || `Error ${res.status} en ${path}`);
+  }
   const text = await res.text();
   return text ? JSON.parse(text) : (undefined as T);
 }

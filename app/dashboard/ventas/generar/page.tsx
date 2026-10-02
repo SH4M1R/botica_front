@@ -10,6 +10,7 @@ import type { Venta, Cliente, TipoComprobanteVenta } from '@/api/ventas';
 import { arqueoApi } from '@/api/arqueo';
 import type { ArqueoCaja } from '@/api/arqueo';
 import { permisosApi } from '@/api/permisos';
+import { lotesApi, mergearStockEnProductos } from '@/api/lotes';
 import { cotizacionesApi } from '@/api/cotizaciones';
 import { PERMISO_EDITAR_PRECIO_VENTA } from '@/constants/permisos';
 import { useSession } from '@/hooks/useSession';
@@ -30,6 +31,12 @@ import {
 export type { TipoVenta, CarritoItem, ProductoConCodigo };
 export { tiposDisponibles, precioPorTipo, unidadesBasePorTipo };
 
+// Producto con stock y fecha_vencimiento ya mergeados desde /lotes/resumen-stock.
+// El tipo Producto base los declara opcionales porque ya no vienen de /productos;
+// este tipo evita que el resto del archivo trate `stock` como posiblemente
+// undefined, ya que cargarProductos siempre hace el merge antes de guardarlo.
+export type ProductoConStock = Producto & { stock: number; fecha_vencimiento: string | null };
+
 export type TipoComprobante = 'nota' | 'boleta' | 'factura';
 
 const COMPROBANTE_OPTIONS: { value: TipoComprobante; label: string; disabled?: boolean }[] = [
@@ -44,12 +51,18 @@ const TIPO_VENTA_BACKEND: Record<TipoComprobante, TipoComprobanteVenta> = {
   factura: 'factura',
 };
 
+// Detecta si el producto pertenece a una categoría de tipo "servicio" (sin stock físico)
+function esCategoriaServicio(nombreCategoria?: string | null): boolean {
+  if (!nombreCategoria) return false;
+  return nombreCategoria.toLowerCase().includes('servicio');
+}
+
 export default function GenerarVentaPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { empleado, cargando } = useSession();
 
-  const [productos, setProductos] = useState<Producto[]>([]);
+  const [productos, setProductos] = useState<ProductoConStock[]>([]);
   const [busqueda, setBusqueda] = useState('');
   const [carrito, setCarrito] = useState<CarritoItem[]>([]);
 
@@ -84,12 +97,6 @@ export default function GenerarVentaPage() {
     []
   );
 
-  // Detecta si el producto pertenece a una categoría de tipo "servicio" (sin stock físico)
-  function esCategoriaServicio(nombreCategoria?: string | null): boolean {
-    if (!nombreCategoria) return false;
-    return nombreCategoria.toLowerCase().includes('servicio');
-  }
-
   useEffect(() => {
     const esPopup = window.opener !== null || new URLSearchParams(window.location.search).get('popup') === 'true';
     if (esPopup) {
@@ -100,8 +107,14 @@ export default function GenerarVentaPage() {
     };
   }, []);
 
+  // El stock ya NO viene en /productos (ahora vive en la tabla de lotes):
+  // se pide aparte con /lotes/resumen-stock y se mergea antes de guardar.
   const cargarProductos = () => {
-    productosApi.listarActivos().then(setProductos).catch(() => setProductos([]));
+    Promise.all([productosApi.listarActivos(), lotesApi.resumenStock()])
+      .then(([productosData, resumen]) => {
+        setProductos(mergearStockEnProductos(productosData, resumen));
+      })
+      .catch(() => setProductos([]));
   };
 
   const cargarClientes = () => {
@@ -174,7 +187,7 @@ export default function GenerarVentaPage() {
 
     const filtrados = productos.filter((p) => {
       if (!q) return true;
-      const producto = p as ProductoConCodigo & { barras?: string };
+      const producto = p as ProductoConStock & ProductoConCodigo & { barras?: string };
       const nombreMatch = producto.nombre.toLowerCase().includes(q);
       const principioMatch = producto.principioActivo?.nombre?.toLowerCase().includes(q);
       const codigoBarrasMatch = (producto.barras ?? producto.codigo_barras)?.toLowerCase().includes(q);
@@ -212,16 +225,29 @@ export default function GenerarVentaPage() {
         }
 
         const nuevoCarrito: CarritoItem[] = cot.detalles.map((d) => {
+          // Si el producto ya no existe en el catálogo activo, se arma un
+          // "stand-in" con stock 0 solo para poder mostrar el nombre; no se
+          // podrá vender porque no pasará la validación de stock más abajo.
           const productoCompleto = productos.find((p) => p.id === d.producto.id);
-          const productoBase = (productoCompleto ?? {
+          const productoBase: ProductoConStock = productoCompleto ?? {
             id: d.producto.id,
             nombre: d.producto.nombre,
+            precio_costo: 0,
             precio_venta: d.precioUnitario,
             stock: 0,
+            fecha_vencimiento: null,
+            estado: true,
+            requiere_receta: false,
+            laboratorio: null,
+            categoria: { id: 0, nombre: '' },
             vende_por_presentaciones: false,
             blister_habilitado: false,
+            unidades_blister: null,
+            precio_blister: null,
             caja_habilitado: false,
-          }) as Producto;
+            unidades_caja: null,
+            precio_caja: null,
+          };
 
           return {
             idProducto: d.producto.id,
@@ -237,6 +263,8 @@ export default function GenerarVentaPage() {
 
         // Si la cotización no tenía un cliente real (idCliente null) y el nombre
         // guardado es la etiqueta genérica "Clientes Varios", no la propagamos
+        // al formulario: dejarla vacía evita que handleConfirmarVenta la
+        // interprete como un nombre nuevo y cree un cliente duplicado en la BD.
         const nombreReal = cot.idCliente || cot.clienteNombre !== 'Clientes Varios' ? (cot.clienteNombre ?? '') : '';
         setNombreCliente(nombreReal);
         setDniCliente(cot.idCliente ? (cot.clienteDni ?? '') : '');
@@ -284,8 +312,8 @@ export default function GenerarVentaPage() {
   const tieneCliente = !!(idClienteSeleccionado || nombreCliente.trim());
   const etiquetaTipo = (tipoVenta: TipoVenta) => (tipoVenta === 'unidad' ? 'unidad(es)' : `${tipoVenta}(s)`);
 
-  const agregarProducto = (producto: Producto) => {
-  const esServicio = esCategoriaServicio(producto.categoria?.nombre);
+  const agregarProducto = (producto: ProductoConStock) => {
+    const esServicio = esCategoriaServicio(producto.categoria?.nombre);
 
     if (!esServicio && producto.stock <= 0) {
       setError(`"${producto.nombre}" no tiene stock disponible.`);
@@ -314,22 +342,23 @@ export default function GenerarVentaPage() {
     cantidad: number,
     precioUnitarioManual?: number
   ) => {
-    const esServicio = esCategoriaServicio(producto.categoria?.nombre);
+    const prod = producto as ProductoConStock;
+    const esServicio = esCategoriaServicio(prod.categoria?.nombre);
 
-    if (!esServicio && producto.stock <= 0) {
-      setError(`"${producto.nombre}" no tiene stock disponible.`);
+    if (!esServicio && prod.stock <= 0) {
+      setError(`"${prod.nombre}" no tiene stock disponible.`);
       return;
     }
 
-    const unidadesBase = unidadesBasePorTipo(producto, tipoVenta);
-    const maxCantidad = esServicio ? 0 : Math.floor(producto.stock / unidadesBase);
-    const existente = carrito.find((c) => c.idProducto === producto.id && c.tipoVenta === tipoVenta);
+    const unidadesBase = unidadesBasePorTipo(prod, tipoVenta);
+    const maxCantidad = esServicio ? 0 : Math.floor(prod.stock / unidadesBase);
+    const existente = carrito.find((c) => c.idProducto === prod.id && c.tipoVenta === tipoVenta);
     const cantidadDeseadaTotal = (existente?.cantidad ?? 0) + cantidad;
 
     let cantidadFinal = cantidadDeseadaTotal;
     if (maxCantidad > 0 && cantidadDeseadaTotal > maxCantidad) {
       cantidadFinal = maxCantidad;
-      setError(`Solo hay stock para ${maxCantidad} ${etiquetaTipo(tipoVenta)} de "${producto.nombre}".`);
+      setError(`Solo hay stock para ${maxCantidad} ${etiquetaTipo(tipoVenta)} de "${prod.nombre}".`);
     } else {
       setError('');
     }
@@ -337,7 +366,7 @@ export default function GenerarVentaPage() {
     setCarrito((prev) => {
       if (existente) {
         return prev.map((item) =>
-          item.idProducto === producto.id && item.tipoVenta === tipoVenta
+          item.idProducto === prod.id && item.tipoVenta === tipoVenta
             ? { ...item, cantidad: cantidadFinal, precioUnitario: precioUnitarioManual ?? item.precioUnitario }
             : item
         );
@@ -345,11 +374,11 @@ export default function GenerarVentaPage() {
       return [
         ...prev,
         {
-          idProducto: producto.id,
+          idProducto: prod.id,
           cantidad: cantidadFinal,
           tipoVenta,
-          precioUnitario: precioUnitarioManual ?? precioPorTipo(producto, tipoVenta),
-          producto,
+          precioUnitario: precioUnitarioManual ?? precioPorTipo(prod, tipoVenta),
+          producto: prod,
         },
       ];
     });
@@ -359,7 +388,9 @@ export default function GenerarVentaPage() {
     const item = carrito.find((c) => c.idProducto === idProducto && c.tipoVenta === tipoVenta);
     if (!item) return;
 
-    const maxCantidad = Math.floor(item.producto.stock / unidadesBasePorTipo(item.producto, tipoVenta));
+    const prod = item.producto as ProductoConStock;
+    const esServicio = esCategoriaServicio(prod.categoria?.nombre);
+    const maxCantidad = esServicio ? 0 : Math.floor(prod.stock / unidadesBasePorTipo(prod, tipoVenta));
     let cantidadFinal = Math.max(1, cantidad);
 
     if (maxCantidad > 0 && cantidadFinal > maxCantidad) {
@@ -400,10 +431,12 @@ export default function GenerarVentaPage() {
     setCarrito((prev) => {
       const actual = prev.find((i) => i.idProducto === idProducto && i.tipoVenta === tipoActual);
       if (!actual) return prev;
+      const prod = actual.producto as ProductoConStock;
+      const esServicio = esCategoriaServicio(prod.categoria?.nombre);
       const destino = prev.find((i) => i.idProducto === idProducto && i.tipoVenta === nuevoTipo);
-      const nuevoPrecio = precioPorTipo(actual.producto, nuevoTipo);
-      const unidadesBaseNuevo = unidadesBasePorTipo(actual.producto, nuevoTipo);
-      const maxCantidadNuevo = Math.floor(actual.producto.stock / unidadesBaseNuevo);
+      const nuevoPrecio = precioPorTipo(prod, nuevoTipo);
+      const unidadesBaseNuevo = unidadesBasePorTipo(prod, nuevoTipo);
+      const maxCantidadNuevo = esServicio ? 0 : Math.floor(prod.stock / unidadesBaseNuevo);
 
       if (destino) {
         const cantidadCombinada = destino.cantidad + actual.cantidad;
@@ -471,11 +504,11 @@ export default function GenerarVentaPage() {
       return;
     }
 
-    const excedeStock = carrito.find(
-      (item) =>
-        !esCategoriaServicio(item.producto.categoria?.nombre) &&
-        item.cantidad * unidadesBasePorTipo(item.producto, item.tipoVenta) > item.producto.stock
-    );
+    const excedeStock = carrito.find((item) => {
+      const prod = item.producto as ProductoConStock;
+      return !esCategoriaServicio(prod.categoria?.nombre)
+        && item.cantidad * unidadesBasePorTipo(prod, item.tipoVenta) > prod.stock;
+    });
     if (excedeStock) return setError(`Stock insuficiente para "${excedeStock.producto.nombre}".`);
 
     setModalPagoAbierto(true);
@@ -540,7 +573,7 @@ export default function GenerarVentaPage() {
       setBusqueda('');
       setError('');
       setArchivoRecetaPendiente(null);
-      
+
       cargarProductos();
       cargarClientes();
       searchInputRef.current?.focus();
@@ -556,14 +589,14 @@ export default function GenerarVentaPage() {
     const q = valor.trim().toLowerCase();
     if (!q) return false;
 
-    // Busca coincidencia exacta considerando tanto 'barras' como 'codigo_barras'
-    const match = (productos as (ProductoConCodigo & { barras?: string })[]).find((p) => {
+    const match = (productos as (ProductoConStock & ProductoConCodigo & { barras?: string })[]).find((p) => {
       const codigo = p.barras ?? p.codigo_barras;
       return codigo && codigo.toLowerCase() === q;
     });
 
     if (match) {
-      if (match.stock > 0) {
+      const esServicio = esCategoriaServicio(match.categoria?.nombre);
+      if (esServicio || match.stock > 0) {
         agregarProducto(match);
         setBusqueda('');
         setError('');
@@ -589,12 +622,10 @@ export default function GenerarVentaPage() {
     }
     if (e.key === 'Enter') {
       e.preventDefault();
-      
-      // 1. Prioriza la lectura por código de barras
+
       const agregadoPorCodigo = intentarAgregarPorCodigoBarras(busqueda);
       if (agregadoPorCodigo) return;
 
-      // 2. Si no es un código de barras exacto, agrega el producto seleccionado en la tabla
       const seleccionado = productosVisibles[selectedIndex];
       if (seleccionado) {
         agregarProducto(seleccionado);
@@ -1006,7 +1037,7 @@ export default function GenerarVentaPage() {
                 />
               </label>
             )}
-            
+
             {carrito.length > 0 && (
               <button
                 type="button"

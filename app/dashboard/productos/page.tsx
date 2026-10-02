@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Plus, Search, Pencil, Trash2, Boxes, Package, AlertTriangle, CalendarClock, Database } from 'lucide-react';
 import { productosApi } from "@/api/productos";
 import type { Producto, ProductoPayload } from "@/api/productos";
+import { lotesApi, mergearStockEnProductos } from "@/api/lotes";
 import ProductoModal from "./components/ProductoModal";
 import { ToggleSwitch } from "./components/ProductoModal";
 import StockModal from "./components/StockModal";
@@ -12,32 +13,8 @@ import ModalEliminar from "@/components/ModalEliminar";
 import { ModalAlertaStock } from "./components/ModalStockBajo";
 import { ModalProductosPorVencer } from "./components/ModalProductoPorVencer";
 
-const productoToPayload = (p: Producto): ProductoPayload => ({
-  nombre: p.nombre,
-  codigo_digemid: p.codigo_digemid ?? '',
-  precio_costo: p.precio_costo,
-  precio_venta: p.precio_venta,
-  stock: p.stock,
-  stock_minimo: p.stock_minimo ?? 0,
-  barras: p.barras ?? '',
-  estado: p.estado,
-  requiere_receta: p.requiere_receta,
-  fecha_vencimiento: p.fecha_vencimiento ?? '',
-  lote: p.lote ?? '',
-  laboratorio: p.laboratorio ? { id: p.laboratorio.id } : null,
-  categoria: { id: p.categoria.id },
-  principioActivo: p.principioActivo ? { id: p.principioActivo.id } : null,
-  accionTerapeutica: p.accionTerapeutica ? { id: p.accionTerapeutica.id } : null,
-  vende_por_presentaciones: p.vende_por_presentaciones,
-  blister_habilitado: p.blister_habilitado,
-  unidades_blister: p.unidades_blister,
-  precio_blister: p.precio_blister,
-  caja_habilitado: p.caja_habilitado,
-  unidades_caja: p.unidades_caja,
-  precio_caja: p.precio_caja,
-  factor: p.factor ?? null,
-  registro_sanitario: p.registro_sanitario ?? null,
-});
+// Producto con stock/fecha_vencimiento ya mergeados desde /lotes/resumen-stock
+type ProductoConStock = Producto & { stock: number; fecha_vencimiento: string | null };
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
@@ -89,7 +66,7 @@ function StatCard({
 }
 
 export default function ProductosPage() {
-  const [productos, setProductos] = useState<Producto[]>([]);
+  const [productos, setProductos] = useState<ProductoConStock[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -109,10 +86,19 @@ export default function ProductosPage() {
   const [pageSize, setPageSize] = useState<number>(25);
   const [currentPage, setCurrentPage] = useState<number>(1);
 
+  // El stock y la fecha de vencimiento ya NO viven en /productos: se piden
+  // aparte desde /lotes/resumen-stock (stock total y próximo vencimiento por
+  // producto, calculados a partir de todos sus lotes) y se mergean aquí.
   const cargarProductos = async () => {
     setLoading(true);
     try {
-      setProductos(await productosApi.listar());
+      const [data, resumen] = await Promise.all([
+        productosApi.listar(),
+        lotesApi.resumenStock(),
+      ]);
+      setProductos(mergearStockEnProductos(data, resumen));
+    } catch {
+      setProductos([]);
     } finally {
       setLoading(false);
     }
@@ -178,7 +164,7 @@ export default function ProductosPage() {
     const hoy = new Date();
     const en90Dias = new Date();
     en90Dias.setDate(hoy.getDate() + 90);
-    
+
     const porVencerCount = productos.filter((p) => {
       if (!p.fecha_vencimiento) return false;
       const fechaVenc = new Date(p.fecha_vencimiento);
@@ -197,10 +183,15 @@ export default function ProductosPage() {
     };
   }, [productos]);
 
-  const handleGuardar = async (data: ProductoPayload) => {
-    if (productoActivo) await productosApi.actualizar(productoActivo.id, data);
-    else await productosApi.crear(data);
+  // Guardar producto (crear/editar). El ProductoModal ya gestiona el stock
+  // inicial (al crear) llamando a lotesApi.crearLote internamente, así que
+  // aquí solo se persiste la ficha del producto y se devuelve lo guardado.
+  const handleGuardar = async (data: ProductoPayload): Promise<Producto> => {
+    const guardado = productoActivo
+      ? await productosApi.actualizar(productoActivo.id, data)
+      : await productosApi.crear(data);
     await cargarProductos();
+    return guardado;
   };
 
   const handleEliminar = (producto: Producto) => {
@@ -215,22 +206,39 @@ export default function ProductosPage() {
     });
   };
 
-  const handleToggleEstado = async (producto: Producto) => {
-    const payload = { ...productoToPayload(producto), estado: !producto.estado };
+  // Payload para toggle de estado: ya no incluye stock/fecha_vencimiento/lote
+  // porque ProductoPayload ya no tiene esos campos (viven en lotes).
+  const handleToggleEstado = async (producto: ProductoConStock) => {
+    const payload: ProductoPayload = {
+      nombre: producto.nombre,
+      codigo_digemid: producto.codigo_digemid ?? '',
+      precio_costo: producto.precio_costo,
+      precio_venta: producto.precio_venta,
+      stock_minimo: producto.stock_minimo ?? 0,
+      barras: producto.barras ?? '',
+      estado: !producto.estado,
+      requiere_receta: producto.requiere_receta,
+      laboratorio: producto.laboratorio ? { id: producto.laboratorio.id } : null,
+      categoria: { id: producto.categoria.id },
+      principioActivo: producto.principioActivo ? { id: producto.principioActivo.id } : null,
+      accionTerapeutica: producto.accionTerapeutica ? { id: producto.accionTerapeutica.id } : null,
+      vende_por_presentaciones: producto.vende_por_presentaciones,
+      blister_habilitado: producto.blister_habilitado,
+      unidades_blister: producto.unidades_blister,
+      precio_blister: producto.precio_blister,
+      caja_habilitado: producto.caja_habilitado,
+      unidades_caja: producto.unidades_caja,
+      precio_caja: producto.precio_caja,
+      factor: producto.factor ?? null,
+      registro_sanitario: producto.registro_sanitario ?? null,
+    };
+
     setProductos((prev) => prev.map((p) => p.id === producto.id ? { ...p, estado: !p.estado } : p));
     try {
       await productosApi.actualizar(producto.id, payload);
     } catch {
       setProductos((prev) => prev.map((p) => p.id === producto.id ? { ...p, estado: producto.estado } : p));
     }
-  };
-
-  const handleGuardarStock = async (id: number, nuevoStock: number) => {
-    const producto = productos.find((p) => p.id === id);
-    if (!producto) return;
-    const payload = { ...productoToPayload(producto), stock: nuevoStock };
-    await productosApi.actualizar(id, payload);
-    await cargarProductos();
   };
 
   return (
@@ -367,7 +375,7 @@ export default function ProductosPage() {
               {productosPagina.map((p) => (
                 <tr key={p.id} className="hover:bg-zinc-50/60 transition-colors font-bold text-xs">
                   <td className="px-4 py-3 text-zinc-800 whitespace-normal text-left" title={p.nombre}>{p.nombre}</td>
-                  <td className="px-4 py-3 text-zinc-800 whitespace-normal text-left" title={p.laboratorio?.nombre}>{p.laboratorio?.nombre}</td>
+                  <td className="px-4 py-3 text-zinc-800 whitespace-normal text-left" title={p.laboratorio?.nombre}>{p.laboratorio?.nombre ?? '—'}</td>
                   <td className="px-4 py-3 text-primary font-semibold break-words whitespace-normal text-left" title={p.categoria?.nombre}>{p.categoria?.nombre}</td>
                   <td className="px-4 py-3 font-medium text-zinc-800 text-left">S/ {p.precio_venta.toFixed(2)}</td>
                   <td className="px-4 py-3 text-zinc-600 text-left">S/ {p.precio_costo.toFixed(2)}</td>
@@ -386,7 +394,7 @@ export default function ProductosPage() {
                     <div className="flex justify-end gap-1">
                       <button
                         onClick={() => { setProductoParaStock(p); setStockModalOpen(true); }}
-                        title="Modificar stock"
+                        title="Modificar stock / lotes"
                         className="p-2 text-primary hover:text-primary hover:bg-primary/10 rounded-lg transition-colors border-2"
                       >
                         <Boxes size={16} />
@@ -430,7 +438,7 @@ export default function ProductosPage() {
         open={stockModalOpen}
         producto={productoParaStock}
         onClose={() => setStockModalOpen(false)}
-        onSave={handleGuardarStock}
+        onCambio={cargarProductos}
       />
 
       <ModalEliminar

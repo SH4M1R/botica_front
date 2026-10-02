@@ -325,7 +325,7 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
             alt="JPSYSTEMS"
             className="w-10 h-10 rounded-full object-cover shrink-0 border border-white/30"
           />
-          {!collapsed && <span className="truncate text-xs">Contactanos</span>}
+          {!collapsed && <span className="truncate text-xs">Contáctanos</span>}
         </a>
 
         {/* Línea de separación (Vertical en expandido, Horizontal en colapsado) */}

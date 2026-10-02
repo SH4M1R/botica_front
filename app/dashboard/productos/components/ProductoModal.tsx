@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { X, Plus, Info } from 'lucide-react';
 import { laboratoriosApi, categoriasApi, principiosActivosApi, accionesTerapeuticasApi } from "@/api/productos";
 import type { Producto, ProductoPayload, Laboratorio, Categoria, PrincipioActivo, AccionTerapeutica } from "@/api/productos";
+import { lotesApi } from "@/api/lotes";
 import LaboratorioModal from './LaboratorioModal';
 import CategoriaModal from './CategoriaModal';
 import PrincipioActivoModal from './PrincipioActivoModal';
@@ -27,12 +28,14 @@ interface ProductoModalProps {
   open: boolean;
   producto: Producto | null;
   onClose: () => void;
-  onSave: (data: ProductoPayload) => Promise<void>;
+  // onSave ahora devuelve el producto guardado, para poder crear el lote
+  // inicial (solo en creación) inmediatamente después.
+  onSave: (data: ProductoPayload) => Promise<Producto>;
 }
 
 const emptyForm: ProductoPayload = {
-  nombre: '', codigo_digemid: '', precio_costo: 0, precio_venta: 0, stock: 0, stock_minimo: 0, barras: '',
-  estado: true, requiere_receta: false, fecha_vencimiento: '', lote: '',
+  nombre: '', codigo_digemid: '', precio_costo: 0, precio_venta: 0, stock_minimo: 0, barras: '',
+  estado: true, requiere_receta: false,
   laboratorio: { id: 0 }, categoria: { id: 0 },
   principioActivo: null, accionTerapeutica: null,
   vende_por_presentaciones: false,
@@ -41,7 +44,6 @@ const emptyForm: ProductoPayload = {
   factor: 1, registro_sanitario: null,
 };
 
-// Detecta si el nombre de categoría corresponde a "servicios", sin importar mayúsculas/minúsculas
 function esCategoriaServicio(nombreCategoria?: string | null): boolean {
   if (!nombreCategoria) return false;
   return nombreCategoria.toLowerCase().includes('servicio');
@@ -49,6 +51,7 @@ function esCategoriaServicio(nombreCategoria?: string | null): boolean {
 
 export default function ProductoModal({ open, producto, onClose, onSave }: ProductoModalProps) {
   const [form, setForm] = useState<ProductoPayload>(emptyForm);
+  const [stockInicial, setStockInicial] = useState<number>(0); // solo aplica al CREAR
   const [laboratorios, setLaboratorios] = useState<Laboratorio[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [principiosActivos, setPrincipiosActivos] = useState<PrincipioActivo[]>([]);
@@ -73,18 +76,16 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
     cargarPrincipios();
     cargarAcciones();
     setError('');
+    setStockInicial(0);
     setForm(producto ? {
       nombre: producto.nombre,
       codigo_digemid: producto.codigo_digemid ?? '',
       precio_costo: producto.precio_costo,
       precio_venta: producto.precio_venta,
-      stock: producto.stock,
       stock_minimo: producto.stock_minimo ?? 0,
       barras: producto.barras ?? '',
       estado: producto.estado,
       requiere_receta: producto.requiere_receta ?? false,
-      fecha_vencimiento: producto.fecha_vencimiento ?? '',
-      lote: producto.lote ?? '',
       laboratorio: producto.laboratorio ? { id: producto.laboratorio.id } : null,
       categoria: { id: producto.categoria.id },
       principioActivo: producto.principioActivo ? { id: producto.principioActivo.id } : null,
@@ -103,10 +104,11 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
 
   if (!open) return null;
 
+  const esNuevo = !producto;
+
   const set = (field: keyof ProductoPayload, value: ProductoPayload[keyof ProductoPayload]) =>
     setForm((prev) => ({ ...prev, [field]: value }));
 
-  // Categoría seleccionada actualmente y si corresponde a "servicio"
   const nombreCategoriaSeleccionada = categorias.find((c) => c.id === form.categoria.id)?.nombre;
   const isServicio = esCategoriaServicio(nombreCategoriaSeleccionada);
 
@@ -115,8 +117,6 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
     const seraServicio = esCategoriaServicio(cat?.nombre);
 
     if (seraServicio) {
-      // Al pasar a "servicio" limpiamos todo lo demás para evitar datos residuales confusos,
-      // conservando solo lo que el usuario ya haya escrito en nombre y precio de venta.
       setForm((prev) => ({
         ...emptyForm,
         nombre: prev.nombre,
@@ -164,19 +164,15 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
         return setError('Ingresa el precio de venta del servicio.');
       }
 
-      // Servicio: solo nombre, categoría y precio de venta. Todo lo demás queda vacío/por defecto.
       dataAEnviar = {
         nombre: form.nombre.trim(),
         codigo_digemid: '',
         precio_costo: 0,
         precio_venta: form.precio_venta,
-        stock: 0,
         stock_minimo: 0,
         barras: '',
         estado: true,
         requiere_receta: false,
-        fecha_vencimiento: '',
-        lote: '',
         laboratorio: null,
         categoria: { id: form.categoria.id },
         principioActivo: null,
@@ -219,10 +215,21 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
       };
     }
 
+    if (!isServicio && stockInicial < 0) {
+      return setError('El stock inicial no puede ser negativo.');
+    }
+
     setSaving(true);
     setError('');
     try {
-      await onSave(dataAEnviar);
+      const guardado = await onSave(dataAEnviar);
+
+      // NUEVO: el stock inicial solo tiene sentido al CREAR (no al editar,
+      // porque editar ya no toca stock — eso lo maneja StockModal/Compras).
+      if (esNuevo && !isServicio && stockInicial > 0) {
+        await lotesApi.crearLote({ idProducto: guardado.id, stock: stockInicial });
+      }
+
       onClose();
     } catch {
       setError('No se pudo guardar el producto.');
@@ -231,7 +238,6 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
     }
   };
 
-  // --- Cálculos Financieros Unificados (solo aplican a productos normales) ---
   const factorValido = form.factor && form.factor > 0 ? form.factor : 1;
   const costoUnitario = form.precio_costo > 0 ? form.precio_costo / factorValido : 0;
   const gananciaUnidadPct = costoUnitario > 0 ? ((form.precio_venta - costoUnitario) / costoUnitario) * 100 : 0;
@@ -261,11 +267,9 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
 
-          {/* Bloque: Información general */}
           <div className="space-y-4">
             <h3 className="text-xs font-bold uppercase tracking-wide text-zinc-400">Información General</h3>
 
-            {/* Nombre | Categoría (la categoría decide si el resto del formulario se muestra) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="md:col-span-2 space-y-1">
                 <label className={labelClass}>Nombre del Producto</label>
@@ -294,7 +298,6 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
 
             {!isServicio && (
               <>
-                {/* Código de barras | Principio activo | Acción terapéutica | Laboratorio */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div className="space-y-1">
                     <label className={labelClass}>Código de barras</label>
@@ -346,8 +349,9 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
                   </div>
                 </div>
 
-                {/* Código Digemid | Registro Sanitario | Lote | Fecha de vencimiento */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {/* Código Digemid | Registro Sanitario — Lote y Fecha de vencimiento se eliminaron de aquí:
+                    ahora se registran por Compras (cada compra crea su propio lote). */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className={labelClass}>Código Digemid</label>
                     <input value={form.codigo_digemid} onChange={(e) => set('codigo_digemid', e.target.value)} className={inputClass} />
@@ -362,20 +366,11 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
                       placeholder="Ej. RS-12345"
                     />
                   </div>
-                  <div className="space-y-1">
-                    <label className={labelClass}>Lote</label>
-                    <input value={form.lote} onChange={(e) => set('lote', e.target.value)} className={inputClass} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className={labelClass}>Fecha de vencimiento</label>
-                    <input type="date" value={form.fecha_vencimiento} onChange={(e) => set('fecha_vencimiento', e.target.value)} className={inputClass} />
-                  </div>
                 </div>
               </>
             )}
           </div>
 
-          {/* Bloque: Precios y stock */}
           <div className="space-y-4 pt-2 border-t border-zinc-100">
             <h3 className="text-xs font-bold uppercase tracking-wide text-zinc-400">
               {isServicio ? 'Precio del Servicio' : 'Precios y Stock'}
@@ -390,7 +385,6 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
               </div>
             ) : (
               <>
-                {/* Precio costo | Factor | Precio costo unidad (calculado) | % Ganancia (calculado) */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="space-y-1">
                     <label className={labelClass}>Precio costo empaque</label>
@@ -426,16 +420,23 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
                   </div>
                 </div>
 
-                {/* Precio venta | Stock | Stock mínimo | Producto activo | Requiere receta */}
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4 items-end">
                   <div className="space-y-1">
                     <label className={labelClass}>Precio venta unidad</label>
                     <input type="number" step="0.01" min="0" value={form.precio_venta} onChange={(e) => set('precio_venta', Number(e.target.value))} className={inputClass} />
                   </div>
-                  <div className="space-y-1">
-                    <label className={labelClass}>Stock (Unidades)</label>
-                    <input type="number" min="0" value={form.stock} onChange={(e) => set('stock', Number(e.target.value))} className={inputClass} />
-                  </div>
+                  {esNuevo && (
+                    <div className="space-y-1">
+                      <label className={labelClass}>Stock inicial</label>
+                      <input
+                        type="number" min="0"
+                        value={stockInicial}
+                        onChange={(e) => setStockInicial(Number(e.target.value))}
+                        className={inputClass}
+                      />
+                      <p className="text-[10px] text-zinc-400">Sin lote/vencimiento. Para eso, usa Compras.</p>
+                    </div>
+                  )}
                   <div className="space-y-1">
                     <label className={labelClass}>Stock Mínimo</label>
                     <input type="number" min="0" value={form.stock_minimo ?? ''} onChange={(e) => set('stock_minimo', Number(e.target.value))} className={inputClass} />
@@ -457,7 +458,6 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
             )}
           </div>
 
-          {/* Bloque: Presentaciones de venta (blister / caja) — no aplica a servicios */}
           {!isServicio && (
             <div className="space-y-4 pt-2 border-t border-zinc-100">
               <div className="flex items-center justify-between">
@@ -479,7 +479,6 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
 
               {form.vende_por_presentaciones && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Blister */}
                   <div className="rounded-xl border border-zinc-200 p-4 space-y-3">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
@@ -524,7 +523,6 @@ export default function ProductoModal({ open, producto, onClose, onSave }: Produ
                     )}
                   </div>
 
-                  {/* Caja */}
                   <div className="rounded-xl border border-zinc-200 p-4 space-y-3">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input

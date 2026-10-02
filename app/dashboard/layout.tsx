@@ -104,7 +104,7 @@ function DashboardLayoutContent({
 
           {!esPantallaCompleta && (
             <footer className="pt-8 pb-2 text-center text-xs text-zinc-400 shrink-0">
-              © {new Date().getFullYear()} JP Sistems (Boticas y Farmacias) -
+              © {new Date().getFullYear()} JP Systems (Boticas y Farmacias) -
               Todos los derechos reservados.
             </footer>
           )}

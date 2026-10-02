@@ -967,12 +967,7 @@ export default function ReportesPage() {
               })
             }
           >
-            <BuscadorProveedor
-              label="Seleccionar Proveedor (Opcional)"
-              proveedorSeleccionado={proveedorSeleccionado}
-              onSeleccionarProveedor={setProveedorSeleccionado}
-              onError={(msg) => mostrarAviso(msg, 'Error de Carga', 'error')}
-            />
+
           </ReporteCard>
 
           <ReporteCard

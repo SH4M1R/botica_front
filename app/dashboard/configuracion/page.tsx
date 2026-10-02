@@ -222,7 +222,7 @@ export default function ConfiguracionPage() {
       {/* Cabecera */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-zinc-200 pb-5">
         <div>
-          <h1 className="text-2xl font-bold text-primary tracking-tight">Configuración de la Botica</h1>
+          <h1 className="text-2xl font-bold text-primary tracking-tight">Configuración de la Botica / Farmacia</h1>
           <p className="text-sm text-zinc-500 mt-1">
             Personaliza la apariencia visual, horario e información legal o comercial de tu botica.
           </p>

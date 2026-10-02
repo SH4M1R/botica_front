@@ -9,6 +9,7 @@ import { trasladosApi, sucursalesApi } from '@/api/traslados';
 import type { TipoTraslado, Sucursal, TrasladoDetalleInput } from '@/api/traslados';
 import BuscadorProductos from './BuscadorProductos';
 import SucursalModal from './SucursalModal';
+import { lotesApi, mergearStockEnProductos } from '@/api/lotes';
 
 interface LineaDetalle extends TrasladoDetalleInput {
   nombreProducto: string;
@@ -31,7 +32,11 @@ export default function TrasladoRegistroForm({ tipo }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    productosApi.listarActivos().then(setProductos);
+    Promise.all([productosApi.listarActivos(), lotesApi.resumenStock()])
+      .then(([productos, resumen]) => {
+        setProductos(mergearStockEnProductos(productos, resumen) as Producto[]);
+      })
+      .catch(() => setProductos([]));
     sucursalesApi.listar().then(setSucursales);
   }, []);
 
