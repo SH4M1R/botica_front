@@ -1,3 +1,5 @@
+import { fetchPagina } from "./paginacion";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export interface ArqueoCaja {
@@ -44,6 +46,8 @@ export const arqueoApi = {
     const qs = params.toString();
     return request<ArqueoCaja[]>(`/arqueos${qs ? `?${qs}` : ''}`);
   },
+  listarPaginado: (page = 0, size = 50, desde?: string, hasta?: string) =>
+    fetchPagina<ArqueoCaja>('/arqueos', page, size, { desde, hasta }),
   pendientes: () => request<ArqueoCaja[]>('/arqueos/pendientes'),
   abrir: (data: AbrirCajaPayload) =>
     request<ArqueoCaja>('/arqueos/abrir', { method: 'POST', body: JSON.stringify(data) }),

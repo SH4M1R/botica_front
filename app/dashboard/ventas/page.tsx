@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { usePaginaServidor } from '@/hooks/usePaginaServidor';
+import { paginaVacia } from '@/api/paginacion';
 import Link from 'next/link';
 import { Plus, Eye, Ban, Receipt, Calendar, ChevronLeft, ChevronRight, FileImage } from 'lucide-react';
 import { ventasApi, getNombreCompleto } from '@/api/ventas';
@@ -12,10 +14,6 @@ import AnularModal from '@/components/AnularModal';
 import RecetaModal from './components/RecetaModal';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
-
-function claveDia(fecha: string) {
-  return fecha.slice(0, 10); // YYYY-MM-DD
-}
 
 function formatFechaLarga(claveDiaStr: string) {
   const [anio, mes, dia] = claveDiaStr.split('-').map(Number);
@@ -42,31 +40,47 @@ function obtenerSoloMetodos(metodoPagoCadena: string | undefined): string {
 
 export default function VentasPage() {
   const { empleado, cargando: cargandoSesion } = useSession();
-  const [ventas, setVentas] = useState<Venta[]>([]);
-  const [loading, setLoading] = useState(true);
   const [ventaDetalle, setVentaDetalle] = useState<Venta | null>(null);
   const [ventaAAnular, setVentaAAnular] = useState<Venta | null>(null);
-
-  // Paginación por días
-  const [paginaDia, setPaginaDia] = useState(0);
-
-  // Paginación de tabla por día
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
-
   const [ventaReceta, setVentaReceta] = useState<Venta | null>(null);
 
-  const cargarVentas = async () => {
-    setLoading(true);
-    try {
-      const data = await ventasApi.listar();
-      setVentas(data.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const esAdministrador = empleado?.rol === 'Administrador';
+  const sesionLista = !cargandoSesion && !!empleado;
+  // El vendedor solo ve sus ventas: el filtro lo aplica el backend
+  const idEmpleadoFiltro = sesionLista && !esAdministrador ? empleado!.id : undefined;
 
-  useEffect(() => { cargarVentas(); }, []);
+  // Solo las fechas que tienen ventas (liviano), no las ventas
+  const [dias, setDias] = useState<string[]>([]);
+  const [cargandoDias, setCargandoDias] = useState(true);
+  const [paginaDia, setPaginaDia] = useState(0);
+
+  useEffect(() => {
+    if (!sesionLista) return;
+    let cancelado = false;
+    setCargandoDias(true);
+    ventasApi.dias(idEmpleadoFiltro)
+      .then((d) => { if (!cancelado) setDias(d); })
+      .catch(() => { if (!cancelado) setDias([]); })
+      .finally(() => { if (!cancelado) setCargandoDias(false); });
+    return () => { cancelado = true; };
+  }, [sesionLista, idEmpleadoFiltro]);
+
+  const totalPaginasDias = dias.length;
+  const paginaValida = Math.min(Math.max(0, paginaDia), Math.max(0, totalPaginasDias - 1));
+  const fechaActual: string | undefined = dias[paginaValida];
+
+  // Solo se piden las ventas del día seleccionado, una página a la vez
+  const {
+    items: ventas, total: totalItemsDia, totalPages: totalPaginasTabla, page: paginaSeguraTabla, size: pageSize,
+    loading, setPage: setCurrentPage, cambiarTamano, recargar,
+  } = usePaginaServidor<Venta>(
+    (p, sz) =>
+      fechaActual
+        ? ventasApi.listarPorDia(fechaActual, p, sz, idEmpleadoFiltro)
+        : Promise.resolve(paginaVacia<Venta>(p, sz)),
+    [fechaActual, idEmpleadoFiltro],
+    PAGE_SIZE_OPTIONS[0]
+  );
 
   const handleAnular = (venta: Venta) => {
     setVentaAAnular(venta);
@@ -75,42 +89,12 @@ export default function VentasPage() {
   const confirmarAnulacion = async () => {
     if (!ventaAAnular) return;
     await ventasApi.anular(ventaAAnular.id);
-    await cargarVentas();
+    recargar();
   };
 
-  const esAdministrador = empleado?.rol === 'Administrador';
-
-  const ventasVisibles = useMemo(() => {
-    if (cargandoSesion || !empleado) return [];
-    if (esAdministrador) return ventas;
-    return ventas.filter((v) => v.empleado?.id === empleado.id);
-  }, [ventas, empleado, cargandoSesion, esAdministrador]);
-
-  // Agrupar ventas por días (orden descendente por fecha)
-  const gruposPorDia = useMemo(() => {
-    const mapa = new Map<string, Venta[]>();
-    for (const v of ventasVisibles) {
-      const clave = claveDia(v.fecha);
-      if (!mapa.has(clave)) mapa.set(clave, []);
-      mapa.get(clave)!.push(v);
-    }
-    return Array.from(mapa.entries());
-  }, [ventasVisibles]);
-
-  // Validar índice de la página de días
-  const totalPaginasDias = gruposPorDia.length;
-  const paginaValida = Math.min(Math.max(0, paginaDia), Math.max(0, totalPaginasDias - 1));
-  const grupoActual = gruposPorDia[paginaValida];
-
-  // Resetear la paginación interna de la tabla cuando cambia el día seleccionado
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [paginaValida]);
-
-  // Buscar índice de día por fecha seleccionada desde el input date
   const handleSeleccionarFecha = (fechaInput: string) => {
     if (!fechaInput) return;
-    const index = gruposPorDia.findIndex(([clave]) => clave === fechaInput);
+    const index = dias.indexOf(fechaInput);
     if (index !== -1) {
       setPaginaDia(index);
     } else {
@@ -118,23 +102,6 @@ export default function VentasPage() {
     }
   };
 
-  // Cálculos de paginación dentro del día actual
-  const ventasDelDiaActual = useMemo(() => {
-    return grupoActual ? grupoActual[1] : [];
-  }, [grupoActual]);
-
-  const totalItemsDia = ventasDelDiaActual.length;
-  const totalPaginasTabla = Math.ceil(totalItemsDia / pageSize) || 1;
-  const paginaSeguraTabla = Math.min(Math.max(currentPage, 1), totalPaginasTabla);
-
-  const itemsPaginados = useMemo(() => {
-    return ventasDelDiaActual.slice(
-      (paginaSeguraTabla - 1) * pageSize,
-      paginaSeguraTabla * pageSize
-    );
-  }, [ventasDelDiaActual, paginaSeguraTabla, pageSize]);
-
-  // Ancho porcentual uniforme según el número de columnas visibles
   const colWidth = esAdministrador ? '14.285%' : '16.666%';
 
   return (
@@ -154,11 +121,11 @@ export default function VentasPage() {
         </Link>
       </div>
 
-      {loading || cargandoSesion ? (
+      {cargandoDias || cargandoSesion ? (
         <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs py-16 text-center text-sm text-zinc-400">
           Cargando ventas...
         </div>
-      ) : ventasVisibles.length === 0 ? (
+      ) : dias.length === 0 ? (
         <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs py-16 text-center text-sm text-zinc-400">
           {esAdministrador ? 'Aún no hay ventas registradas.' : 'Aún no has registrado ventas.'}
         </div>
@@ -183,14 +150,14 @@ export default function VentasPage() {
                 <Calendar size={18} />
                 <input
                   type="date"
-                  value={grupoActual ? grupoActual[0] : ''}
+                  value={fechaActual ?? ''}
                   onChange={(e) => handleSeleccionarFecha(e.target.value)}
                   className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                 />
               </div>
               <div>
                 <p className="text-sm font-bold text-zinc-800">
-                  {grupoActual ? formatFechaLarga(grupoActual[0]) : ''}
+                  {fechaActual ? formatFechaLarga(fechaActual) : ''}
                 </p>
               </div>
             </div>
@@ -208,7 +175,7 @@ export default function VentasPage() {
           </div>
 
           {/* Tabla del Día Seleccionado */}
-          {grupoActual && (
+          {fechaActual && (
             <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs overflow-hidden">
               <div className="flex items-center justify-between px-5 py-3 bg-zinc-50 border-b border-zinc-200">
                 <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">
@@ -216,7 +183,7 @@ export default function VentasPage() {
                 </span>
               </div>
 
-              <table className="w-full text-sm">
+              <table className={`w-full text-sm transition-opacity ${loading ? 'opacity-60' : ''}`}>
                 <colgroup>
                   <col style={{ width: '10%' }} />
                   <col style={{ width: '20%' }} />
@@ -239,7 +206,7 @@ export default function VentasPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {itemsPaginados.map((v) => (
+                  {ventas.map((v) => (
                     <tr key={v.id} className="hover:bg-zinc-50/60 transition-colors">
                       <td className="px-5 py-3 font-mono text-zinc-600">
                         {v.serie && v.numeroComprobante
@@ -310,7 +277,7 @@ export default function VentasPage() {
                 </tbody>
               </table>
 
-              {ventasDelDiaActual.length > 0 && (
+              {totalItemsDia > 0 && (
                 <Paginacion
                   currentPage={paginaSeguraTabla}
                   totalPages={totalPaginasTabla}
@@ -319,10 +286,7 @@ export default function VentasPage() {
                   itemLabel="ventas"
                   pageSizeOptions={PAGE_SIZE_OPTIONS}
                   onPageChange={setCurrentPage}
-                  onPageSizeChange={(size) => {
-                    setPageSize(size);
-                    setCurrentPage(1);
-                  }}
+                  onPageSizeChange={cambiarTamano}
                 />
               )}
             </div>
@@ -346,7 +310,7 @@ export default function VentasPage() {
         idVenta={ventaReceta?.id ?? null}
         tieneReceta={!!ventaReceta?.recetaPath}
         onClose={() => setVentaReceta(null)}
-        onSubido={cargarVentas}
+        onSubido={recargar}
       />
     </div>
   );

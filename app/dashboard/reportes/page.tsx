@@ -10,6 +10,7 @@ import { productosApi } from '@/api/productos';
 import { obtenerEmpresa } from '@/api/empresa';
 import { descargarPdf, abrirPdfEnNuevaPestana } from '@/utils/reportes/pdfBase';
 import { descargarExcel } from '@/utils/excel/excelBase';
+import { useDebounce } from '@/hooks/useDebounce';
 
 // PDF
 import { generarReporteAsistenciaPos80, generarReporteAsistenciaA4 } from '@/utils/reportes/reporteAsistencia';
@@ -201,10 +202,13 @@ function BuscadorProducto({
   onError: (msg: string) => void;
 }) {
   const [query, setQuery] = useState('');
-  const [todosLosProductos, setTodosLosProductos] = useState<Producto[]>([]);
+  const [resultados, setResultados] = useState<Producto[]>([]);
   const [cargando, setCargando] = useState(false);
   const [abierto, setAbierto] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+  const q = useDebounce(query.trim(), 300);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -216,36 +220,28 @@ function BuscadorProducto({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // La búsqueda la hace el backend: solo trae 15 coincidencias
   useEffect(() => {
+    if (!abierto) return;
+    let cancelado = false;
     setCargando(true);
     productosApi
-      .listarActivos()
-      .then((data) =>
-        setTodosLosProductos(
+      .buscar(q, 15)
+      .then((data) => {
+        if (cancelado) return;
+        setResultados(
           data.map((p) => ({
             id: p.id,
             nombre: p.nombre,
             codigo: p.codigo_digemid,
             laboratorio: p.laboratorio?.nombre,
           }))
-        )
-      )
-      .catch((err) => {
-        onError('No se pudieron cargar los productos.');
-      })
-      .finally(() => setCargando(false));
-  }, [onError]);
-
-  const productosFiltrados = query.trim()
-    ? todosLosProductos.filter((p) => {
-        const q = query.toLowerCase();
-        return (
-          p.nombre.toLowerCase().includes(q) ||
-          p.codigo?.toLowerCase().includes(q) ||
-          p.laboratorio?.toLowerCase().includes(q)
         );
       })
-    : todosLosProductos;
+      .catch(() => !cancelado && onErrorRef.current('No se pudieron cargar los productos.'))
+      .finally(() => !cancelado && setCargando(false));
+    return () => { cancelado = true; };
+  }, [q, abierto]);
 
   return (
     <div className="flex flex-col gap-1 text-xs text-zinc-500 w-full relative" ref={dropdownRef}>
@@ -277,9 +273,9 @@ function BuscadorProducto({
         )}
       </div>
 
-      {abierto && productosFiltrados.length > 0 && (
+      {abierto && resultados.length > 0 && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-zinc-200 rounded-xl shadow-lg max-h-60 overflow-y-auto z-50">
-          {productosFiltrados.slice(0, 50).map((prod) => (
+          {resultados.map((prod) => (
             <button
               key={prod.id}
               type="button"
@@ -432,18 +428,9 @@ function BuscadorProveedor({
 
   useEffect(() => {
     setCargando(true);
-    productosApi
-      .listarActivos()
-      .then((data) => {
-        const nombresUnicos = Array.from(
-          new Set(
-            data
-              .map((p) => p.laboratorio?.nombre)
-              .filter((nom): nom is string => Boolean(nom && nom.trim() !== ''))
-          )
-        ).sort();
-        setProveedores(nombresUnicos.map((nombre) => ({ nombre })));
-      })
+    api
+      .listarProveedores()
+      .then((data) => setProveedores(data.map((p) => ({ nombre: p.nombreProveedor }))))
       .catch((err) => {
         onError('No se pudieron cargar los proveedores.');
       })
@@ -967,7 +954,12 @@ export default function ReportesPage() {
               })
             }
           >
-
+            <BuscadorProveedor
+              label="Seleccionar Proveedor"
+              proveedorSeleccionado={proveedorSeleccionado}
+              onSeleccionarProveedor={setProveedorSeleccionado}
+              onError={(msg) => mostrarAviso(msg, 'Error de Carga', 'error')}
+            />
           </ReporteCard>
 
           <ReporteCard

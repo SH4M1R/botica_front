@@ -9,8 +9,6 @@ interface StockModalProps {
   open: boolean;
   producto: Producto | null;
   onClose: () => void;
-  // Se llama después de cualquier cambio exitoso, para que la página
-  // recargue el resumen de stock (ProductosPage ya lo tiene como cargarProductos).
   onCambio: () => void;
 }
 
@@ -56,7 +54,10 @@ export default function StockModal({ open, producto, onClose, onCambio }: StockM
 
   if (!open || !producto) return null;
 
+  // El stock total se calcula considerando TODOS los lotes del producto
   const stockTotal = lotes.reduce((sum, l) => sum + l.stock, 0);
+
+  const ultimosLotes = lotes.slice(-3);
 
   const handleGuardarLote = async (lote: LoteProducto) => {
     const nuevoValor = valoresEditados[lote.id];
@@ -133,9 +134,7 @@ export default function StockModal({ open, producto, onClose, onCambio }: StockM
         {mostrarNuevoLote && (
           <form onSubmit={handleCrearLote} className="px-6 py-4 border-b border-zinc-200 shrink-0 bg-primary/5 space-y-3">
             <p className="text-[11px] text-zinc-500">
-              Para mercadería que SÍ tiene comprobante de compra, mejor regístrala desde
-              Compras (queda asociada al proveedor). Usa esto solo para ajustes
-              (conteo físico, donación, corrección).
+              Para mercadería que SÍ tiene comprobante de compra, mejor regístrala desde Compras (queda asociada al proveedor).
             </p>
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1">
@@ -166,7 +165,7 @@ export default function StockModal({ open, producto, onClose, onCambio }: StockM
         <div className="flex-1 overflow-y-auto">
           {cargando ? (
             <div className="py-10 text-center text-sm text-zinc-400">Cargando lotes...</div>
-          ) : lotes.length === 0 ? (
+          ) : ultimosLotes.length === 0 ? (
             <div className="py-10 text-center text-sm text-zinc-400">
               Este producto no tiene lotes registrados todavía.
             </div>
@@ -181,7 +180,8 @@ export default function StockModal({ open, producto, onClose, onCambio }: StockM
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {lotes.map((l) => (
+                {/* 🔹 Renderizamos la lista recortada a los últimos 3 */}
+                {ultimosLotes.map((l) => (
                   <tr key={l.id} className="hover:bg-zinc-50/60">
                     <td className="px-4 py-2 text-zinc-700">{l.lote ?? <span className="text-zinc-400 italic">sin lote</span>}</td>
                     <td className="px-4 py-2 text-zinc-700">

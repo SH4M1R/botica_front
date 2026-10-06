@@ -51,7 +51,7 @@ export default function TrasladoRegistroForm({ tipo }: Props) {
       return [...prev, {
         idProducto: producto.id,
         nombreProducto: producto.nombre,
-        stockActual: producto.stock,
+        stockActual: producto.stock ?? 0,   // <-- antes: producto.stock
         cantidad: 1,
         precioUnitario: producto.precio_costo,
       }];

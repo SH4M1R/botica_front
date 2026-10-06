@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { usePaginaServidor } from '@/hooks/usePaginaServidor';
+import { paginaVacia } from '@/api/paginacion';
 import Link from 'next/link';
 import { Plus, Eye, Ban, Calendar, ChevronLeft, ChevronRight, ShoppingCart, X, FileText } from 'lucide-react';
 import { cotizacionesApi } from '@/api/cotizaciones';
@@ -16,10 +18,6 @@ const labelTipo: Record<string, string> = {
   blister: 'Blister',
   caja: 'Caja',
 };
-
-function claveDia(fecha: string) {
-  return fecha.slice(0, 10);
-}
 
 function formatFechaLarga(claveDiaStr: string) {
   const [anio, mes, dia] = claveDiaStr.split('-').map(Number);
@@ -39,32 +37,43 @@ function formatFolio(id: number) {
 
 export default function CotizacionesPage() {
   const { empleado, cargando: cargandoSesion } = useSession();
-  const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>([]);
-  const [loading, setLoading] = useState(true);
   const [cotizacionDetalle, setCotizacionDetalle] = useState<Cotizacion | null>(null);
   const [cotizacionAAnular, setCotizacionAAnular] = useState<Cotizacion | null>(null);
 
-  const [paginaDia, setPaginaDia] = useState(0);
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
+  const esAdministrador = empleado?.rol === 'Administrador';
+  const sesionLista = !cargandoSesion && !!empleado;
+  const idEmpleadoFiltro = sesionLista && !esAdministrador ? empleado!.id : undefined;
 
-  const cargarCotizaciones = async () => {
-    setLoading(true);
-    try {
-      const data = await cotizacionesApi.listar();
-      setCotizaciones(
-        data.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
-      );
-    } catch {
-      setCotizaciones([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [dias, setDias] = useState<string[]>([]);
+  const [cargandoDias, setCargandoDias] = useState(true);
+  const [paginaDia, setPaginaDia] = useState(0);
 
   useEffect(() => {
-    cargarCotizaciones();
-  }, []);
+    if (!sesionLista) return;
+    let cancelado = false;
+    setCargandoDias(true);
+    cotizacionesApi.dias(idEmpleadoFiltro)
+      .then((d) => { if (!cancelado) setDias(d); })
+      .catch(() => { if (!cancelado) setDias([]); })
+      .finally(() => { if (!cancelado) setCargandoDias(false); });
+    return () => { cancelado = true; };
+  }, [sesionLista, idEmpleadoFiltro]);
+
+  const totalPaginasDias = dias.length;
+  const paginaValida = Math.min(Math.max(0, paginaDia), Math.max(0, totalPaginasDias - 1));
+  const fechaActual: string | undefined = dias[paginaValida];
+
+  const {
+    items: cotizaciones, total: totalItemsDia, totalPages: totalPaginasTabla, page: paginaSeguraTabla, size: pageSize,
+    loading, setPage: setCurrentPage, cambiarTamano, recargar,
+  } = usePaginaServidor<Cotizacion>(
+    (p, sz) =>
+      fechaActual
+        ? cotizacionesApi.listarPorDia(fechaActual, p, sz, idEmpleadoFiltro)
+        : Promise.resolve(paginaVacia<Cotizacion>(p, sz)),
+    [fechaActual, idEmpleadoFiltro],
+    PAGE_SIZE_OPTIONS[0]
+  );
 
   const handleAnular = (cotizacion: Cotizacion) => {
     setCotizacionAAnular(cotizacion);
@@ -73,59 +82,18 @@ export default function CotizacionesPage() {
   const confirmarAnulacion = async () => {
     if (!cotizacionAAnular) return;
     await cotizacionesApi.anular(cotizacionAAnular.id);
-    await cargarCotizaciones();
+    recargar();
   };
-
-  const esAdministrador = empleado?.rol === 'Administrador';
-
-  const cotizacionesVisibles = useMemo(() => {
-    if (cargandoSesion || !empleado) return [];
-    if (esAdministrador) return cotizaciones;
-    return cotizaciones.filter((c) => c.empleado?.id === empleado.id);
-  }, [cotizaciones, empleado, cargandoSesion, esAdministrador]);
-
-  const gruposPorDia = useMemo(() => {
-    const mapa = new Map<string, Cotizacion[]>();
-    for (const c of cotizacionesVisibles) {
-      const clave = claveDia(c.fecha);
-      if (!mapa.has(clave)) mapa.set(clave, []);
-      mapa.get(clave)!.push(c);
-    }
-    return Array.from(mapa.entries());
-  }, [cotizacionesVisibles]);
-
-  const totalPaginasDias = gruposPorDia.length;
-  const paginaValida = Math.min(Math.max(0, paginaDia), Math.max(0, totalPaginasDias - 1));
-  const grupoActual = gruposPorDia[paginaValida];
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [paginaValida]);
 
   const handleSeleccionarFecha = (fechaInput: string) => {
     if (!fechaInput) return;
-    const index = gruposPorDia.findIndex(([clave]) => clave === fechaInput);
+    const index = dias.indexOf(fechaInput);
     if (index !== -1) {
       setPaginaDia(index);
     } else {
       alert('No se encontraron cotizaciones registradas para la fecha seleccionada.');
     }
   };
-
-  const cotizacionesDelDiaActual = useMemo(() => {
-    return grupoActual ? grupoActual[1] : [];
-  }, [grupoActual]);
-
-  const totalItemsDia = cotizacionesDelDiaActual.length;
-  const totalPaginasTabla = Math.ceil(totalItemsDia / pageSize) || 1;
-  const paginaSeguraTabla = Math.min(Math.max(currentPage, 1), totalPaginasTabla);
-
-  const itemsPaginados = useMemo(() => {
-    return cotizacionesDelDiaActual.slice(
-      (paginaSeguraTabla - 1) * pageSize,
-      paginaSeguraTabla * pageSize
-    );
-  }, [cotizacionesDelDiaActual, paginaSeguraTabla, pageSize]);
 
 return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6">
@@ -146,11 +114,11 @@ return (
         </Link>
       </div>
 
-      {loading || cargandoSesion ? (
+      {cargandoDias || cargandoSesion ? (
         <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs py-16 text-center text-sm text-zinc-400">
           Cargando cotizaciones...
         </div>
-      ) : cotizacionesVisibles.length === 0 ? (
+      ) : dias.length === 0 ? (
         <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs py-16 text-center text-sm text-zinc-400">
           {esAdministrador ? 'Aún no hay cotizaciones registradas.' : 'Aún no has registrado cotizaciones.'}
         </div>
@@ -176,14 +144,14 @@ return (
                 <Calendar size={18} />
                 <input
                   type="date"
-                  value={grupoActual ? grupoActual[0] : ''}
+                  value={fechaActual ?? ''}
                   onChange={(e) => handleSeleccionarFecha(e.target.value)}
                   className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                 />
               </div>
               <div>
                 <p className="text-sm font-bold text-zinc-800">
-                  {grupoActual ? formatFechaLarga(grupoActual[0]) : ''}
+                  {fechaActual ? formatFechaLarga(fechaActual) : ''}
                 </p>
               </div>
             </div>
@@ -200,7 +168,7 @@ return (
           </div>
 
           {/* Tabla de cotizaciones del día */}
-          {grupoActual && (
+          {fechaActual && (
             <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs overflow-hidden">
               <div className="flex items-center justify-between px-5 py-3 bg-zinc-50 border-b border-zinc-200">
                 <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">
@@ -209,7 +177,7 @@ return (
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className={`w-full text-sm transition-opacity ${loading ? 'opacity-60' : ''}`}>
                   <colgroup>
                     <col style={{ width: '10%' }} />
                     <col style={{ width: '20%' }} />
@@ -231,7 +199,7 @@ return (
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100">
-                    {itemsPaginados.map((c) => {
+                    {cotizaciones.map((c) => {
                       const puedeCargar = c.estado && !c.convertida;
                       return (
                         <tr key={c.id} className="hover:bg-zinc-50/60 transition-colors">
@@ -309,7 +277,7 @@ return (
                 </table>
               </div>
 
-              {cotizacionesDelDiaActual.length > 0 && (
+              {totalItemsDia > 0 && (
                 <Paginacion
                   currentPage={paginaSeguraTabla}
                   totalPages={totalPaginasTabla}
@@ -318,10 +286,7 @@ return (
                   itemLabel="cotizaciones"
                   pageSizeOptions={PAGE_SIZE_OPTIONS}
                   onPageChange={setCurrentPage}
-                  onPageSizeChange={(size) => {
-                    setPageSize(size);
-                    setCurrentPage(1);
-                  }}
+                  onPageSizeChange={cambiarTamano}
                 />
               )}
             </div>
@@ -364,7 +329,7 @@ return (
               </div>
 
               <div className="rounded-xl border border-zinc-200 overflow-hidden">
-                <table className="w-full text-sm">
+                <table className={`w-full text-sm transition-opacity ${loading ? 'opacity-60' : ''}`}>
                   <thead className="bg-zinc-50">
                     <tr className="text-left text-xs font-bold text-zinc-400 uppercase tracking-wide">
                       <th className="px-3 py-2">Producto</th>

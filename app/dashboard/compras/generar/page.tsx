@@ -525,13 +525,15 @@ export default function GenerarCompraPage() {
       />
 
       {/* Modal para CREAR un producto totalmente nuevo en el catálogo */}
+      {/* Modal para CREAR un producto totalmente nuevo en el catálogo */}
       <CrearProductoModal
         open={modalCrearProductoAbierto}
         producto={null} 
         onClose={() => setModalCrearProductoAbierto(false)}
         onSave={async (data: ProductoPayload) => {
-          await productosApi.crear(data);
+          const nuevoProducto = await productosApi.crear(data);
           setModalCrearProductoAbierto(false);
+          return nuevoProducto;
         }}
       />
 

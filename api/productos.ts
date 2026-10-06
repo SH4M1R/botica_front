@@ -70,6 +70,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const productosApi = {
   listar: () => request<Producto[]>('/productos'),
   listarActivos: () => request<Producto[]>('/productos/activos'),
+  buscar: (q: string, size = 15) =>
+    request<Producto[]>(`/productos/buscar?q=${encodeURIComponent(q)}&size=${size}`),
   crear: (data: ProductoPayload) => request<Producto>('/productos', { method: 'POST', body: JSON.stringify(data) }),
   actualizar: (id: number, data: ProductoPayload) => request<Producto>(`/productos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   eliminar: (id: number) => request<void>(`/productos/${id}`, { method: 'DELETE' }),

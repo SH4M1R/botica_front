@@ -1,3 +1,4 @@
+import { fetchPagina } from './paginacion';
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export type TipoTraslado = 'INGRESO' | 'EGRESO';
@@ -52,6 +53,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const trasladosApi = {
   listar: () => request<Traslado[]>('/traslados'),
+  listarPaginado: (page = 0, size = 10, tipo?: TipoTraslado, q = '') =>
+    fetchPagina<Traslado>('/traslados', page, size, { tipo, q }),
   obtenerPorId: (id: number) => request<Traslado>(`/traslados/${id}`),
   crear: (data: TrasladoInput) => request<Traslado>('/traslados', { method: 'POST', body: JSON.stringify(data) }),
 };

@@ -1,6 +1,8 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useState } from 'react';
+import { usePaginaServidor } from '@/hooks/usePaginaServidor';
+import { useDebounce } from '@/hooks/useDebounce';
 import Link from 'next/link';
 import { Search, ChevronDown, ChevronUp, Plus, Printer } from 'lucide-react';
 import { trasladosApi } from '@/api/traslados';
@@ -16,50 +18,19 @@ interface Props {
 }
 
 export default function TrasladoListado({ tipo }: Props) {
-  const [traslados, setTraslados] = useState<Traslado[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const q = useDebounce(search.trim(), 300);
   const [expandidoId, setExpandidoId] = useState<number | null>(null);
   const [menuImprimirId, setMenuImprimirId] = useState<number | null>(null);
 
-  // Estados de paginación
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
-
-  useEffect(() => {
-    setLoading(true);
-    trasladosApi.listar().then((data) => {
-      setTraslados(data.filter((t) => t.tipo === tipo));
-      setLoading(false);
-    });
-  }, [tipo]);
-
-  const filtrados = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return traslados;
-    return traslados.filter(
-      (t) =>
-        t.nombreSucursal.toLowerCase().includes(q) ||
-        t.detalles.some((d) => d.nombreProducto.toLowerCase().includes(q))
-    );
-  }, [traslados, search]);
-
-  // Resetear a la página 1 cuando cambia la búsqueda o el tipo
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [search, tipo]);
-
-  // Cálculos de paginación
-  const totalItems = filtrados.length;
-  const totalPaginas = Math.ceil(totalItems / pageSize) || 1;
-  const paginaSegura = Math.min(Math.max(currentPage, 1), totalPaginas);
-
-  const itemsPaginados = useMemo(() => {
-    return filtrados.slice(
-      (paginaSegura - 1) * pageSize,
-      paginaSegura * pageSize
-    );
-  }, [filtrados, paginaSegura, pageSize]);
+  const {
+    items: traslados, total: totalItems, totalPages: totalPaginas, page: paginaSegura, size: pageSize,
+    loading, setPage: setCurrentPage, cambiarTamano,
+  } = usePaginaServidor<Traslado>(
+    (p, sz) => trasladosApi.listarPaginado(p, sz, tipo, q),
+    [tipo, q],
+    PAGE_SIZE_OPTIONS[0]
+  );
 
   const handleImprimir = async (traslado: Traslado, formato: 'pos80' | 'a4') => {
     setMenuImprimirId(null);
@@ -111,11 +82,11 @@ export default function TrasladoListado({ tipo }: Props) {
       </div>
 
       <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs overflow-hidden">
-        {loading ? (
+        {loading && traslados.length === 0 ? (
           <div className="py-16 text-center text-sm text-zinc-400">
             Cargando {titulo.toLowerCase()}...
           </div>
-        ) : filtrados.length === 0 ? (
+        ) : traslados.length === 0 ? (
           <div className="py-16 text-center text-sm text-zinc-400">
             No se encontraron {titulo.toLowerCase()}.
           </div>
@@ -140,7 +111,7 @@ export default function TrasladoListado({ tipo }: Props) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {itemsPaginados.map((t) => (
+                  {traslados.map((t) => (
                     <Fragment key={t.id}>
                       <tr className="hover:bg-zinc-50/60 transition-colors">
                         <td className="px-5 py-3 text-zinc-600">
@@ -253,7 +224,7 @@ export default function TrasladoListado({ tipo }: Props) {
               </table>
             </div>
 
-            {!loading && filtrados.length > 0 && (
+            {traslados.length > 0 && (
               <Paginacion
                 currentPage={paginaSegura}
                 totalPages={totalPaginas}
@@ -262,10 +233,7 @@ export default function TrasladoListado({ tipo }: Props) {
                 itemLabel={tipo === 'INGRESO' ? 'ingresos' : 'egresos'}
                 pageSizeOptions={PAGE_SIZE_OPTIONS}
                 onPageChange={setCurrentPage}
-                onPageSizeChange={(size) => {
-                  setPageSize(size);
-                  setCurrentPage(1);
-                }}
+                onPageSizeChange={cambiarTamano}
               />
             )}
           </>

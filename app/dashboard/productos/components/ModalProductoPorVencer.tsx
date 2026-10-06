@@ -176,7 +176,6 @@ export const ModalProductosPorVencer: React.FC<ModalProductosPorVencerProps> = (
                 <thead className="bg-primary/10 text-primary font-bold uppercase border-b border-slate-200">
                   <tr>
                     <th className="px-4 py-2.5">Producto</th>
-                    <th className="px-4 py-2.5">Lote</th>
                     <th className="px-4 py-2.5 text-right">Stock</th>
                     <th className="px-4 py-2.5 text-right">F. Vencimiento</th>
                   </tr>
@@ -185,7 +184,6 @@ export const ModalProductosPorVencer: React.FC<ModalProductosPorVencerProps> = (
                   {productosFiltrados.map((p) => (
                     <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="px-4 py-2.5 font-semibold text-slate-800">{p.nombre}</td>
-                      <td className="px-4 py-2.5 text-slate-500">{p.lote || '-'}</td>
                       <td className="px-4 py-2.5 text-right font-medium text-slate-700">{p.stock}</td>
                       <td className="px-4 py-2.5 text-right font-bold text-red-500">
                         {p.fecha_vencimiento ? new Date(p.fecha_vencimiento).toLocaleDateString('es-PE') : '-'}

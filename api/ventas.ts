@@ -1,3 +1,5 @@
+import { fetchPagina } from "./paginacion";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export type TipoVenta = 'unidad' | 'blister' | 'caja';
@@ -136,6 +138,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const ventasApi = {
   listar: () => request<Venta[]>('/ventas'),
+  listarPaginado: (page = 0, size = 25) => fetchPagina<Venta>('/ventas', page, size),
+  listarPorDia: (fecha: string, page = 0, size = 10, idEmpleado?: number) =>
+    fetchPagina<Venta>('/ventas/dia', page, size, { fecha, idEmpleado }),
+  dias: (idEmpleado?: number) =>
+    request<string[]>(`/ventas/dias${idEmpleado ? `?idEmpleado=${idEmpleado}` : ''}`),
   obtener: (id: number) => request<Venta>(`/ventas/${id}`),
   crear: (data: VentaRequest) => request<Venta>('/ventas', { method: 'POST', body: JSON.stringify(data) }),
   anular: (id: number) => request<void>(`/ventas/${id}/anular`, { method: 'PUT' }),
@@ -143,6 +150,8 @@ export const ventasApi = {
 
 export const clientesApi = {
   listar: () => request<Cliente[]>('/clientes'),
+  listarPaginado: (page = 0, size = 10, q = '') =>
+    fetchPagina<Cliente>('/clientes', page, size, { q }),
   crear: (data: ClientePayload) =>
     request<Cliente>('/clientes', { method: 'POST', body: JSON.stringify(data) }),
   actualizar: (id: number, data: ClientePayload) =>

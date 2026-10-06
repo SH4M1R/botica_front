@@ -337,12 +337,11 @@ export default function GenerarVentaPage() {
   };
 
   const agregarProductoConDetalle = (
-    producto: Producto,
+    prod: ProductoConStock,
     tipoVenta: TipoVenta,
     cantidad: number,
     precioUnitarioManual?: number
   ) => {
-    const prod = producto as ProductoConStock;
     const esServicio = esCategoriaServicio(prod.categoria?.nombre);
 
     if (!esServicio && prod.stock <= 0) {
@@ -381,6 +380,61 @@ export default function GenerarVentaPage() {
           producto: prod,
         },
       ];
+    });
+  };
+
+  // Reemplaza una línea existente de forma atómica (usado por la edición en
+  // modo sin mouse). Evita el desfase de estado que ocurría al encadenar
+  // quitarProducto + agregarProductoConDetalle.
+  const actualizarLinea = (
+    idProductoOriginal: number,
+    tipoOriginal: TipoVenta,
+    producto: ProductoConStock,
+    tipoVenta: TipoVenta,
+    cantidad: number,
+    precioUnitario: number
+  ) => {
+    const esServicio = esCategoriaServicio(producto.categoria?.nombre);
+    const maxCantidad = esServicio ? 0 : Math.floor(producto.stock / unidadesBasePorTipo(producto, tipoVenta));
+    let cantidadFinal = Math.max(1, cantidad);
+
+    if (maxCantidad > 0 && cantidadFinal > maxCantidad) {
+      cantidadFinal = maxCantidad;
+      setError(`Solo hay stock para ${maxCantidad} ${etiquetaTipo(tipoVenta)} de "${producto.nombre}".`);
+    } else {
+      setError('');
+    }
+
+    setCarrito((prev) => {
+      const indiceOriginal = prev.findIndex(
+        (i) => i.idProducto === idProductoOriginal && i.tipoVenta === tipoOriginal
+      );
+      const sinOriginal = prev.filter(
+        (i) => !(i.idProducto === idProductoOriginal && i.tipoVenta === tipoOriginal)
+      );
+
+      // Si cambió a una presentación que ya existe en el detalle, se combinan
+      const destino = sinOriginal.find((i) => i.idProducto === producto.id && i.tipoVenta === tipoVenta);
+      if (destino) {
+        const combinada = destino.cantidad + cantidadFinal;
+        const tope = maxCantidad > 0 ? Math.min(combinada, maxCantidad) : combinada;
+        return sinOriginal.map((i) =>
+          i.idProducto === producto.id && i.tipoVenta === tipoVenta
+            ? { ...i, cantidad: tope, precioUnitario }
+            : i
+        );
+      }
+
+      const nuevo: CarritoItem = {
+        idProducto: producto.id,
+        cantidad: cantidadFinal,
+        tipoVenta,
+        precioUnitario,
+        producto,
+      };
+      const copia = [...sinOriginal];
+      copia.splice(Math.max(0, indiceOriginal), 0, nuevo); // conserva la posición
+      return copia;
     });
   };
 
@@ -641,6 +695,13 @@ export default function GenerarVentaPage() {
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && mostrarConfirmVaciar) {
+        setMostrarConfirmVaciar(false);
+        return;
+      }
+      // En modo sin mouse los atajos (F2, F3, ...) los maneja VentaNoMouse
+      if (modoSinMouse) return;
+
       if (e.key === 'F2') {
         e.preventDefault();
         if (!modalPagoAbierto) handleAbrirPago();
@@ -648,8 +709,6 @@ export default function GenerarVentaPage() {
         e.preventDefault();
         searchInputRef.current?.focus();
         searchInputRef.current?.select();
-      } else if (e.key === 'Escape' && mostrarConfirmVaciar) {
-        setMostrarConfirmVaciar(false);
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
@@ -692,23 +751,37 @@ export default function GenerarVentaPage() {
           total={total}
           error={error}
           setError={setError}
+          puedeEditarPrecio={puedeEditarPrecio}
+          bloqueado={modalPagoAbierto || clienteModalAbierto || mostrarConfirmVaciar}
+          tipoComprobante={tipoComprobante}
+          comprobanteOptions={COMPROBANTE_OPTIONS}
+          onCambiarTipoComprobante={setTipoComprobante}
+          cotizacionOrigenId={cotizacionOrigenId}
+          requiereReceta={requiereRecetaEnCarrito}
+          archivoReceta={archivoRecetaPendiente}
+          onCambiarArchivoReceta={setArchivoRecetaPendiente}
           nombreCliente={nombreCliente}
           dniCliente={dniCliente}
           idClienteSeleccionado={idClienteSeleccionado}
-          clientes={clientes}
+          sugerenciasCliente={sugerenciasCliente}
           onCambiarNombreCliente={(v) => {
             setNombreCliente(v);
             setIdClienteSeleccionado(null);
           }}
-          onCambiarDniCliente={setDniCliente}
+          onCambiarDniCliente={(v) => {
+            setDniCliente(v);
+            setIdClienteSeleccionado(null);
+          }}
           onSeleccionarCliente={seleccionarCliente}
           onLimpiarCliente={limpiarClienteSeleccionado}
           onAbrirNuevoCliente={() => setClienteModalAbierto(true)}
           agregarProductoConDetalle={agregarProductoConDetalle}
+          actualizarLinea={actualizarLinea}
           quitarProducto={quitarProducto}
           onVaciarCarrito={solicitarVaciarDetalle}
           onAbrirPago={handleAbrirPago}
           onVolverModoNormal={() => setModoSinMouse(false)}
+          onAbrirVentanaFlotante={abrirVentanaFlotante}
         />
 
         <MetodoPagoModal

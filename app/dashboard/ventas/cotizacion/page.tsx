@@ -16,7 +16,6 @@ import { cotizacionesApi } from '@/api/cotizaciones';
 import { PERMISO_EDITAR_PRECIO_VENTA } from '@/constants/permisos';
 import { useSession } from '@/hooks/useSession';
 import ClienteModal from '@/app/dashboard/clientes/components/ClienteModal';
-import VentaNoMouse from '../generar/VentaNoMouse';
 import { generarCotizacionPdf } from '@/utils/generarCotizacionPdf';
 import {
   type TipoVenta,
@@ -496,32 +495,6 @@ export default function GenerarCotizacionPage() {
   if (modoSinMouse) {
     return (
       <>
-        <VentaNoMouse
-          empleadoNombre={empleado?.nombre ?? ''}
-          fechaHoy={fechaHoy}
-          productos={productos}
-          carrito={carrito}
-          total={total}
-          error={error}
-          setError={setError}
-          nombreCliente={nombreCliente}
-          dniCliente={dniCliente}
-          idClienteSeleccionado={idClienteSeleccionado}
-          clientes={clientes}
-          onCambiarNombreCliente={(v) => {
-            setNombreCliente(v);
-            setIdClienteSeleccionado(null);
-          }}
-          onCambiarDniCliente={setDniCliente}
-          onSeleccionarCliente={seleccionarCliente}
-          onLimpiarCliente={limpiarClienteSeleccionado}
-          onAbrirNuevoCliente={() => setClienteModalAbierto(true)}
-          agregarProductoConDetalle={agregarProductoConDetalle}
-          quitarProducto={quitarProducto}
-          onVaciarCarrito={solicitarVaciarDetalle}
-          onAbrirPago={handleGenerarCotizacion}
-          onVolverModoNormal={() => setModoSinMouse(false)}
-        />
 
         <ClienteModal
           open={clienteModalAbierto}

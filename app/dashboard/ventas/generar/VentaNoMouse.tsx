@@ -1,28 +1,49 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Trash2, Save, Pencil, MousePointer2, XCircle } from 'lucide-react';
-import type { Producto } from '@/api/productos';
+import { Trash2, Save, Pencil, MousePointer2, XCircle, ExternalLink, FileText, FileImage, Info } from 'lucide-react';
 import type { Cliente } from '@/api/ventas';
 import { getNombreCompleto } from '@/api/ventas';
-import type { CarritoItem, ProductoConCodigo, TipoVenta } from './page';
-import { tiposDisponibles, unidadesBasePorTipo } from './page';
+import { tiposDisponibles, unidadesBasePorTipo } from '@/components/ventaShared';
+import type { CarritoItem, ProductoConCodigo, TipoVenta } from '@/components/ventaShared';
+import type { ProductoConStock, TipoComprobante } from './page';
 
 type CriterioBusqueda = 'principio' | 'nombre';
+type ProductoNM = ProductoConStock & ProductoConCodigo & { barras?: string };
+
+// Misma regla que en page.tsx: categoría "servicio" = sin stock físico
+function esCategoriaServicio(nombreCategoria?: string | null): boolean {
+  if (!nombreCategoria) return false;
+  return nombreCategoria.toLowerCase().includes('servicio');
+}
 
 interface VentaNoMouseProps {
   empleadoNombre: string;
   fechaHoy: string;
-  productos: Producto[];
+  productos: ProductoConStock[];
   carrito: CarritoItem[];
   total: number;
   error: string;
   setError: (v: string) => void;
 
+  puedeEditarPrecio: boolean;
+  /** true cuando hay un modal abierto: desactiva los atajos globales */
+  bloqueado: boolean;
+
+  tipoComprobante: TipoComprobante;
+  comprobanteOptions: { value: TipoComprobante; label: string; disabled?: boolean }[];
+  onCambiarTipoComprobante: (v: TipoComprobante) => void;
+
+  cotizacionOrigenId: number | null;
+
+  requiereReceta: boolean;
+  archivoReceta: File | null;
+  onCambiarArchivoReceta: (f: File | null) => void;
+
   nombreCliente: string;
   dniCliente: string;
   idClienteSeleccionado: number | null;
-  clientes: Cliente[];
+  sugerenciasCliente: Cliente[];
   onCambiarNombreCliente: (v: string) => void;
   onCambiarDniCliente: (v: string) => void;
   onSeleccionarCliente: (c: Cliente) => void;
@@ -30,16 +51,25 @@ interface VentaNoMouseProps {
   onAbrirNuevoCliente: () => void;
 
   agregarProductoConDetalle: (
-    producto: Producto,
+    producto: ProductoConStock,
     tipoVenta: TipoVenta,
     cantidad: number,
     precioUnitarioManual?: number
+  ) => void;
+  actualizarLinea: (
+    idProductoOriginal: number,
+    tipoOriginal: TipoVenta,
+    producto: ProductoConStock,
+    tipoVenta: TipoVenta,
+    cantidad: number,
+    precioUnitario: number
   ) => void;
   quitarProducto: (idProducto: number, tipoVenta: TipoVenta) => void;
 
   onVaciarCarrito: () => void;
   onAbrirPago: () => void;
   onVolverModoNormal: () => void;
+  onAbrirVentanaFlotante: () => void;
 }
 
 export default function VentaNoMouse({
@@ -50,26 +80,37 @@ export default function VentaNoMouse({
   total,
   error,
   setError,
+  puedeEditarPrecio,
+  bloqueado,
+  tipoComprobante,
+  comprobanteOptions,
+  onCambiarTipoComprobante,
+  cotizacionOrigenId,
+  requiereReceta,
+  archivoReceta,
+  onCambiarArchivoReceta,
   nombreCliente,
   dniCliente,
   idClienteSeleccionado,
-  clientes,
+  sugerenciasCliente,
   onCambiarNombreCliente,
   onCambiarDniCliente,
   onSeleccionarCliente,
   onLimpiarCliente,
   onAbrirNuevoCliente,
   agregarProductoConDetalle,
+  actualizarLinea,
   quitarProducto,
   onVaciarCarrito,
   onAbrirPago,
   onVolverModoNormal,
+  onAbrirVentanaFlotante,
 }: VentaNoMouseProps) {
   // ---------- Línea de ingreso ----------
   const [criterio, setCriterio] = useState<CriterioBusqueda>('nombre');
   const [codigoBarras, setCodigoBarras] = useState('');
   const [textoBusqueda, setTextoBusqueda] = useState('');
-  const [productoSeleccionado, setProductoSeleccionado] = useState<(ProductoConCodigo & { barras?: string }) | null>(null);
+  const [productoSeleccionado, setProductoSeleccionado] = useState<ProductoNM | null>(null);
   const [tipoVentaEntrada, setTipoVentaEntrada] = useState<TipoVenta>('unidad');
   const [cantidad, setCantidad] = useState<number | ''>('');
   const [sugerenciaIndex, setSugerenciaIndex] = useState(0);
@@ -81,9 +122,15 @@ export default function VentaNoMouse({
 
   const [editandoKey, setEditandoKey] = useState<string | null>(null);
 
+  // ---------- Cliente ----------
+  const [mostrarSugerenciasCliente, setMostrarSugerenciasCliente] = useState(false);
+  const [sugerenciaClienteIndex, setSugerenciaClienteIndex] = useState(0);
+
   const codigoBarrasRef = useRef<HTMLInputElement>(null);
   const nombreRef = useRef<HTMLInputElement>(null);
   const cantidadRef = useRef<HTMLInputElement>(null);
+  const dniClienteRef = useRef<HTMLInputElement>(null);
+  const recetaInputRef = useRef<HTMLInputElement>(null);
   const filaRefs = useRef<(HTMLTableRowElement | null)[]>([]);
 
   useEffect(() => {
@@ -100,24 +147,30 @@ export default function VentaNoMouse({
     filaRefs.current[filaSeleccionada]?.scrollIntoView({ block: 'nearest' });
   }, [filaSeleccionada]);
 
+  useEffect(() => {
+    setSugerenciaClienteIndex(0);
+  }, [sugerenciasCliente]);
+
   // ---------- Sugerencias de producto (por nombre / principio activo) ----------
   const sugerencias = useMemo(() => {
     const q = textoBusqueda.trim().toLowerCase();
     if (!q) return [];
-    const filtradas = productos.filter((p) => {
-      const producto = p as ProductoConCodigo & { barras?: string };
+    const filtradas = (productos as ProductoNM[]).filter((p) => {
       if (criterio === 'principio') {
-        return producto.principioActivo?.nombre?.toLowerCase().includes(q);
+        return !!p.principioActivo?.nombre?.toLowerCase().includes(q);
       }
-      return producto.nombre.toLowerCase().includes(q);
+      return p.nombre.toLowerCase().includes(q);
     });
-    return filtradas.slice(0, 8);
+    // Los productos sin stock (que no sean servicio) van al final
+    const sinStock = (p: ProductoNM) => (!esCategoriaServicio(p.categoria?.nombre) && p.stock <= 0 ? 1 : 0);
+    return [...filtradas].sort((a, b) => sinStock(a) - sinStock(b)).slice(0, 8);
   }, [textoBusqueda, productos, criterio]);
 
   useEffect(() => {
     setSugerenciaIndex(0);
   }, [sugerencias]);
 
+  const esServicioSel = esCategoriaServicio(productoSeleccionado?.categoria?.nombre);
   const opcionesTipo = productoSeleccionado ? tiposDisponibles(productoSeleccionado) : [];
   const stockDisponible = productoSeleccionado?.stock ?? 0;
   const tieneCaja = !!productoSeleccionado?.caja_habilitado && !!productoSeleccionado?.vende_por_presentaciones;
@@ -128,9 +181,10 @@ export default function VentaNoMouse({
   const cantidadNum = typeof cantidad === 'number' ? cantidad : 0;
   const importeCalculado = productoSeleccionado ? precioActivo * cantidadNum : 0;
 
-  const maxCantidad = productoSeleccionado
-    ? Math.floor(stockDisponible / unidadesBasePorTipo(productoSeleccionado, tipoVentaEntrada))
-    : undefined;
+  const maxCantidad =
+    productoSeleccionado && !esServicioSel
+      ? Math.floor(stockDisponible / unidadesBasePorTipo(productoSeleccionado, tipoVentaEntrada))
+      : undefined;
 
   useEffect(() => {
     if (!productoSeleccionado || typeof cantidad !== 'number') return;
@@ -140,8 +194,9 @@ export default function VentaNoMouse({
   }, [tipoVentaEntrada]);
 
   // ---------- Selección de producto (agregar uno nuevo) ----------
-  const seleccionarProducto = (producto: ProductoConCodigo & { barras?: string }) => {
-    if (producto.stock <= 0) {
+  const seleccionarProducto = (producto: ProductoNM) => {
+    const esServicio = esCategoriaServicio(producto.categoria?.nombre);
+    if (!esServicio && producto.stock <= 0) {
       setError(`"${producto.nombre}" no tiene stock disponible.`);
       return;
     }
@@ -177,7 +232,8 @@ export default function VentaNoMouse({
   const iniciarEdicion = () => {
     const item = carrito[filaSeleccionada];
     if (!item) return;
-    const producto = item.producto as ProductoConCodigo & { barras?: string };
+    // Se prefiere el producto del catálogo para tener el stock actualizado
+    const producto = ((productos.find((p) => p.id === item.idProducto) ?? item.producto) as unknown) as ProductoNM;
     setProductoSeleccionado(producto);
     setTextoBusqueda(producto.nombre);
     setCodigoBarras(producto.barras ?? producto.codigo_barras ?? '');
@@ -223,23 +279,34 @@ export default function VentaNoMouse({
       setError('La cantidad debe ser mayor a 0.');
       return;
     }
-    const unidadesBase = unidadesBasePorTipo(productoSeleccionado, tipoVentaEntrada);
-    if (cantidadNum * unidadesBase > productoSeleccionado.stock) {
-      const maxPosible = Math.floor(productoSeleccionado.stock / unidadesBase);
-      setError(
-        maxPosible > 0
-          ? `Stock insuficiente para "${productoSeleccionado.nombre}". Máximo disponible: ${maxPosible}.`
-          : `"${productoSeleccionado.nombre}" no tiene stock disponible.`
-      );
-      return;
+
+    if (!esServicioSel) {
+      const unidadesBase = unidadesBasePorTipo(productoSeleccionado, tipoVentaEntrada);
+      if (cantidadNum * unidadesBase > productoSeleccionado.stock) {
+        const maxPosible = Math.floor(productoSeleccionado.stock / unidadesBase);
+        setError(
+          maxPosible > 0
+            ? `Stock insuficiente para "${productoSeleccionado.nombre}". Máximo disponible: ${maxPosible}.`
+            : `"${productoSeleccionado.nombre}" no tiene stock disponible.`
+        );
+        return;
+      }
     }
 
     if (editandoKey) {
+      // Reemplazo atómico de la línea (evita el desfase de estado de quitar + agregar)
       const [idStr, tipoOriginal] = editandoKey.split('|');
-      quitarProducto(Number(idStr), tipoOriginal as TipoVenta);
+      actualizarLinea(Number(idStr), tipoOriginal as TipoVenta, productoSeleccionado, tipoVentaEntrada, cantidadNum, precioActivo);
+    } else {
+      // Sin permiso de precio se deja que el carrito use el precio de catálogo
+      agregarProductoConDetalle(
+        productoSeleccionado,
+        tipoVentaEntrada,
+        cantidadNum,
+        puedeEditarPrecio ? precioActivo : undefined
+      );
     }
 
-    agregarProductoConDetalle(productoSeleccionado, tipoVentaEntrada, cantidadNum, precioActivo);
     setError('');
     limpiarLinea();
     codigoBarrasRef.current?.focus();
@@ -252,7 +319,7 @@ export default function VentaNoMouse({
       const q = codigoBarras.trim().toLowerCase();
       if (!q) return;
 
-      const match = (productos as (ProductoConCodigo & { barras?: string })[]).find((p) => {
+      const match = (productos as ProductoNM[]).find((p) => {
         const codigo = p.barras ?? p.codigo_barras;
         return codigo && codigo.toLowerCase() === q;
       });
@@ -261,14 +328,15 @@ export default function VentaNoMouse({
         setError('No se encontró ningún producto con ese código de barras.');
         return;
       }
-      if (match.stock <= 0) {
+      const esServicio = esCategoriaServicio(match.categoria?.nombre);
+      if (!esServicio && match.stock <= 0) {
         setError(`"${match.nombre}" no tiene stock disponible.`);
         setCodigoBarras('');
         return;
       }
 
-      // Escaneo directo: se agrega 1 unidad limpia al detalle
-      agregarProductoConDetalle(match, 'unidad', 1, match.precio_venta);
+      // Escaneo directo: se agrega 1 unidad limpia al detalle (suma si ya existía)
+      agregarProductoConDetalle(match, 'unidad', 1);
       setError('');
       limpiarLinea();
       codigoBarrasRef.current?.focus();
@@ -296,11 +364,7 @@ export default function VentaNoMouse({
       e.preventDefault();
       const producto = sugerencias[sugerenciaIndex];
       if (!producto) return;
-      if (producto.stock <= 0) {
-        setError(`"${producto.nombre}" no tiene stock disponible.`);
-        return;
-      }
-      seleccionarProducto(producto as ProductoConCodigo & { barras?: string });
+      seleccionarProducto(producto);
       return;
     }
     if (e.key === 'Escape') {
@@ -325,9 +389,49 @@ export default function VentaNoMouse({
     }
   };
 
+  // ---------- Cliente: teclado ----------
+  const handleClienteKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const hay = mostrarSugerenciasCliente && sugerenciasCliente.length > 0 && !idClienteSeleccionado;
+
+    if (e.key === 'ArrowDown' && hay) {
+      e.preventDefault();
+      setSugerenciaClienteIndex((prev) => Math.min(prev + 1, sugerenciasCliente.length - 1));
+      return;
+    }
+    if (e.key === 'ArrowUp' && hay) {
+      e.preventDefault();
+      setSugerenciaClienteIndex((prev) => Math.max(prev - 1, 0));
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (hay) {
+        const c = sugerenciasCliente[sugerenciaClienteIndex];
+        if (c) onSeleccionarCliente(c);
+      }
+      setMostrarSugerenciasCliente(false);
+      codigoBarrasRef.current?.focus();
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setMostrarSugerenciasCliente(false);
+      codigoBarrasRef.current?.focus();
+    }
+  };
+
+  const handleRecetaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onCambiarArchivoReceta(e.target.files?.[0] ?? null);
+    e.target.value = '';
+    codigoBarrasRef.current?.focus();
+  };
+
   // ---------- Atajos Globales Sin Mouse ----------
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Con un modal abierto (pago, cliente, vaciar) no se procesan atajos de esta pantalla
+      if (bloqueado) return;
+
       const activo = document.activeElement;
       const enCampoDeTexto =
         activo instanceof HTMLInputElement || activo instanceof HTMLSelectElement || activo instanceof HTMLTextAreaElement;
@@ -346,6 +450,17 @@ export default function VentaNoMouse({
       if (e.key === 'F4') {
         e.preventDefault();
         onVolverModoNormal();
+        return;
+      }
+      if (e.key === 'F8') {
+        e.preventDefault();
+        if (requiereReceta) recetaInputRef.current?.click();
+        return;
+      }
+      if (e.key === 'F9') {
+        e.preventDefault();
+        dniClienteRef.current?.focus();
+        dniClienteRef.current?.select();
         return;
       }
 
@@ -384,10 +499,13 @@ export default function VentaNoMouse({
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [carrito, filaSeleccionada, onAbrirPago, onVolverModoNormal, quitarProducto, codigoBarras]);
+  }, [carrito, filaSeleccionada, onAbrirPago, onVolverModoNormal, quitarProducto, codigoBarras, bloqueado, requiereReceta]);
 
   const inputBase =
     'w-full px-2 py-1.5 rounded border border-zinc-300 bg-white text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all disabled:bg-zinc-50 disabled:text-zinc-400';
+
+  const sinPermisoPrecio = !puedeEditarPrecio;
+  const tituloSinPermiso = sinPermisoPrecio ? 'No tienes permiso para modificar el precio de venta' : undefined;
 
   return (
     <div className="h-full w-full flex flex-col gap-2 p-2 sm:p-3 box-border bg-zinc-100 overflow-hidden">
@@ -404,8 +522,35 @@ export default function VentaNoMouse({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-lg sm:text-xl font-bold text-primary tracking-tight">Generar Venta</h1>
+
+          <button
+            type="button"
+            onClick={onAbrirVentanaFlotante}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-primary text-primary hover:bg-primary/10 text-xs font-semibold transition-colors cursor-pointer"
+            title="Abrir en ventana emergente"
+          >
+            <ExternalLink size={13} />
+            <span className="hidden sm:inline">Ventana flotante</span>
+          </button>
+
+          <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-zinc-50 border border-zinc-200">
+            <FileText size={13} className="text-primary shrink-0" />
+            <select
+              value={tipoComprobante}
+              onChange={(e) => onCambiarTipoComprobante(e.target.value as TipoComprobante)}
+              className="text-xs font-semibold text-zinc-700 bg-transparent outline-none cursor-pointer max-w-[150px]"
+              title="Tipo de comprobante a emitir"
+            >
+              {comprobanteOptions.map((op) => (
+                <option key={op.value} value={op.value} disabled={op.disabled}>
+                  {op.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <button
             type="button"
             onClick={onVolverModoNormal}
@@ -419,50 +564,56 @@ export default function VentaNoMouse({
         </div>
       </div>
 
+      {/* AVISO COTIZACIÓN */}
+      {cotizacionOrigenId && (
+        <div className="shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-700">
+          <Info size={14} className="shrink-0" />
+          <span>
+            Cargaste la cotización N° {String(cotizacionOrigenId).padStart(6, '0')}. Verifica precios y stock antes de
+            cobrar, ya que pudieron cambiar desde que se generó.
+          </span>
+        </div>
+      )}
+
       {/* CLIENTE */}
-      <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs p-3 shrink-0 grid grid-cols-1 sm:grid-cols-12 gap-2">
+      <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs p-3 shrink-0 grid grid-cols-1 sm:grid-cols-12 gap-2 relative z-30">
         <div className="sm:col-span-3">
-          <label className="text-xs font-semibold text-zinc-500">DNI / RUC CLIENTE</label>
+          <label className="text-xs font-semibold text-zinc-500">
+            DNI / RUC CLIENTE <span className="font-normal text-zinc-400">[ F9 ]</span>
+          </label>
           <input
+            ref={dniClienteRef}
             value={dniCliente}
-            onChange={(e) => onCambiarDniCliente(e.target.value)}
+            onChange={(e) => {
+              onCambiarDniCliente(e.target.value);
+              setMostrarSugerenciasCliente(true);
+            }}
+            onFocus={() => setMostrarSugerenciasCliente(true)}
+            onBlur={() => setTimeout(() => setMostrarSugerenciasCliente(false), 200)}
+            onKeyDown={handleClienteKeyDown}
             readOnly={!!idClienteSeleccionado}
             maxLength={11}
             className={`${inputBase} font-mono ${idClienteSeleccionado ? 'bg-zinc-100' : ''}`}
             placeholder="—"
+            autoComplete="off"
           />
         </div>
-        <div className="sm:col-span-8 relative">
+        <div className="sm:col-span-8">
           <label className="text-xs font-semibold text-zinc-500">CLIENTE</label>
           <input
             value={nombreCliente}
-            onChange={(e) => onCambiarNombreCliente(e.target.value)}
+            onChange={(e) => {
+              onCambiarNombreCliente(e.target.value);
+              setMostrarSugerenciasCliente(true);
+            }}
+            onFocus={() => setMostrarSugerenciasCliente(true)}
+            onBlur={() => setTimeout(() => setMostrarSugerenciasCliente(false), 200)}
+            onKeyDown={handleClienteKeyDown}
             readOnly={!!idClienteSeleccionado}
             className={`${inputBase} ${idClienteSeleccionado ? 'bg-zinc-100 font-medium' : ''}`}
             placeholder="CLIENTES VARIOS"
+            autoComplete="off"
           />
-          {!idClienteSeleccionado && nombreCliente.trim() && (
-            <div className="absolute left-0 right-0 z-30 mt-1 max-h-40 overflow-y-auto bg-white border border-zinc-200 rounded-lg shadow-lg divide-y divide-zinc-100">
-              {clientes
-                .filter(
-                  (c) =>
-                    getNombreCompleto(c).toLowerCase().includes(nombreCliente.trim().toLowerCase()) ||
-                    c.dni?.includes(nombreCliente.trim())
-                )
-                .slice(0, 5)
-                .map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onMouseDown={() => onSeleccionarCliente(c)}
-                    className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-left hover:bg-zinc-50"
-                  >
-                    <span className="font-medium text-zinc-800 truncate mr-2">{getNombreCompleto(c)}</span>
-                    <span className="font-mono text-zinc-400 shrink-0">{c.dni ?? '—'}</span>
-                  </button>
-                ))}
-            </div>
-          )}
         </div>
         <div className="sm:col-span-1 flex items-end gap-2">
           {idClienteSeleccionado ? (
@@ -483,6 +634,24 @@ export default function VentaNoMouse({
             </button>
           )}
         </div>
+
+        {mostrarSugerenciasCliente && !idClienteSeleccionado && sugerenciasCliente.length > 0 && (
+          <div className="absolute left-3 right-3 top-full mt-1 z-40 max-h-48 overflow-y-auto bg-white border border-zinc-200 rounded-lg shadow-lg divide-y divide-zinc-100">
+            {sugerenciasCliente.map((c, idx) => (
+              <button
+                key={c.id}
+                type="button"
+                onMouseDown={() => onSeleccionarCliente(c)}
+                className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left transition-colors ${
+                  idx === sugerenciaClienteIndex ? 'bg-primary/10' : 'hover:bg-zinc-50'
+                }`}
+              >
+                <span className="font-medium text-zinc-800 truncate mr-2">{getNombreCompleto(c)}</span>
+                <span className="font-mono text-zinc-400 shrink-0">{c.dni ?? '—'}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* LÍNEA DE INGRESO */}
@@ -554,15 +723,16 @@ export default function VentaNoMouse({
             />
             <p className="text-[9px] text-zinc-400 mt-0.5 truncate">[ ↑ ↓ navega · Enter selecciona ]</p>
 
-            {!editandoKey && sugerencias.length > 0 && (
+            {!editandoKey && !productoSeleccionado && sugerencias.length > 0 && (
               <div className="absolute left-0 w-[600px] z-50 mt-1 max-h-56 overflow-y-auto bg-white border border-zinc-200 rounded-lg shadow-xl divide-y divide-zinc-100">
                 {sugerencias.map((p, idx) => {
-                  const sinStock = p.stock <= 0;
+                  const esServicio = esCategoriaServicio(p.categoria?.nombre);
+                  const sinStock = !esServicio && p.stock <= 0;
                   return (
                     <button
                       key={p.id}
                       type="button"
-                      onMouseDown={() => { if (!sinStock) seleccionarProducto(p as ProductoConCodigo & { barras?: string }); }}
+                      onMouseDown={() => { if (!sinStock) seleccionarProducto(p); }}
                       disabled={sinStock}
                       title={sinStock ? 'Sin stock disponible' : undefined}
                       className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left transition-colors ${
@@ -578,9 +748,18 @@ export default function VentaNoMouse({
                         {p.laboratorio?.nombre && (
                           <span className="text-zinc-400 font-normal"> ({p.laboratorio.nombre})</span>
                         )}
+                        {esServicio && (
+                          <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">
+                            Servicio
+                          </span>
+                        )}
                       </span>
                       <span className={`shrink-0 ${sinStock ? 'text-red-400 font-semibold' : 'text-zinc-400'}`}>
-                        {sinStock ? 'Sin stock' : `S/ ${p.precio_venta.toFixed(2)} · Stock ${p.stock}`}
+                        {sinStock
+                          ? 'Sin stock'
+                          : esServicio
+                          ? `S/ ${p.precio_venta.toFixed(2)}`
+                          : `S/ ${p.precio_venta.toFixed(2)} · Stock ${p.stock}`}
                       </span>
                     </button>
                   );
@@ -635,7 +814,8 @@ export default function VentaNoMouse({
               step="0.10"
               min={0}
               value={precioUnidadValor}
-              disabled={!productoSeleccionado || tipoVentaEntrada !== 'unidad'}
+              title={tituloSinPermiso}
+              disabled={!productoSeleccionado || tipoVentaEntrada !== 'unidad' || sinPermisoPrecio}
               onFocus={(e) => e.target.select()}
               onChange={(e) => setPrecioUnidadValor(Math.max(0, Number(e.target.value)))}
               className={`${inputBase} text-right ${tipoVentaEntrada === 'unidad' ? 'font-semibold' : ''}`}
@@ -650,7 +830,8 @@ export default function VentaNoMouse({
               step="0.10"
               min={0}
               value={precioCajaValor}
-              disabled={!productoSeleccionado || !tieneCaja || tipoVentaEntrada !== 'caja'}
+              title={tituloSinPermiso}
+              disabled={!productoSeleccionado || !tieneCaja || tipoVentaEntrada !== 'caja' || sinPermisoPrecio}
               onFocus={(e) => e.target.select()}
               onChange={(e) => setPrecioCajaValor(Math.max(0, Number(e.target.value)))}
               className={`${inputBase} text-right ${tipoVentaEntrada === 'caja' ? 'font-semibold' : ''}`}
@@ -665,7 +846,8 @@ export default function VentaNoMouse({
               step="0.10"
               min={0}
               value={precioBlisterValor}
-              disabled={!productoSeleccionado || !tieneBlister || tipoVentaEntrada !== 'blister'}
+              title={tituloSinPermiso}
+              disabled={!productoSeleccionado || !tieneBlister || tipoVentaEntrada !== 'blister' || sinPermisoPrecio}
               onFocus={(e) => e.target.select()}
               onChange={(e) => setPrecioBlisterValor(Math.max(0, Number(e.target.value)))}
               className={`${inputBase} text-right ${tipoVentaEntrada === 'blister' ? 'font-semibold' : ''}`}
@@ -675,7 +857,11 @@ export default function VentaNoMouse({
           {/* Stock */}
           <div className="col-span-1">
             <label className="text-[10px] font-semibold text-zinc-500 truncate block">Stock</label>
-            <input readOnly value={stockDisponible} className={`${inputBase} bg-zinc-50 text-right font-mono`} />
+            <input
+              readOnly
+              value={productoSeleccionado && esServicioSel ? '—' : stockDisponible}
+              className={`${inputBase} bg-zinc-50 text-right font-mono`}
+            />
           </div>
 
           {/* Botón Grabar */}
@@ -721,7 +907,14 @@ export default function VentaNoMouse({
                     idx === filaSeleccionada ? 'bg-primary/10' : 'hover:bg-zinc-50/60'
                   }`}
                 >
-                  <td className="px-4 py-1.5 text-zinc-700">{item.producto.nombre}</td>
+                  <td className="px-4 py-1.5 text-zinc-700">
+                    {item.producto.nombre}
+                    {item.tipoVenta !== 'unidad' && (
+                      <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary capitalize">
+                        {item.tipoVenta}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-1.5 text-right font-mono">{item.cantidad}</td>
                   <td className="px-4 py-1.5 text-right font-mono">S/ {item.precioUnitario.toFixed(2)}</td>
                   <td className="px-4 py-1.5 text-right font-mono font-semibold">
@@ -741,7 +934,7 @@ export default function VentaNoMouse({
         </div>
 
         <div className="shrink-0 border-t border-zinc-200 px-3 py-2 flex flex-wrap items-center justify-between gap-2 bg-zinc-50/50">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
               onClick={iniciarEdicion}
@@ -771,10 +964,33 @@ export default function VentaNoMouse({
             >
               Vaciar todo
             </button>
+
+            {requiereReceta && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => recetaInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100 text-xs font-semibold transition-colors"
+                  title="Adjuntar foto de la receta (F8)"
+                >
+                  <FileImage size={13} />
+                  {archivoReceta ? 'Receta lista ✓' : 'Subir receta'}
+                  <span className="text-[10px] font-normal opacity-70">F8</span>
+                </button>
+                <input
+                  ref={recetaInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={handleRecetaChange}
+                />
+              </>
+            )}
           </div>
 
           <p className="text-[10px] text-zinc-400">
-            ↑ ↓ selecciona fila &nbsp;•&nbsp; Supr elimina &nbsp;•&nbsp; F2 cobrar &nbsp;•&nbsp; F3 código de barras &nbsp;•&nbsp; F4 modo con mouse
+            ↑ ↓ selecciona fila &nbsp;•&nbsp; Supr elimina &nbsp;•&nbsp; F2 cobrar &nbsp;•&nbsp; F3 código de barras &nbsp;•&nbsp; F4 modo con mouse &nbsp;•&nbsp; F9 cliente
           </p>
         </div>
       </div>

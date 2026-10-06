@@ -26,7 +26,7 @@ export const ModalAlertaStock: React.FC<ModalAlertaStockProps> = ({
 
   // Filtrar productos que tienen stock bajo
   const productosStockBajo = useMemo(() => {
-    return productos.filter((p) => p.stock <= (p.stock_minimo ?? 10));
+    return productos.filter((p) => (p.stock ?? 0) <= (p.stock_minimo ?? 10));
   }, [productos]);
 
   const productosFiltrados = useMemo(() => {
