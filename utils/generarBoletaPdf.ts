@@ -164,6 +164,16 @@ function renderBoleta(
   linea(false);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
+  if (venta.descuento && venta.descuento > 0) {
+    doc.setFont('helvetica', 'normal');
+    doc.text('SUBTOTAL:', MARGEN, y);
+    doc.text(`S/ ${(venta.total + venta.descuento).toFixed(2)}`, ANCHO - MARGEN, y, { align: 'right' });
+    y += 4.5;
+    doc.text(`DESC. CUPON${venta.cuponCodigo ? ` ${venta.cuponCodigo}` : ''}:`, MARGEN, y);
+    doc.text(`- S/ ${venta.descuento.toFixed(2)}`, ANCHO - MARGEN, y, { align: 'right' });
+    y += 4.5;
+    doc.setFont('helvetica', 'bold');
+  }
   doc.text('TOTAL:', MARGEN, y);
   doc.text(`S/ ${venta.total.toFixed(2)}`, ANCHO - MARGEN, y, { align: 'right' });
   y += 5;

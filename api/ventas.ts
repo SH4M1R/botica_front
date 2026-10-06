@@ -23,7 +23,23 @@ export interface Cliente {
   apellidoMaterno?: string;
   dni?: string;
   telefono?: string;
+  direccion?: string;
   saldo?: number;
+  puntos?: number;
+}
+
+export interface RucResponse {
+  success?: boolean;
+  ruc: string;
+  razonSocial: string;
+  nombreComercial?: string;
+  direccion?: string;
+  departamento?: string;
+  provincia?: string;
+  distrito?: string;
+  estado?: string;
+  condicion?: string;
+  telefonos?: string[];
 }
 
 export interface ReniecResponse {
@@ -67,6 +83,7 @@ interface ClientePayload {
   apellidoMaterno?: string;
   dni?: string;
   telefono?: string;
+  direccion?: string;
 }
 
 export interface Empleado {
@@ -103,6 +120,8 @@ export interface Venta {
   detalles: DetalleVenta[];
   recetaPath?: string | null;
   requiereReceta?: boolean;
+  descuento?: number;
+  cuponCodigo?: string | null;
 }
 
 export interface ItemVentaRequest {
@@ -120,6 +139,7 @@ export interface VentaRequest {
   tipoVenta: TipoComprobanteVenta;
   montoPagado?: number;
   codigoIzipay?: string;
+  idCupon?: number | null;
   items: ItemVentaRequest[];
 }
 
@@ -159,6 +179,7 @@ export const clientesApi = {
   registrarPago: (id: number, monto: number) =>
     request<Cliente>(`/clientes/${id}/pago`, { method: 'PUT', body: JSON.stringify({ monto }) }),
   consultarDni: (dni: string) => request<ReniecResponse>(`/clientes/reniec/${dni}`),
+  consultarRuc: (ruc: string) => request<RucResponse>(`/clientes/ruc/${ruc}`),
   actualizarSaldo: (id: number, saldo: number) =>
     request<Cliente>(`/clientes/${id}/saldo`, { method: 'PUT', body: JSON.stringify({ saldo }) }),
 };

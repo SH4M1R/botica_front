@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Trash2, Save, Pencil, MousePointer2, XCircle, ExternalLink, FileText, FileImage, Info } from 'lucide-react';
 import type { Cliente } from '@/api/ventas';
+import type { Cupon } from '@/api/cupones';
 import { getNombreCompleto } from '@/api/ventas';
 import { tiposDisponibles, unidadesBasePorTipo } from '@/components/ventaShared';
 import type { CarritoItem, ProductoConCodigo, TipoVenta } from '@/components/ventaShared';
@@ -23,6 +24,10 @@ interface VentaNoMouseProps {
   productos: ProductoConStock[];
   carrito: CarritoItem[];
   total: number;
+  descuentoCupon: number;
+  cupones: Cupon[];
+  idCuponSel: number | null;
+  onSeleccionarCupon: (id: number | null) => void;
   error: string;
   setError: (v: string) => void;
 
@@ -78,6 +83,10 @@ export default function VentaNoMouse({
   productos,
   carrito,
   total,
+  descuentoCupon,
+  cupones,
+  idCuponSel,
+  onSeleccionarCupon,
   error,
   setError,
   puedeEditarPrecio,
@@ -452,6 +461,14 @@ export default function VentaNoMouse({
         onVolverModoNormal();
         return;
       }
+      if (e.key === 'F7') {
+        // Cicla entre: sin cupón → cupón 1 → cupón 2 → ... → sin cupón
+        e.preventDefault();
+        if (cupones.length === 0) return;
+        const idx = cupones.findIndex((c) => c.id === idCuponSel);
+        onSeleccionarCupon(idx + 1 < cupones.length ? cupones[idx + 1].id : null);
+        return;
+      }
       if (e.key === 'F8') {
         e.preventDefault();
         if (requiereReceta) recetaInputRef.current?.click();
@@ -499,7 +516,7 @@ export default function VentaNoMouse({
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [carrito, filaSeleccionada, onAbrirPago, onVolverModoNormal, quitarProducto, codigoBarras, bloqueado, requiereReceta]);
+  }, [carrito, filaSeleccionada, onAbrirPago, onVolverModoNormal, quitarProducto, codigoBarras, bloqueado, requiereReceta, cupones, idCuponSel, onSeleccionarCupon]);
 
   const inputBase =
     'w-full px-2 py-1.5 rounded border border-zinc-300 bg-white text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all disabled:bg-zinc-50 disabled:text-zinc-400';
@@ -990,17 +1007,37 @@ export default function VentaNoMouse({
           </div>
 
           <p className="text-[10px] text-zinc-400">
-            ↑ ↓ selecciona fila &nbsp;•&nbsp; Supr elimina &nbsp;•&nbsp; F2 cobrar &nbsp;•&nbsp; F3 código de barras &nbsp;•&nbsp; F4 modo con mouse &nbsp;•&nbsp; F9 cliente
+            ↑ ↓ selecciona fila &nbsp;•&nbsp; Supr elimina &nbsp;•&nbsp; F2 cobrar &nbsp;•&nbsp; F3 código de barras &nbsp;•&nbsp; F4 modo con mouse &nbsp;•&nbsp; F9 cliente &nbsp;•&nbsp; F7 cupón
           </p>
         </div>
       </div>
 
       {/* PIE: TOTALES */}
       <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs p-3 shrink-0 flex flex-wrap items-center justify-between gap-3">
-        <span className="text-[10px] text-zinc-400">El medio de pago se confirma en el cobro (F2)</span>
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] text-zinc-400">El medio de pago se confirma en el cobro (F2)</span>
+          {cupones.length > 0 && (
+            <label className="flex items-center gap-2 text-[10px] font-semibold text-zinc-500 uppercase">
+              Cupón <span className="font-normal text-zinc-400">[ F7 ]</span>
+              <select
+                value={idCuponSel ?? ''}
+                onChange={(e) => onSeleccionarCupon(e.target.value ? Number(e.target.value) : null)}
+                className="px-2 py-1 rounded border border-zinc-300 bg-white text-xs normal-case font-normal text-zinc-700"
+              >
+                <option value="">Sin cupón</option>
+                {cupones.map((c) => (
+                  <option key={c.id} value={c.id}>{c.codigo} — {c.nombre} (−S/ {c.valor.toFixed(2)})</option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
 
         <div className="flex items-center gap-6">
           <div className="text-right">
+            {descuentoCupon > 0 && (
+              <p className="text-[10px] font-semibold text-emerald-600">Cupón − S/ {descuentoCupon.toFixed(2)}</p>
+            )}
             <p className="text-[10px] font-semibold text-zinc-400 uppercase">Importe Total</p>
             <p className="text-lg font-bold text-zinc-900">S/ {total.toFixed(2)}</p>
           </div>

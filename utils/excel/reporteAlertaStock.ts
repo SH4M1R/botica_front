@@ -3,6 +3,7 @@ import { crearExcelBuilder, formatEmision, ColumnaExcel } from './excelBase';
 
 const columnas: ColumnaExcel<AlertaStock>[] = [
   { header: 'Producto', align: 'left', width: 35, render: (f) => f.nombreProducto },
+  { header: 'Laboratorio', align: 'left', width: 22, render: (f) => f.laboratorio?.nombre || '—' },
   { header: 'Stock', align: 'right', width: 10, render: (f) => f.stock },
   { header: 'Mínimo', align: 'right', width: 10, render: (f) => f.stockMinimo },
   { header: 'Diferencia', align: 'right', width: 12, render: (f) => f.diferencia },

@@ -9,13 +9,15 @@ interface ClienteModalProps {
   open: boolean;
   cliente: Cliente | null;
   onClose: () => void;
-  onSave: (data: { nombres: string; apellidoPaterno?: string; apellidoMaterno?: string; dni?: string; telefono?: string }) => Promise<void>;
+  onSave: (data: { nombres: string; apellidoPaterno?: string; apellidoMaterno?: string; dni?: string; telefono?: string; direccion?: string }) => Promise<void>;
 }
 
 export default function ClienteModal({ open, cliente, onClose, onSave }: ClienteModalProps) {
   const [nombreCompleto, setNombreCompleto] = useState('');
   const [dni, setDni] = useState('');
   const [telefono, setTelefono] = useState('');
+  const [direccion, setDireccion] = useState('');
+  const [tipoDoc, setTipoDoc] = useState<'DNI' | 'RUC'>('DNI');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -27,6 +29,8 @@ export default function ClienteModal({ open, cliente, onClose, onSave }: Cliente
     setNombreCompleto(cliente ? getNombreCompleto(cliente) : '');
     setDni(cliente?.dni ?? '');
     setTelefono(cliente?.telefono ?? '');
+    setDireccion(cliente?.direccion ?? '');
+    setTipoDoc((cliente?.dni?.length ?? 0) === 11 ? 'RUC' : 'DNI');
     setError('');
     setDniError('');
   }, [cliente, open]);
@@ -34,25 +38,32 @@ export default function ClienteModal({ open, cliente, onClose, onSave }: Cliente
   if (!open) return null;
 
   const handleClose = () => {
-    setNombreCompleto(''); setDni(''); setTelefono(''); setError(''); setDniError('');
+    setNombreCompleto(''); setDni(''); setTelefono(''); setDireccion(''); setError(''); setDniError('');
     onClose();
   };
 
-  const handleBuscarDni = async () => {
-    const dniLimpio = dni.trim();
-    setDniError('');
+  const longitud = tipoDoc === 'RUC' ? 11 : 8;
 
-    if (dniLimpio.length !== 8) {
-      setDniError('El DNI debe tener 8 dígitos.');
+  const handleBuscar = async () => {
+    const doc = dni.trim();
+    setDniError('');
+    if (doc.length !== longitud) {
+      setDniError(`El ${tipoDoc} debe tener ${longitud} dígitos.`);
       return;
     }
-
     setBuscandoDni(true);
     try {
-      const datos = await clientesApi.consultarDni(dniLimpio);
-      setNombreCompleto([datos.nombres, datos.apellidoPaterno, datos.apellidoMaterno].filter(Boolean).join(' '));
+      if (tipoDoc === 'RUC') {
+        const d = await clientesApi.consultarRuc(doc);
+        setNombreCompleto(d.razonSocial ?? '');
+        if (d.direccion) setDireccion(d.direccion);
+        if (d.telefonos && d.telefonos.length > 0 && !telefono) setTelefono(d.telefonos[0]);
+      } else {
+        const datos = await clientesApi.consultarDni(doc);
+        setNombreCompleto([datos.nombres, datos.apellidoPaterno, datos.apellidoMaterno].filter(Boolean).join(' '));
+      }
     } catch {
-      setDniError('No se encontraron datos para ese DNI.');
+      setDniError(`No se encontraron datos para ese ${tipoDoc}.`);
     } finally {
       setBuscandoDni(false);
     }
@@ -63,7 +74,10 @@ export default function ClienteModal({ open, cliente, onClose, onSave }: Cliente
     if (!nombreCompleto.trim()) return setError('El nombre es obligatorio.');
 
     // --- CAMBIO CLAVE: divide el nombre completo antes de enviarlo al backend ---
-    const { nombres, apellidoPaterno, apellidoMaterno } = splitNombreCompleto(nombreCompleto);
+    // Empresas (RUC): la razón social va completa en "nombres", sin dividirla
+    const { nombres, apellidoPaterno, apellidoMaterno } = tipoDoc === 'RUC'
+      ? { nombres: nombreCompleto.trim(), apellidoPaterno: '', apellidoMaterno: '' }
+      : splitNombreCompleto(nombreCompleto);
 
     setSaving(true);
     setError('');
@@ -74,6 +88,7 @@ export default function ClienteModal({ open, cliente, onClose, onSave }: Cliente
         apellidoMaterno: apellidoMaterno || undefined,
         dni: dni.trim() || undefined,
         telefono: telefono.trim() || undefined,
+        direccion: direccion.trim() || undefined,
       });
       handleClose();
     } catch {
@@ -99,20 +114,32 @@ export default function ClienteModal({ open, cliente, onClose, onSave }: Cliente
 
         <form onSubmit={handleSubmit} className="p-5 space-y-3">
           <div className="space-y-1">
-            <label className={labelClass}>DNI</label>
+            <div className="flex items-center justify-between">
+              <label className={labelClass}>Documento</label>
+              <div className="flex rounded-lg border border-zinc-300 overflow-hidden text-xs font-semibold">
+                {(['DNI', 'RUC'] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => { setTipoDoc(t); setDni(''); setDniError(''); }}
+                    className={`px-2.5 py-1 ${tipoDoc === t ? 'bg-primary text-white' : 'bg-white text-zinc-600'}`}
+                  >{t}</button>
+                ))}
+              </div>
+            </div>
             <div className="flex gap-2">
               <input
                 value={dni}
                 onChange={(e) => setDni(e.target.value.replace(/\D/g, ''))}
-                maxLength={8}
-                placeholder="8 dígitos"
+                maxLength={longitud}
+                placeholder={`${longitud} dígitos`}
                 className={inputClass}
               />
               <button
                 type="button"
-                onClick={handleBuscarDni}
-                disabled={buscandoDni || dni.trim().length !== 8}
-                title="Buscar datos por DNI"
+                onClick={handleBuscar}
+                disabled={buscandoDni || dni.trim().length !== longitud}
+                title={`Buscar datos por ${tipoDoc}`}
                 className="shrink-0 px-3 py-2 rounded-lg border-2 border-primary/30 text-primary hover:bg-primary/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {buscandoDni ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
@@ -122,15 +149,22 @@ export default function ClienteModal({ open, cliente, onClose, onSave }: Cliente
           </div>
 
           <div className="space-y-1">
-            <label className={labelClass}>Nombre completo</label>
+            <label className={labelClass}>{tipoDoc === 'RUC' ? 'Razón social' : 'Nombre completo'}</label>
             <input
               value={nombreCompleto}
               onChange={(e) => setNombreCompleto(e.target.value)}
               placeholder="Nombres Apellido Paterno Apellido Materno"
               className={inputClass}
             />
-            <p className="text-[11px] text-zinc-400">Se guardará separado en nombres y apellidos.</p>
+            {tipoDoc === 'DNI' && <p className="text-[11px] text-zinc-400">Se guardará separado en nombres y apellidos.</p>}
           </div>
+
+          {tipoDoc === 'RUC' && (
+            <div className="space-y-1">
+              <label className={labelClass}>Dirección</label>
+              <input value={direccion} onChange={(e) => setDireccion(e.target.value)} className={inputClass} />
+            </div>
+          )}
 
           <div className="space-y-1">
             <label className={labelClass}>Teléfono</label>

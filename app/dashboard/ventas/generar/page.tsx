@@ -1,5 +1,7 @@
 'use client';
 
+import { cuponesApi } from '@/api/cupones';
+import type { Cupon } from '@/api/cupones';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Search, Trash2, Wallet, ShoppingCart, UserPlus, Plus, X as XIcon, FileText, AlertTriangle, ExternalLink, Barcode, MousePointerClick, Info, FileImage } from 'lucide-react';
@@ -304,10 +306,28 @@ export default function GenerarVentaPage() {
       .slice(0, 5);
   }, [nombreCliente, dniCliente, clientes, idClienteSeleccionado]);
 
-  const total = useMemo(
+  const subtotalCarrito = useMemo(
     () => carrito.reduce((sum, item) => sum + item.precioUnitario * item.cantidad, 0),
     [carrito]
   );
+
+  // Cupones ACTIVOS del cliente seleccionado
+  const [cuponesCliente, setCuponesCliente] = useState<Cupon[]>([]);
+  const [idCuponSel, setIdCuponSel] = useState<number | null>(null);
+
+  useEffect(() => {
+    setIdCuponSel(null);
+    if (!idClienteSeleccionado) { setCuponesCliente([]); return; }
+    let cancelado = false;
+    cuponesApi.listarPorCliente(idClienteSeleccionado)
+      .then((c) => { if (!cancelado) setCuponesCliente(c.filter((x) => x.estado === 'ACTIVO')); })
+      .catch(() => { if (!cancelado) setCuponesCliente([]); });
+    return () => { cancelado = true; };
+  }, [idClienteSeleccionado]);
+
+  const cuponSel = cuponesCliente.find((c) => c.id === idCuponSel) ?? null;
+  const descuentoCupon = cuponSel ? Math.min(cuponSel.valor, subtotalCarrito) : 0;
+  const total = subtotalCarrito - descuentoCupon;
 
   const tieneCliente = !!(idClienteSeleccionado || nombreCliente.trim());
   const etiquetaTipo = (tipoVenta: TipoVenta) => (tipoVenta === 'unidad' ? 'unidad(es)' : `${tipoVenta}(s)`);
@@ -596,6 +616,7 @@ export default function GenerarVentaPage() {
         tipoVenta: TIPO_VENTA_BACKEND[tipoComprobante],
         montoPagado,
         codigoIzipay,
+        idCupon: idClienteSeleccionado ? idCuponSel : null,
         items: carrito.map(({ idProducto, cantidad, tipoVenta, precioUnitario }) => ({
           idProducto, cantidad, tipoVenta, precioUnitario,
         })),
@@ -749,6 +770,10 @@ export default function GenerarVentaPage() {
           productos={productos}
           carrito={carrito}
           total={total}
+          descuentoCupon={descuentoCupon}
+          cupones={cuponesCliente}
+          idCuponSel={idCuponSel}
+          onSeleccionarCupon={setIdCuponSel}
           error={error}
           setError={setError}
           puedeEditarPrecio={puedeEditarPrecio}
@@ -1228,6 +1253,35 @@ export default function GenerarVentaPage() {
               </span>
               <span className="text-xs font-normal">F2</span>
             </button>
+
+            {cuponesCliente.length > 0 && (
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-zinc-600">Cupón disponible</label>
+                <select
+                  value={idCuponSel ?? ''}
+                  onChange={(e) => setIdCuponSel(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full px-2 py-2 rounded-lg border border-zinc-300 bg-white text-sm"
+                >
+                  <option value="">Sin cupón</option>
+                  {cuponesCliente.map((c) => (
+                    <option key={c.id} value={c.id}>{c.codigo} — {c.nombre} (−S/ {c.valor.toFixed(2)})</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {descuentoCupon > 0 && (
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-zinc-500">Subtotal</span>
+                <span className="text-zinc-700">S/ {subtotalCarrito.toFixed(2)}</span>
+              </div>
+            )}
+            {descuentoCupon > 0 && (
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-emerald-600 font-medium">Descuento cupón</span>
+                <span className="text-emerald-600 font-medium">− S/ {descuentoCupon.toFixed(2)}</span>
+              </div>
+            )}
 
             <div className="flex justify-between items-center pt-1">
               <span className="text-sm font-medium text-zinc-500">Total</span>

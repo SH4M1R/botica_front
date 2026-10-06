@@ -3,6 +3,7 @@ import { crearExcelBuilder, formatFecha, formatEmision, ColumnaExcel } from './e
 
 const columnas: ColumnaExcel<ProductoPorVencer>[] = [
   { header: 'Producto', align: 'left', width: 35, render: (f) => f.nombreProducto },
+  { header: 'Laboratorio', align: 'left', width: 22, render: (f) => f.laboratorio || '—' },
   { header: 'Lote', align: 'left', width: 14, render: (f) => f.lote ?? '—' },
   { header: 'Vencimiento', align: 'left', width: 14, render: (f) => formatFecha(f.fechaVencimiento) },
   { header: 'Stock', align: 'right', width: 10, render: (f) => f.stock },

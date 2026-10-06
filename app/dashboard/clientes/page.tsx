@@ -4,12 +4,14 @@ import { useState } from 'react';
 import { usePaginaServidor } from '@/hooks/usePaginaServidor';
 import { useDebounce } from '@/hooks/useDebounce';
 import Link from 'next/link';
-import { Search, Pencil, HandCoins, Plus, Wallet, History } from 'lucide-react';
+import { Search, Pencil, HandCoins, Plus, Wallet, History, Gift, Settings2 } from 'lucide-react';
 import { clientesApi, getNombreCompleto } from '@/api/ventas';
 import type { Cliente } from '@/api/ventas';
 import ClienteModal from './components/ClienteModal';
 import PagoDeudaModal from './components/PagoDeudaModal';
 import SaldoModal from './components/SaldoModal';
+import CuponesModal from './components/CuponesModal';
+import CuponTiposModal from './components/CuponTiposModal';
 import Paginacion from '@/components/Paginacion';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
@@ -21,6 +23,10 @@ export default function ClientesPage() {
   const [clienteActivo, setClienteActivo] = useState<Cliente | null>(null);
   const [pagoModalOpen, setPagoModalOpen] = useState(false);
   const [clienteParaPago, setClienteParaPago] = useState<Cliente | null>(null);
+
+  const [cuponesOpen, setCuponesOpen] = useState(false);
+  const [clienteCupones, setClienteCupones] = useState<Cliente | null>(null);
+  const [tiposOpen, setTiposOpen] = useState(false);
 
   const [saldoModalOpen, setSaldoModalOpen] = useState(false);
   const [clienteParaSaldo, setClienteParaSaldo] = useState<Cliente | null>(null);
@@ -35,7 +41,7 @@ export default function ClientesPage() {
     PAGE_SIZE_OPTIONS[0]
   );
 
-  const handleGuardar = async (data: { nombres: string; apellidoPaterno?: string; apellidoMaterno?: string; dni?: string; telefono?: string }) => {
+  const handleGuardar = async (data: { nombres: string; apellidoPaterno?: string; apellidoMaterno?: string; dni?: string; telefono?: string; direccion?: string }) => {
     if (clienteActivo) {
       await clientesApi.actualizar(clienteActivo.id, data);
     } else {
@@ -71,6 +77,14 @@ export default function ClientesPage() {
           <h1 className="text-2xl font-bold text-primary tracking-tight">Clientes</h1>
           <p className="text-sm text-zinc-500 mt-1">Historial y datos de los clientes registrados.</p>
         </div>
+        <div className="flex items-center gap-2">
+        <button
+          onClick={() => setTiposOpen(true)}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-primary border-2 border-primary/30 hover:bg-primary/10 rounded-lg transition-all cursor-pointer"
+        >
+          <Settings2 size={16} />
+          Configurar cupones
+        </button>
         <button
           onClick={() => { setClienteActivo(null); setModalOpen(true); }}
           className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-primary hover:bg-primary-dark rounded-lg shadow-xs transition-all cursor-pointer"
@@ -78,6 +92,7 @@ export default function ClientesPage() {
           <Plus size={16} />
           Nuevo cliente
         </button>
+        </div>
       </div>
 
       <div className="relative max-w-sm">
@@ -85,7 +100,7 @@ export default function ClientesPage() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar por nombre o DNI..."
+          placeholder="Buscar por nombre, DNI o RUC..."
           className="w-full pl-9 pr-4 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
         />
       </div>
@@ -99,18 +114,20 @@ export default function ClientesPage() {
           <>
             <table className="w-full text-sm">
               <colgroup>
-                <col style={{ width: '35%' }} />
-                <col style={{ width: '13%' }} />
-                <col style={{ width: '13%' }} />
-                <col style={{ width: '14%' }} />
-                <col style={{ width: '25%' }} />
+                <col style={{ width: '28%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '9%' }} />
+                <col style={{ width: '27%' }} />
               </colgroup>
               <thead>
                 <tr className="bg-primary/10 border-b border-zinc-200 text-left text-xs font-bold text-primary uppercase tracking-wider">
                   <th className="px-5 py-3">NOMBRE</th>
-                  <th className="px-5 py-3">DNI</th>
+                  <th className="px-5 py-3">DNI / RUC</th>
                   <th className="px-5 py-3">TELÉFONO</th>
                   <th className="px-5 py-3">DEUDA</th>
+                  <th className="px-5 py-3">PUNTOS</th>
                   <th className="px-5 py-3 text-right">ACCIONES</th>
                 </tr>
               </thead>
@@ -129,8 +146,16 @@ export default function ClientesPage() {
                         <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-zinc-100 text-zinc-400">Sin deuda</span>
                       )}
                     </td>
+                    <td className="px-5 py-3 font-semibold text-primary">{c.puntos ?? 0}</td>
                     <td className="px-5 py-3">
                       <div className="flex justify-end gap-1">
+                        <button
+                          onClick={() => { setClienteCupones(c); setCuponesOpen(true); }}
+                          title="Puntos y cupones"
+                          className="p-2 text-violet-600 hover:text-violet-700 hover:bg-violet-50 rounded-lg transition-colors border-2 cursor-pointer"
+                        >
+                          <Gift size={16} />
+                        </button>
                         <Link
                           href={`/dashboard/clientes/historial?id=${c.id}`}
                           title="Ver historial de compras"
@@ -190,6 +215,15 @@ export default function ClientesPage() {
         onClose={() => setModalOpen(false)}
         onSave={handleGuardar}
       />
+
+      <CuponesModal
+        open={cuponesOpen}
+        cliente={clienteCupones}
+        onClose={() => setCuponesOpen(false)}
+        onCambio={recargar}
+      />
+
+      <CuponTiposModal open={tiposOpen} onClose={() => setTiposOpen(false)} />
 
       <PagoDeudaModal
         open={pagoModalOpen}

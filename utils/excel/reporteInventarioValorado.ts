@@ -3,6 +3,7 @@ import { crearExcelBuilder, formatEmision, formatMoneda, ColumnaExcel } from './
 
 const columnas: ColumnaExcel<InventarioValoradoItem>[] = [
   { header: 'Producto', align: 'left', width: 35, render: (f) => f.nombreProducto },
+  { header: 'Laboratorio', align: 'left', width: 22, render: (f) => f.laboratorio || '—' },
   { header: 'Stock', align: 'right', width: 10, render: (f) => f.stock },
   { header: 'Costo', align: 'right', width: 14, render: (f) => formatMoneda(f.precioCosto) },
   { header: 'Valor Costo', align: 'right', width: 14, render: (f) => formatMoneda(f.valorCosto) },
