@@ -1,5 +1,3 @@
-import { PERMISO_EDITAR_PRECIO_VENTA } from './permisos';
-
 export interface ItemMenu {
   ruta: string;
   label: string;
@@ -31,11 +29,18 @@ export const ESTRUCTURA_MENU: ModuloMenu[] = [
     items: [
       { ruta: '/dashboard/ventas', label: 'Listado de ventas' },
       { ruta: '/dashboard/ventas/generar', label: 'Generar venta' },
-      { ruta: '/dashboard/ventas/cotizacion', label: 'Generar cotización' },
       { ruta: '/dashboard/clientes', label: 'Clientes' },
-      { ruta: PERMISO_EDITAR_PRECIO_VENTA, label: 'Modificar precio de venta' },
     ],
   },
+
+  {
+  modulo: 'Cotizaciones',
+    items: [
+      { ruta: '/dashboard/cotizaciones', label: 'Listado de cotizaciones' },
+      { ruta: '/dashboard/cotizaciones/generar', label: 'Generar cotización' },
+    ],
+  },
+
   {
     modulo: 'Compras',
     items: [
@@ -49,6 +54,7 @@ export const ESTRUCTURA_MENU: ModuloMenu[] = [
     items: [
       { ruta: '/dashboard/productos', label: 'Listado productos' },
       { ruta: '/dashboard/productos/atributos', label: 'Atributos' },
+      { ruta: '/dashboard/productos/kardex', label: 'Kardex' },
     ],
   },
   {
@@ -72,11 +78,11 @@ export const RUTAS_IMPLICITAS: Record<string, string[]> = {
 
 export function rutaEstaPermitida(rutaActual: string, rutasPermitidas: Set<string>): boolean {
   if (rutasPermitidas.has(rutaActual)) return true;
- 
+
   for (const ruta of rutasPermitidas) {
     const implicitas = RUTAS_IMPLICITAS[ruta];
     if (implicitas?.includes(rutaActual)) return true;
   }
- 
+
   return false;
 }

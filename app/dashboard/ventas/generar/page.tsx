@@ -1,15 +1,19 @@
 'use client';
 
+import { cuponesApi } from '@/api/cupones';
+import type { Cupon } from '@/api/cupones';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Search, Trash2, Wallet, ShoppingCart, UserPlus, Plus, X as XIcon, FileText, AlertTriangle, ExternalLink, Barcode, MousePointerClick } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Search, Trash2, Wallet, ShoppingCart, UserPlus, Plus, X as XIcon, FileText, AlertTriangle, ExternalLink, Barcode, MousePointerClick, Info, FileImage } from 'lucide-react';
 import { productosApi } from '@/api/productos';
 import type { Producto } from '@/api/productos';
-import { ventasApi, clientesApi, getNombreCompleto, splitNombreCompleto } from '@/api/ventas';
-import type { Venta, Cliente } from '@/api/ventas';
+import { ventasApi, recetasApi, clientesApi, getNombreCompleto, splitNombreCompleto } from '@/api/ventas';
+import type { Venta, Cliente, TipoComprobanteVenta } from '@/api/ventas';
 import { arqueoApi } from '@/api/arqueo';
 import type { ArqueoCaja } from '@/api/arqueo';
 import { permisosApi } from '@/api/permisos';
+import { lotesApi, mergearStockEnProductos } from '@/api/lotes';
+import { cotizacionesApi } from '@/api/cotizaciones';
 import { PERMISO_EDITAR_PRECIO_VENTA } from '@/constants/permisos';
 import { useSession } from '@/hooks/useSession';
 import MetodoPagoModal, { PagoParte } from '../components/MetodoPagoModal';
@@ -26,16 +30,15 @@ import {
   PrecioInput,
 } from '@/components/ventaShared';
 
-// Re-exportados por compatibilidad, por si algún otro archivo los importaba
-// directamente desde esta página (antes vivían acá).
 export type { TipoVenta, CarritoItem, ProductoConCodigo };
 export { tiposDisponibles, precioPorTipo, unidadesBasePorTipo };
 
-// Tipo de comprobante a emitir. Por ahora solo "Nota de Venta" está
-// disponible; Boleta y Factura Electrónica quedan bloqueadas en el
-// selector hasta que se implemente la facturación electrónica. La
-// "Cotización de Venta" ahora vive en su propia página:
-// /dashboard/ventas/cotizacion
+// Producto con stock y fecha_vencimiento ya mergeados desde /lotes/resumen-stock.
+// El tipo Producto base los declara opcionales porque ya no vienen de /productos;
+// este tipo evita que el resto del archivo trate `stock` como posiblemente
+// undefined, ya que cargarProductos siempre hace el merge antes de guardarlo.
+export type ProductoConStock = Producto & { stock: number; fecha_vencimiento: string | null };
+
 export type TipoComprobante = 'nota' | 'boleta' | 'factura';
 
 const COMPROBANTE_OPTIONS: { value: TipoComprobante; label: string; disabled?: boolean }[] = [
@@ -44,11 +47,24 @@ const COMPROBANTE_OPTIONS: { value: TipoComprobante; label: string; disabled?: b
   { value: 'factura', label: 'Factura Electrónica (próximamente)', disabled: true },
 ];
 
+const TIPO_VENTA_BACKEND: Record<TipoComprobante, TipoComprobanteVenta> = {
+  nota: 'nota_venta',
+  boleta: 'boleta',
+  factura: 'factura',
+};
+
+// Detecta si el producto pertenece a una categoría de tipo "servicio" (sin stock físico)
+function esCategoriaServicio(nombreCategoria?: string | null): boolean {
+  if (!nombreCategoria) return false;
+  return nombreCategoria.toLowerCase().includes('servicio');
+}
+
 export default function GenerarVentaPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { empleado, cargando } = useSession();
 
-  const [productos, setProductos] = useState<Producto[]>([]);
+  const [productos, setProductos] = useState<ProductoConStock[]>([]);
   const [busqueda, setBusqueda] = useState('');
   const [carrito, setCarrito] = useState<CarritoItem[]>([]);
 
@@ -68,16 +84,15 @@ export default function GenerarVentaPage() {
   const [, setVentaConfirmada] = useState<Venta | null>(null);
 
   const [mostrarConfirmVaciar, setMostrarConfirmVaciar] = useState(false);
-
   const [modoSinMouse, setModoSinMouse] = useState(false);
-
   const [cajaAbierta, setCajaAbierta] = useState<ArqueoCaja | null | undefined>(undefined);
-
-  // Permiso: si el empleado puede modificar manualmente el precio unitario / subtotal
-  // en el detalle de venta. Los Administradores siempre lo tienen habilitado.
   const [puedeEditarPrecio, setPuedeEditarPrecio] = useState(false);
-
   const [tipoComprobante, setTipoComprobante] = useState<TipoComprobante>('nota');
+  const [cotizacionOrigenId, setCotizacionOrigenId] = useState<number | null>(null);
+  const cotizacionProcesadaRef = useRef(false);
+
+  const [archivoRecetaPendiente, setArchivoRecetaPendiente] = useState<File | null>(null);
+  const requiereRecetaEnCarrito = carrito.some((item) => item.producto.requiere_receta);
 
   const fechaHoy = useMemo(
     () => new Date().toLocaleDateString('es-PE', { weekday: 'long', day: '2-digit', month: 'long'}),
@@ -94,8 +109,14 @@ export default function GenerarVentaPage() {
     };
   }, []);
 
+  // El stock ya NO viene en /productos (ahora vive en la tabla de lotes):
+  // se pide aparte con /lotes/resumen-stock y se mergea antes de guardar.
   const cargarProductos = () => {
-    productosApi.listarActivos().then(setProductos).catch(() => setProductos([]));
+    Promise.all([productosApi.listarActivos(), lotesApi.resumenStock()])
+      .then(([productosData, resumen]) => {
+        setProductos(mergearStockEnProductos(productosData, resumen));
+      })
+      .catch(() => setProductos([]));
   };
 
   const cargarClientes = () => {
@@ -114,8 +135,6 @@ export default function GenerarVentaPage() {
 
   const verificarPermisoEditarPrecio = async () => {
     if (!empleado) return;
-    // Los administradores no tienen registros de permisos individuales
-    // (se excluyen en la pantalla de asignación), así que siempre pueden.
     if (empleado.rol === 'Administrador') {
       setPuedeEditarPrecio(true);
       return;
@@ -157,7 +176,6 @@ export default function GenerarVentaPage() {
     cargarClientes();
     verificarCaja();
     verificarPermisoEditarPrecio();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empleado, cargando, router]);
 
   useEffect(() => {
@@ -169,25 +187,94 @@ export default function GenerarVentaPage() {
   const productosVisibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
 
-    const conStock = productos.filter((p) => p.stock > 0);
-
-    if (!q) return conStock.slice(0, 30);
-
-    const base = conStock.filter((p) => {
-      const producto = p as ProductoConCodigo;
+    const filtrados = productos.filter((p) => {
+      if (!q) return true;
+      const producto = p as ProductoConStock & ProductoConCodigo & { barras?: string };
       const nombreMatch = producto.nombre.toLowerCase().includes(q);
       const principioMatch = producto.principioActivo?.nombre?.toLowerCase().includes(q);
-      const codigoBarrasMatch = producto.codigo_barras?.toLowerCase().includes(q);
+      const codigoBarrasMatch = (producto.barras ?? producto.codigo_barras)?.toLowerCase().includes(q);
 
       return nombreMatch || principioMatch || codigoBarrasMatch;
     });
 
-    return base.slice(0, 30);
+    const ordenados = [...filtrados].sort((a, b) => {
+      const aSinStock = !esCategoriaServicio(a.categoria?.nombre) && a.stock <= 0 ? 1 : 0;
+      const bSinStock = !esCategoriaServicio(b.categoria?.nombre) && b.stock <= 0 ? 1 : 0;
+      return aSinStock - bSinStock;
+    });
+
+    return ordenados.slice(0, 30);
   }, [busqueda, productos]);
 
   useEffect(() => {
-    setSelectedIndex(0);
-  }, [productosVisibles]);
+    if (cotizacionProcesadaRef.current) return;
+    const idParam = searchParams.get('cotizacionId');
+    if (!idParam || productos.length === 0) return;
+
+    cotizacionProcesadaRef.current = true;
+    const idCotizacion = Number(idParam);
+    if (!idCotizacion) return;
+
+    cotizacionesApi.obtener(idCotizacion)
+      .then((cot) => {
+        if (!cot.estado) {
+          setError('Esa cotización está anulada y no se puede cargar.');
+          return;
+        }
+        if (cot.convertida) {
+          setError('Esa cotización ya fue convertida a venta anteriormente.');
+          return;
+        }
+
+        const nuevoCarrito: CarritoItem[] = cot.detalles.map((d) => {
+          // Si el producto ya no existe en el catálogo activo, se arma un
+          // "stand-in" con stock 0 solo para poder mostrar el nombre; no se
+          // podrá vender porque no pasará la validación de stock más abajo.
+          const productoCompleto = productos.find((p) => p.id === d.producto.id);
+          const productoBase: ProductoConStock = productoCompleto ?? {
+            id: d.producto.id,
+            nombre: d.producto.nombre,
+            precio_costo: 0,
+            precio_venta: d.precioUnitario,
+            stock: 0,
+            fecha_vencimiento: null,
+            estado: true,
+            requiere_receta: false,
+            laboratorio: null,
+            categoria: { id: 0, nombre: '' },
+            vende_por_presentaciones: false,
+            blister_habilitado: false,
+            unidades_blister: null,
+            precio_blister: null,
+            caja_habilitado: false,
+            unidades_caja: null,
+            precio_caja: null,
+          };
+
+          return {
+            idProducto: d.producto.id,
+            cantidad: d.cantidad,
+            tipoVenta: d.tipoVenta,
+            precioUnitario: d.precioUnitario,
+            producto: productoBase,
+          };
+        });
+
+        setCarrito(nuevoCarrito);
+        if (cot.idCliente) setIdClienteSeleccionado(cot.idCliente);
+
+        // Si la cotización no tenía un cliente real (idCliente null) y el nombre
+        // guardado es la etiqueta genérica "Clientes Varios", no la propagamos
+        // al formulario: dejarla vacía evita que handleConfirmarVenta la
+        // interprete como un nombre nuevo y cree un cliente duplicado en la BD.
+        const nombreReal = cot.idCliente || cot.clienteNombre !== 'Clientes Varios' ? (cot.clienteNombre ?? '') : '';
+        setNombreCliente(nombreReal);
+        setDniCliente(cot.idCliente ? (cot.clienteDni ?? '') : '');
+        setCotizacionOrigenId(cot.id);
+        setError('');
+      })
+      .catch(() => setError('No se pudo cargar la cotización seleccionada.'));
+  }, [productos, searchParams]);
 
   useEffect(() => {
     rowRefs.current[selectedIndex]?.scrollIntoView({ block: 'nearest' });
@@ -219,61 +306,177 @@ export default function GenerarVentaPage() {
       .slice(0, 5);
   }, [nombreCliente, dniCliente, clientes, idClienteSeleccionado]);
 
-  const total = useMemo(
+  const subtotalCarrito = useMemo(
     () => carrito.reduce((sum, item) => sum + item.precioUnitario * item.cantidad, 0),
     [carrito]
   );
 
-  const tieneCliente = !!(idClienteSeleccionado || nombreCliente.trim());
+  // Cupones ACTIVOS del cliente seleccionado
+  const [cuponesCliente, setCuponesCliente] = useState<Cupon[]>([]);
+  const [idCuponSel, setIdCuponSel] = useState<number | null>(null);
 
-  const agregarProducto = (producto: Producto) => {
+  useEffect(() => {
+    setIdCuponSel(null);
+    if (!idClienteSeleccionado) { setCuponesCliente([]); return; }
+    let cancelado = false;
+    cuponesApi.listarPorCliente(idClienteSeleccionado)
+      .then((c) => { if (!cancelado) setCuponesCliente(c.filter((x) => x.estado === 'ACTIVO')); })
+      .catch(() => { if (!cancelado) setCuponesCliente([]); });
+    return () => { cancelado = true; };
+  }, [idClienteSeleccionado]);
+
+  const cuponSel = cuponesCliente.find((c) => c.id === idCuponSel) ?? null;
+  const descuentoCupon = cuponSel ? Math.min(cuponSel.valor, subtotalCarrito) : 0;
+  const total = subtotalCarrito - descuentoCupon;
+
+  const tieneCliente = !!(idClienteSeleccionado || nombreCliente.trim());
+  const etiquetaTipo = (tipoVenta: TipoVenta) => (tipoVenta === 'unidad' ? 'unidad(es)' : `${tipoVenta}(s)`);
+
+  const agregarProducto = (producto: ProductoConStock) => {
+    const esServicio = esCategoriaServicio(producto.categoria?.nombre);
+
+    if (!esServicio && producto.stock <= 0) {
+      setError(`"${producto.nombre}" no tiene stock disponible.`);
+      return;
+    }
     const existente = carrito.find((c) => c.idProducto === producto.id && c.tipoVenta === 'unidad');
+    const cantidadDeseada = (existente?.cantidad ?? 0) + 1;
+    if (!esServicio && cantidadDeseada > producto.stock) {
+      setError(`Solo hay ${producto.stock} unidad(es) disponibles de "${producto.nombre}".`);
+      return;
+    }
     if (existente) {
-      cambiarCantidad(producto.id, 'unidad', existente.cantidad + 1);
+      cambiarCantidad(producto.id, 'unidad', cantidadDeseada);
       return;
     }
     setCarrito((prev) => [
       ...prev,
       { idProducto: producto.id, cantidad: 1, tipoVenta: 'unidad', precioUnitario: producto.precio_venta, producto },
     ]);
+    setError('');
   };
 
   const agregarProductoConDetalle = (
-    producto: Producto,
+    prod: ProductoConStock,
     tipoVenta: TipoVenta,
     cantidad: number,
     precioUnitarioManual?: number
   ) => {
+    const esServicio = esCategoriaServicio(prod.categoria?.nombre);
+
+    if (!esServicio && prod.stock <= 0) {
+      setError(`"${prod.nombre}" no tiene stock disponible.`);
+      return;
+    }
+
+    const unidadesBase = unidadesBasePorTipo(prod, tipoVenta);
+    const maxCantidad = esServicio ? 0 : Math.floor(prod.stock / unidadesBase);
+    const existente = carrito.find((c) => c.idProducto === prod.id && c.tipoVenta === tipoVenta);
+    const cantidadDeseadaTotal = (existente?.cantidad ?? 0) + cantidad;
+
+    let cantidadFinal = cantidadDeseadaTotal;
+    if (maxCantidad > 0 && cantidadDeseadaTotal > maxCantidad) {
+      cantidadFinal = maxCantidad;
+      setError(`Solo hay stock para ${maxCantidad} ${etiquetaTipo(tipoVenta)} de "${prod.nombre}".`);
+    } else {
+      setError('');
+    }
+
     setCarrito((prev) => {
-      const existente = prev.find((c) => c.idProducto === producto.id && c.tipoVenta === tipoVenta);
       if (existente) {
         return prev.map((item) =>
-          item.idProducto === producto.id && item.tipoVenta === tipoVenta
-            ? {
-                ...item,
-                cantidad: item.cantidad + cantidad,
-                precioUnitario: precioUnitarioManual ?? item.precioUnitario,
-              }
+          item.idProducto === prod.id && item.tipoVenta === tipoVenta
+            ? { ...item, cantidad: cantidadFinal, precioUnitario: precioUnitarioManual ?? item.precioUnitario }
             : item
         );
       }
       return [
         ...prev,
         {
-          idProducto: producto.id,
-          cantidad,
+          idProducto: prod.id,
+          cantidad: cantidadFinal,
           tipoVenta,
-          precioUnitario: precioUnitarioManual ?? precioPorTipo(producto, tipoVenta),
-          producto,
+          precioUnitario: precioUnitarioManual ?? precioPorTipo(prod, tipoVenta),
+          producto: prod,
         },
       ];
     });
   };
 
+  // Reemplaza una línea existente de forma atómica (usado por la edición en
+  // modo sin mouse). Evita el desfase de estado que ocurría al encadenar
+  // quitarProducto + agregarProductoConDetalle.
+  const actualizarLinea = (
+    idProductoOriginal: number,
+    tipoOriginal: TipoVenta,
+    producto: ProductoConStock,
+    tipoVenta: TipoVenta,
+    cantidad: number,
+    precioUnitario: number
+  ) => {
+    const esServicio = esCategoriaServicio(producto.categoria?.nombre);
+    const maxCantidad = esServicio ? 0 : Math.floor(producto.stock / unidadesBasePorTipo(producto, tipoVenta));
+    let cantidadFinal = Math.max(1, cantidad);
+
+    if (maxCantidad > 0 && cantidadFinal > maxCantidad) {
+      cantidadFinal = maxCantidad;
+      setError(`Solo hay stock para ${maxCantidad} ${etiquetaTipo(tipoVenta)} de "${producto.nombre}".`);
+    } else {
+      setError('');
+    }
+
+    setCarrito((prev) => {
+      const indiceOriginal = prev.findIndex(
+        (i) => i.idProducto === idProductoOriginal && i.tipoVenta === tipoOriginal
+      );
+      const sinOriginal = prev.filter(
+        (i) => !(i.idProducto === idProductoOriginal && i.tipoVenta === tipoOriginal)
+      );
+
+      // Si cambió a una presentación que ya existe en el detalle, se combinan
+      const destino = sinOriginal.find((i) => i.idProducto === producto.id && i.tipoVenta === tipoVenta);
+      if (destino) {
+        const combinada = destino.cantidad + cantidadFinal;
+        const tope = maxCantidad > 0 ? Math.min(combinada, maxCantidad) : combinada;
+        return sinOriginal.map((i) =>
+          i.idProducto === producto.id && i.tipoVenta === tipoVenta
+            ? { ...i, cantidad: tope, precioUnitario }
+            : i
+        );
+      }
+
+      const nuevo: CarritoItem = {
+        idProducto: producto.id,
+        cantidad: cantidadFinal,
+        tipoVenta,
+        precioUnitario,
+        producto,
+      };
+      const copia = [...sinOriginal];
+      copia.splice(Math.max(0, indiceOriginal), 0, nuevo); // conserva la posición
+      return copia;
+    });
+  };
+
   const cambiarCantidad = (idProducto: number, tipoVenta: TipoVenta, cantidad: number) => {
+    const item = carrito.find((c) => c.idProducto === idProducto && c.tipoVenta === tipoVenta);
+    if (!item) return;
+
+    const prod = item.producto as ProductoConStock;
+    const esServicio = esCategoriaServicio(prod.categoria?.nombre);
+    const maxCantidad = esServicio ? 0 : Math.floor(prod.stock / unidadesBasePorTipo(prod, tipoVenta));
+    let cantidadFinal = Math.max(1, cantidad);
+
+    if (maxCantidad > 0 && cantidadFinal > maxCantidad) {
+      cantidadFinal = maxCantidad;
+      setError(`Solo hay stock para ${maxCantidad} ${etiquetaTipo(tipoVenta)} de "${item.producto.nombre}".`);
+    } else {
+      setError('');
+    }
+
     setCarrito((prev) =>
-      prev.map((item) =>
-        item.idProducto === idProducto && item.tipoVenta === tipoVenta ? { ...item, cantidad: Math.max(1, cantidad) } : item
+      prev.map((it) =>
+        it.idProducto === idProducto && it.tipoVenta === tipoVenta ? { ...it, cantidad: cantidadFinal } : it
       )
     );
   };
@@ -302,16 +505,25 @@ export default function GenerarVentaPage() {
     setCarrito((prev) => {
       const actual = prev.find((i) => i.idProducto === idProducto && i.tipoVenta === tipoActual);
       if (!actual) return prev;
+      const prod = actual.producto as ProductoConStock;
+      const esServicio = esCategoriaServicio(prod.categoria?.nombre);
       const destino = prev.find((i) => i.idProducto === idProducto && i.tipoVenta === nuevoTipo);
-      const nuevoPrecio = precioPorTipo(actual.producto, nuevoTipo);
+      const nuevoPrecio = precioPorTipo(prod, nuevoTipo);
+      const unidadesBaseNuevo = unidadesBasePorTipo(prod, nuevoTipo);
+      const maxCantidadNuevo = esServicio ? 0 : Math.floor(prod.stock / unidadesBaseNuevo);
 
       if (destino) {
+        const cantidadCombinada = destino.cantidad + actual.cantidad;
+        const cantidadFinal = maxCantidadNuevo > 0 ? Math.min(cantidadCombinada, maxCantidadNuevo) : cantidadCombinada;
         return prev
           .filter((i) => !(i.idProducto === idProducto && i.tipoVenta === tipoActual))
-          .map((i) => (i.idProducto === idProducto && i.tipoVenta === nuevoTipo ? { ...i, cantidad: i.cantidad + actual.cantidad } : i));
+          .map((i) => (i.idProducto === idProducto && i.tipoVenta === nuevoTipo ? { ...i, cantidad: cantidadFinal } : i));
       }
+      const cantidadFinal = maxCantidadNuevo > 0 ? Math.min(actual.cantidad, maxCantidadNuevo) : actual.cantidad;
       return prev.map((i) =>
-        i.idProducto === idProducto && i.tipoVenta === tipoActual ? { ...i, tipoVenta: nuevoTipo, precioUnitario: nuevoPrecio } : i
+        i.idProducto === idProducto && i.tipoVenta === tipoActual
+          ? { ...i, tipoVenta: nuevoTipo, precioUnitario: nuevoPrecio, cantidad: cantidadFinal }
+          : i
       );
     });
   };
@@ -361,15 +573,16 @@ export default function GenerarVentaPage() {
     setError('');
     if (carrito.length === 0) return setError('Agrega al menos un producto.');
 
-    // Boleta y Factura Electrónica aún no están implementadas.
     if (tipoComprobante === 'boleta' || tipoComprobante === 'factura') {
       setError('Este tipo de comprobante todavía no está disponible.');
       return;
     }
 
-    const excedeStock = carrito.find(
-      (item) => item.cantidad * unidadesBasePorTipo(item.producto, item.tipoVenta) > item.producto.stock
-    );
+    const excedeStock = carrito.find((item) => {
+      const prod = item.producto as ProductoConStock;
+      return !esCategoriaServicio(prod.categoria?.nombre)
+        && item.cantidad * unidadesBasePorTipo(prod, item.tipoVenta) > prod.stock;
+    });
     if (excedeStock) return setError(`Stock insuficiente para "${excedeStock.producto.nombre}".`);
 
     setModalPagoAbierto(true);
@@ -382,7 +595,7 @@ export default function GenerarVentaPage() {
       const pestanaBoleta = window.open('', '_blank');
 
       let idCliente: number | null = idClienteSeleccionado;
-      if (!idCliente && nombreCliente.trim()) {
+      if (!idCliente && nombreCliente.trim() && nombreCliente.trim() !== 'Clientes Varios') {
         const { nombres, apellidoPaterno, apellidoMaterno } = splitNombreCompleto(nombreCliente.trim());
         const nuevoCliente = await clientesApi.crear({
           nombres,
@@ -393,17 +606,39 @@ export default function GenerarVentaPage() {
         idCliente = nuevoCliente.id;
       }
 
+      const montoPagado = total + vuelto;
+      const codigoIzipay = pagos.find((p) => p.metodo === 'Izipay')?.codigoIzipay;
+
       const venta = await ventasApi.crear({
         idEmpleado: empleado.id,
         idCliente,
         metodoPago: metodoPagoFormateado,
+        tipoVenta: TIPO_VENTA_BACKEND[tipoComprobante],
+        montoPagado,
+        codigoIzipay,
+        idCupon: idClienteSeleccionado ? idCuponSel : null,
         items: carrito.map(({ idProducto, cantidad, tipoVenta, precioUnitario }) => ({
           idProducto, cantidad, tipoVenta, precioUnitario,
         })),
       });
 
+      // Subir la receta si el usuario adjuntó una foto antes de confirmar la venta
+      if (archivoRecetaPendiente) {
+        try {
+          await recetasApi.subir(venta.id, archivoRecetaPendiente);
+        } catch (err) {
+          console.error('Error subiendo receta:', err);
+          setError('La venta se registró, pero no se pudo subir la receta. Agrégala luego desde el listado de ventas.');
+        }
+      }
+
       if (pestanaBoleta) pestanaBoleta.location.href = `/dashboard/ventas/boleta?id=${venta.id}&vuelto=${vuelto.toFixed(2)}`;
       else abrirBoletaImprimible(venta.id, vuelto);
+
+      if (cotizacionOrigenId) {
+        cotizacionesApi.marcarConvertida(cotizacionOrigenId).catch(() => {});
+        setCotizacionOrigenId(null);
+      }
 
       setModalPagoAbierto(false);
       setVentaConfirmada(venta);
@@ -412,6 +647,7 @@ export default function GenerarVentaPage() {
       limpiarClienteSeleccionado();
       setBusqueda('');
       setError('');
+      setArchivoRecetaPendiente(null);
 
       cargarProductos();
       cargarClientes();
@@ -423,21 +659,26 @@ export default function GenerarVentaPage() {
     }
   };
 
+  // --- Búsqueda y Lectora de Código de Barras ---
   const intentarAgregarPorCodigoBarras = (valor: string): boolean => {
     const q = valor.trim().toLowerCase();
     if (!q) return false;
-    const match = (productos as ProductoConCodigo[]).find(
-      (p) => p.codigo_barras && p.codigo_barras.toLowerCase() === q
-    );
-    if (match && match.stock > 0) {
-      agregarProducto(match);
-      setBusqueda('');
-      setError('');
-      return true;
-    }
-    if (match && match.stock <= 0) {
-      setError(`"${match.nombre}" no tiene stock disponible.`);
-      setBusqueda('');
+
+    const match = (productos as (ProductoConStock & ProductoConCodigo & { barras?: string })[]).find((p) => {
+      const codigo = p.barras ?? p.codigo_barras;
+      return codigo && codigo.toLowerCase() === q;
+    });
+
+    if (match) {
+      const esServicio = esCategoriaServicio(match.categoria?.nombre);
+      if (esServicio || match.stock > 0) {
+        agregarProducto(match);
+        setBusqueda('');
+        setError('');
+      } else {
+        setError(`"${match.nombre}" no tiene stock disponible.`);
+        setBusqueda('');
+      }
       return true;
     }
     return false;
@@ -456,6 +697,7 @@ export default function GenerarVentaPage() {
     }
     if (e.key === 'Enter') {
       e.preventDefault();
+
       const agregadoPorCodigo = intentarAgregarPorCodigoBarras(busqueda);
       if (agregadoPorCodigo) return;
 
@@ -474,6 +716,13 @@ export default function GenerarVentaPage() {
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && mostrarConfirmVaciar) {
+        setMostrarConfirmVaciar(false);
+        return;
+      }
+      // En modo sin mouse los atajos (F2, F3, ...) los maneja VentaNoMouse
+      if (modoSinMouse) return;
+
       if (e.key === 'F2') {
         e.preventDefault();
         if (!modalPagoAbierto) handleAbrirPago();
@@ -481,13 +730,10 @@ export default function GenerarVentaPage() {
         e.preventDefault();
         searchInputRef.current?.focus();
         searchInputRef.current?.select();
-      } else if (e.key === 'Escape' && mostrarConfirmVaciar) {
-        setMostrarConfirmVaciar(false);
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carrito, modalPagoAbierto, mostrarConfirmVaciar, modoSinMouse, tipoComprobante]);
 
   const inputClass = "w-full px-3 py-2 rounded-lg border border-zinc-300 bg-zinc-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all";
@@ -524,25 +770,43 @@ export default function GenerarVentaPage() {
           productos={productos}
           carrito={carrito}
           total={total}
+          descuentoCupon={descuentoCupon}
+          cupones={cuponesCliente}
+          idCuponSel={idCuponSel}
+          onSeleccionarCupon={setIdCuponSel}
           error={error}
           setError={setError}
+          puedeEditarPrecio={puedeEditarPrecio}
+          bloqueado={modalPagoAbierto || clienteModalAbierto || mostrarConfirmVaciar}
+          tipoComprobante={tipoComprobante}
+          comprobanteOptions={COMPROBANTE_OPTIONS}
+          onCambiarTipoComprobante={setTipoComprobante}
+          cotizacionOrigenId={cotizacionOrigenId}
+          requiereReceta={requiereRecetaEnCarrito}
+          archivoReceta={archivoRecetaPendiente}
+          onCambiarArchivoReceta={setArchivoRecetaPendiente}
           nombreCliente={nombreCliente}
           dniCliente={dniCliente}
           idClienteSeleccionado={idClienteSeleccionado}
-          clientes={clientes}
+          sugerenciasCliente={sugerenciasCliente}
           onCambiarNombreCliente={(v) => {
             setNombreCliente(v);
             setIdClienteSeleccionado(null);
           }}
-          onCambiarDniCliente={setDniCliente}
+          onCambiarDniCliente={(v) => {
+            setDniCliente(v);
+            setIdClienteSeleccionado(null);
+          }}
           onSeleccionarCliente={seleccionarCliente}
           onLimpiarCliente={limpiarClienteSeleccionado}
           onAbrirNuevoCliente={() => setClienteModalAbierto(true)}
           agregarProductoConDetalle={agregarProductoConDetalle}
+          actualizarLinea={actualizarLinea}
           quitarProducto={quitarProducto}
           onVaciarCarrito={solicitarVaciarDetalle}
           onAbrirPago={handleAbrirPago}
           onVolverModoNormal={() => setModoSinMouse(false)}
+          onAbrirVentanaFlotante={abrirVentanaFlotante}
         />
 
         <MetodoPagoModal
@@ -632,13 +896,12 @@ export default function GenerarVentaPage() {
           </div>
         </div>
 
-        {/* Selector de tipo de comprobante (Boleta/Factura llegan luego) */}
-        <div className="hidden xl:flex items-center gap-1.5 px-2 py-1.5 rounded-xl bg-zinc-50 border border-zinc-200 shrink-0 w-fit">
-          <FileText size={14} className="text-primary shrink-0" />
+        <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-50 border border-zinc-200 shrink-0">
+          <FileText size={15} className="text-primary shrink-0" />
           <select
             value={tipoComprobante}
             onChange={(e) => setTipoComprobante(e.target.value as TipoComprobante)}
-            className="w-[150px] text-xs font-semibold text-zinc-700 bg-transparent outline-none cursor-pointer"
+            className="text-xs font-semibold text-zinc-700 bg-transparent outline-none cursor-pointer md:max-w-[120px]"
             title="Tipo de comprobante a emitir"
           >
             {COMPROBANTE_OPTIONS.map((op) => (
@@ -746,6 +1009,15 @@ export default function GenerarVentaPage() {
         </div>
       </header>
 
+      {cotizacionOrigenId && (
+        <div className="shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-700">
+          <Info size={14} className="shrink-0" />
+          <span>
+            Cargaste la cotización N° {String(cotizacionOrigenId).padStart(6, '0')}. Verifica precios y stock antes de cobrar, ya que pudieron cambiar desde que se generó.
+          </span>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-5 grid-rows-[1fr_1fr] lg:grid-rows-1 gap-2 sm:gap-3 lg:gap-4 flex-1 min-h-0 overflow-hidden">
 
         <div className="lg:col-span-3 bg-white rounded-2xl border border-zinc-200 shadow-xs flex flex-col h-full min-h-0 overflow-hidden">
@@ -780,45 +1052,61 @@ export default function GenerarVentaPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {productosVisibles.map((p, idx) => (
-                  <tr
-                    key={p.id}
-                    ref={(el) => { rowRefs.current[idx] = el; }}
-                    onClick={() => setSelectedIndex(idx)}
-                    className={`transition-colors cursor-pointer ${
-                      idx === selectedIndex ? 'bg-primary/10' : 'hover:bg-zinc-50/60'
-                    }`}
-                  >
-                    <td className="px-4 py-2 text-zinc-700">
-                      <div className="font-medium text-zinc-800">{p.nombre}</div>
+                {productosVisibles.map((p, idx) => {
+                  const esServicio = esCategoriaServicio(p.categoria?.nombre);
+                  const sinStock = !esServicio && p.stock <= 0;
+                  return (
+                    <tr
+                      key={p.id}
+                      ref={(el) => { rowRefs.current[idx] = el; }}
+                      onClick={() => setSelectedIndex(idx)}
+                      className={`transition-colors ${sinStock ? 'opacity-50' : 'cursor-pointer'} ${
+                        idx === selectedIndex ? 'bg-primary/10' : sinStock ? '' : 'hover:bg-zinc-50/60'
+                      }`}
+                    >
+                      <td className="px-4 py-2 text-zinc-700">
+                        <div className="font-medium text-zinc-800">{p.nombre}</div>
 
-                      {(p.principioActivo?.nombre || p.laboratorio?.nombre) && (
-                        <div className="text-xs text-zinc-400 font-normal italic flex items-center gap-1.5 flex-wrap">
-                          {p.principioActivo?.nombre && <span>{p.principioActivo.nombre}</span>}
-                          {p.principioActivo?.nombre && p.laboratorio?.nombre && <span>•</span>}
-                          {p.laboratorio?.nombre && <span className="text-zinc-500 font-medium">{p.laboratorio.nombre}</span>}
-                        </div>
-                      )}
+                        {(p.principioActivo?.nombre || p.laboratorio?.nombre) && (
+                          <div className="text-xs text-zinc-400 font-normal italic flex items-center gap-1.5 flex-wrap">
+                            {p.principioActivo?.nombre && <span>{p.principioActivo.nombre}</span>}
+                            {p.principioActivo?.nombre && p.laboratorio?.nombre && <span>•</span>}
+                            {p.laboratorio?.nombre && <span className="text-zinc-500 font-medium">{p.laboratorio.nombre}</span>}
+                          </div>
+                        )}
 
-                      {p.vende_por_presentaciones && (p.blister_habilitado || p.caja_habilitado) && (
-                        <div className="flex gap-1 mt-0.5">
-                          {p.blister_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">Blister</span>}
-                          {p.caja_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">Caja</span>}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-right text-zinc-700 font-semibold whitespace-nowrap">S/ {p.precio_venta.toFixed(2)}</td>
-                    <td className="px-4 py-2 text-right text-zinc-900 font-mono whitespace-nowrap">{p.stock}</td>
-                    <td className="px-4 py-2 text-right whitespace-nowrap">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); agregarProducto(p); }}
-                        className="px-3 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors cursor-pointer"
-                      >
-                        Agregar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                        {esServicio && (
+                          <span className="inline-block mt-0.5 text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">Servicio</span>
+                        )}
+
+                        {p.vende_por_presentaciones && (p.blister_habilitado || p.caja_habilitado) && (
+                          <div className="flex gap-1 mt-0.5">
+                            {p.blister_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">Blister</span>}
+                            {p.caja_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">Caja</span>}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-right text-zinc-700 font-semibold whitespace-nowrap">S/ {p.precio_venta.toFixed(2)}</td>
+                      <td className={`px-4 py-2 text-right font-mono whitespace-nowrap ${sinStock ? 'text-red-400 font-semibold' : 'text-zinc-900'}`}>
+                        {esServicio ? '—' : sinStock ? 'Sin stock' : p.stock}
+                      </td>
+                      <td className="px-4 py-2 text-right whitespace-nowrap">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); agregarProducto(p); }}
+                          disabled={sinStock}
+                          title={sinStock ? 'Sin stock disponible' : undefined}
+                          className={`px-3 py-1 text-sm font-semibold rounded-lg transition-colors ${
+                            sinStock
+                              ? 'text-zinc-300 bg-zinc-100 cursor-not-allowed'
+                              : 'text-primary bg-primary/10 hover:bg-primary/20 cursor-pointer'
+                          }`}
+                        >
+                          {sinStock ? 'Sin stock' : 'Agregar'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {productosVisibles.length === 0 && (
                   <tr><td colSpan={4} className="px-4 py-10 text-center text-zinc-400">No se encontraron productos disponibles.</td></tr>
                 )}
@@ -833,11 +1121,26 @@ export default function GenerarVentaPage() {
               <ShoppingCart size={16} className="text-primary transition-colors duration-300" />
               <span className="text-sm font-bold text-zinc-700">Detalle de venta</span>
             </div>
+
+            {requiereRecetaEnCarrito && (
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-lg cursor-pointer hover:bg-amber-100 transition-colors">
+                <FileImage size={14} />
+                {archivoRecetaPendiente ? 'Receta lista ✓' : 'Subir receta'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => setArchivoRecetaPendiente(e.target.files?.[0] ?? null)}
+                />
+              </label>
+            )}
+
             {carrito.length > 0 && (
               <button
                 type="button"
                 onClick={solicitarVaciarDetalle}
-                className="flex items-center gap-1 text-xs font-semibold text-red-500 hover:text-red-600 transition-colors cursor-pointer"
+                className="flex items-center gap-1 text-xs font-semibold text-red-500 hover:text-red-600 transition-colors cursor-pointer p-2 hover:bg-red-50 rounded-lg"
               >
                 <Trash2 size={13} /> Vaciar
               </button>
@@ -857,8 +1160,8 @@ export default function GenerarVentaPage() {
                       <p className="text-xs font-semibold text-zinc-800 truncate flex-1">{item.producto.nombre}</p>
                       <button
                         onClick={() => quitarProducto(item.idProducto, item.tipoVenta)}
-                        className="p-1 text-zinc-400 hover:text-red-500 transition-colors shrink-0 cursor-pointer"
-                        title="Quitar producto (o navega con Tab y presiona Enter)"
+                        className="p-1 text-red-500 hover:text-red-600 hover:bg-red-100 rounded-lg transition-colors shrink-0 cursor-pointer"
+                        title="Quitar producto"
                       >
                         <Trash2 size={14} />
                       </button>
@@ -878,7 +1181,7 @@ export default function GenerarVentaPage() {
                       )}
 
                       <div className="flex flex-col gap-0.5">
-                        <span className="text-[10px] text-zinc-400 font-medium">Cant.</span>
+                        <span className="text-[10px] text-zinc-500 font-medium">Cant.</span>
                         <input
                           type="number"
                           min={1}
@@ -889,7 +1192,7 @@ export default function GenerarVentaPage() {
                       </div>
 
                       <div className="flex flex-col gap-0.5">
-                        <span className="text-[10px] text-zinc-400 font-medium">P. Unit.</span>
+                        <span className="text-[10px] text-zinc-500 font-medium">P. Unit.</span>
                         <div className="flex items-center gap-0.5">
                           <span className="text-xs text-zinc-400">S/</span>
                           {puedeEditarPrecio ? (
@@ -911,7 +1214,7 @@ export default function GenerarVentaPage() {
                       </div>
 
                       <div className="flex flex-col gap-0.5">
-                        <span className="text-[10px] text-zinc-400 font-medium">Subtotal</span>
+                        <span className="text-[10px] text-zinc-500 font-medium">Subtotal</span>
                         <div className="flex items-center gap-0.5">
                           <span className="text-xs text-zinc-400">S/</span>
                           {puedeEditarPrecio ? (
@@ -950,6 +1253,35 @@ export default function GenerarVentaPage() {
               </span>
               <span className="text-xs font-normal">F2</span>
             </button>
+
+            {cuponesCliente.length > 0 && (
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-zinc-600">Cupón disponible</label>
+                <select
+                  value={idCuponSel ?? ''}
+                  onChange={(e) => setIdCuponSel(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full px-2 py-2 rounded-lg border border-zinc-300 bg-white text-sm"
+                >
+                  <option value="">Sin cupón</option>
+                  {cuponesCliente.map((c) => (
+                    <option key={c.id} value={c.id}>{c.codigo} — {c.nombre} (−S/ {c.valor.toFixed(2)})</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {descuentoCupon > 0 && (
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-zinc-500">Subtotal</span>
+                <span className="text-zinc-700">S/ {subtotalCarrito.toFixed(2)}</span>
+              </div>
+            )}
+            {descuentoCupon > 0 && (
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-emerald-600 font-medium">Descuento cupón</span>
+                <span className="text-emerald-600 font-medium">− S/ {descuentoCupon.toFixed(2)}</span>
+              </div>
+            )}
 
             <div className="flex justify-between items-center pt-1">
               <span className="text-sm font-medium text-zinc-500">Total</span>

@@ -8,7 +8,7 @@ import { asistenciaApi } from '@/api/asistencia';
 import type { Asistencia } from '@/api/asistencia';
 import Paginacion from '@/components/Paginacion';
 
-const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
 function fechaLocalYYYYMMDD(fecha: Date): string {
   const anio = fecha.getFullYear();

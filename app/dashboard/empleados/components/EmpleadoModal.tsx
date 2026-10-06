@@ -14,7 +14,7 @@ interface EmpleadoModalProps {
 
 const emptyForm: EmpleadoPayload = {
   nombre: '', username: '', password: '', rol: ROLES[0], estado: true,
-  horaEntrada: '', horaSalida: '', diaDescanso: DIAS_SEMANA[6],
+  horaEntrada: '', horaSalida: '', diaDescanso: DIAS_SEMANA[6], metaVenta: null,
 };
 
 export default function EmpleadoModal({ open, empleado, onClose, onSave }: EmpleadoModalProps) {
@@ -33,6 +33,7 @@ export default function EmpleadoModal({ open, empleado, onClose, onSave }: Emple
       horaEntrada: empleado.horaEntrada ?? '',
       horaSalida: empleado.horaSalida ?? '',
       diaDescanso: empleado.diaDescanso ?? DIAS_SEMANA[6],
+      metaVenta: empleado.metaVenta ?? null,
     } : emptyForm);
   }, [empleado, open]);
 
@@ -118,6 +119,19 @@ export default function EmpleadoModal({ open, empleado, onClose, onSave }: Emple
             <select value={form.diaDescanso ?? ''} onChange={(e) => set('diaDescanso', e.target.value)} className={inputClass}>
               {DIAS_SEMANA.map((d) => <option key={d} value={d}>{d}</option>)}
             </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className={labelClass}>Meta de venta mensual (S/) <span className="font-normal text-zinc-400">(opcional)</span></label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.metaVenta ?? ''}
+              onChange={(e) => set('metaVenta', e.target.value === '' ? null : Number(e.target.value))}
+              placeholder="Sin meta"
+              className={inputClass}
+            />
           </div>
 
           <label className="flex items-center gap-2 cursor-pointer">

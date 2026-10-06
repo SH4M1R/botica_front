@@ -7,7 +7,7 @@ import type { Proveedor, ProveedorRequestDTO } from '@/api/compra';
 import ProveedorModal from './components/ProveedorModal';
 import Paginacion from '@/components/Paginacion';
 
-const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
 export default function ProveedoresPage() {
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);

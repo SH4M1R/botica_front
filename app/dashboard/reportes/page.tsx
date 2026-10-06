@@ -1,14 +1,19 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { FileText, Printer, Loader2, Search, Check, ChevronDown } from 'lucide-react';
+import { FileText, Printer, Loader2, Search, Check, ChevronDown, FileSpreadsheet } from 'lucide-react';
+
+import ModalAviso, { TipoAviso } from '@/components/ModalAviso';
 
 import * as api from '@/api/reportes';
-import { productosApi, type Producto as ProductoAPI } from '@/api/productos';
-import { generarReporteAsistenciaPos80, generarReporteAsistenciaA4 } from '@/utils/reportes/reporteAsistencia';
+import { productosApi } from '@/api/productos';
 import { obtenerEmpresa } from '@/api/empresa';
 import { descargarPdf, abrirPdfEnNuevaPestana } from '@/utils/reportes/pdfBase';
+import { descargarExcel } from '@/utils/excel/excelBase';
+import { useDebounce } from '@/hooks/useDebounce';
 
+// PDF
+import { generarReporteAsistenciaPos80, generarReporteAsistenciaA4 } from '@/utils/reportes/reporteAsistencia';
 import { generarReporteVentasPeriodoPos80, generarReporteVentasPeriodoA4 } from '@/utils/reportes/reporteVentasPeriodo';
 import { generarVentasPorEmpleadoPos80, generarVentasPorEmpleadoA4 } from '@/utils/reportes/reporteVentasEmpleado';
 import { generarTopProductosPos80, generarTopProductosA4 } from '@/utils/reportes/reporteTopProductos';
@@ -21,10 +26,27 @@ import { generarInventarioValoradoPos80, generarInventarioValoradoA4 } from '@/u
 import { generarAlertaStockPos80, generarAlertaStockA4 } from '@/utils/reportes/reporteAlertaStock';
 import { generarCatalogoTerapeuticoPos80, generarCatalogoTerapeuticoA4 } from '@/utils/reportes/reporteCatalogoTerapeutico';
 import { generarConsolidadoGeneralPos80, generarConsolidadoGeneralA4 } from '@/utils/reportes/reporteConsolidadoGeneral';
-
 import { generarProductosPorLaboratorioPos80, generarProductosPorLaboratorioA4 } from '@/utils/reportes/reporteProductosPorLaboratorio';
 import { generarProductosPorVencerPos80, generarProductosPorVencerA4 } from '@/utils/reportes/reporteProductosPorVencer';
 import { generarVentasPorProductoPos80, generarVentasPorProductoA4 } from '@/utils/reportes/reporteVentasPorProducto';
+
+// Excel
+import { generarReporteAsistenciaExcel } from '@/utils/excel/reporteAsistencia';
+import { generarReporteVentasPeriodoExcel } from '@/utils/excel/reporteVentasPeriodo';
+import { generarVentasPorEmpleadoExcel } from '@/utils/excel/reporteVentasEmpleado';
+import { generarTopProductosExcel } from '@/utils/excel/reporteTopProductos';
+import { generarComprasPorProveedorExcel } from '@/utils/excel/reporteComprasProveedor';
+import { generarAnalisisCostosExcel } from '@/utils/excel/reporteAnalisisCostos';
+import { generarCuentasPorPagarExcel } from '@/utils/excel/reporteCuentasPorPagar';
+import { generarInventarioValoradoExcel } from '@/utils/excel/reporteInventarioValorado';
+import { generarAlertaStockExcel } from '@/utils/excel/reporteAlertaStock';
+import { generarCatalogoTerapeuticoExcel } from '@/utils/excel/reporteCatalogoTerapeutico';
+import { generarConsolidadoGeneralExcel } from '@/utils/excel/reporteConsolidadoGeneral';
+import { generarProductosPorLaboratorioExcel } from '@/utils/excel/reporteProductosPorLaboratorio';
+import { generarProductosPorVencerExcel } from '@/utils/excel/reporteProductosPorVencer';
+import { generarVentasPorProductoExcel } from '@/utils/excel/reporteVentasPorProducto';
+import { generarArqueoCajaExcel } from '@/utils/excel/reporteArqueoCaja';
+import { generarFlujoCajaExcel } from '@/utils/excel/reporteFlujoCaja';
 
 type Modulo = 'ventas' | 'caja' | 'compras' | 'inventario' | 'gestion';
 
@@ -33,6 +55,10 @@ interface Producto {
   nombre: string;
   codigo?: string;
   laboratorio?: string;
+}
+
+interface ProveedorItem {
+  nombre: string;
 }
 
 const MODULOS: { id: Modulo; label: string }[] = [
@@ -52,6 +78,10 @@ function inicioDeMes() {
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
 }
 
+/* ============================================================
+   Card con 3 botones: POS80, A4, Excel
+   ============================================================ */
+
 function ReporteCard({
   titulo,
   descripcion,
@@ -59,6 +89,7 @@ function ReporteCard({
   cargando,
   onPos80,
   onA4,
+  onExcel,
 }: {
   titulo: string;
   descripcion: string;
@@ -66,6 +97,7 @@ function ReporteCard({
   cargando: boolean;
   onPos80: () => void;
   onA4: () => void;
+  onExcel: () => void;
 }) {
   return (
     <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs p-5 flex flex-col gap-4">
@@ -88,7 +120,7 @@ function ReporteCard({
           className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-zinc-300 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 transition-colors disabled:opacity-50 cursor-pointer"
         >
           {cargando ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
-          Ticket (POS80)
+          POS80
         </button>
         <button
           disabled={cargando}
@@ -96,7 +128,15 @@ function ReporteCard({
           className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 cursor-pointer"
         >
           {cargando ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-          Documento (A4)
+          A4
+        </button>
+        <button
+          disabled={cargando}
+          onClick={onExcel}
+          className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-emerald-300 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 transition-colors disabled:opacity-50 cursor-pointer"
+        >
+          {cargando ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />}
+          Excel
         </button>
       </div>
     </div>
@@ -154,16 +194,21 @@ function BuscadorProducto({
   label,
   productoSeleccionado,
   onSeleccionarProducto,
+  onError,
 }: {
   label: string;
   productoSeleccionado: Producto | null;
   onSeleccionarProducto: (prod: Producto | null) => void;
+  onError: (msg: string) => void;
 }) {
   const [query, setQuery] = useState('');
-  const [todosLosProductos, setTodosLosProductos] = useState<Producto[]>([]);
+  const [resultados, setResultados] = useState<Producto[]>([]);
   const [cargando, setCargando] = useState(false);
   const [abierto, setAbierto] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+  const q = useDebounce(query.trim(), 300);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -175,35 +220,28 @@ function BuscadorProducto({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Carga la lista de productos activos una sola vez al montar el buscador
+  // La búsqueda la hace el backend: solo trae 15 coincidencias
   useEffect(() => {
+    if (!abierto) return;
+    let cancelado = false;
     setCargando(true);
     productosApi
-      .listarActivos()
-      .then((data) =>
-        setTodosLosProductos(
+      .buscar(q, 15)
+      .then((data) => {
+        if (cancelado) return;
+        setResultados(
           data.map((p) => ({
             id: p.id,
             nombre: p.nombre,
             codigo: p.codigo_digemid,
             laboratorio: p.laboratorio?.nombre,
           }))
-        )
-      )
-      .catch((err) => console.error('Error al cargar productos:', err))
-      .finally(() => setCargando(false));
-  }, []);
-
-  const productosFiltrados = query.trim()
-    ? todosLosProductos.filter((p) => {
-        const q = query.toLowerCase();
-        return (
-          p.nombre.toLowerCase().includes(q) ||
-          p.codigo?.toLowerCase().includes(q) ||
-          p.laboratorio?.toLowerCase().includes(q)
         );
       })
-    : todosLosProductos;
+      .catch(() => !cancelado && onErrorRef.current('No se pudieron cargar los productos.'))
+      .finally(() => !cancelado && setCargando(false));
+    return () => { cancelado = true; };
+  }, [q, abierto]);
 
   return (
     <div className="flex flex-col gap-1 text-xs text-zinc-500 w-full relative" ref={dropdownRef}>
@@ -235,9 +273,9 @@ function BuscadorProducto({
         )}
       </div>
 
-      {abierto && productosFiltrados.length > 0 && (
+      {abierto && resultados.length > 0 && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-zinc-200 rounded-xl shadow-lg max-h-60 overflow-y-auto z-50">
-          {productosFiltrados.slice(0, 50).map((prod) => (
+          {resultados.map((prod) => (
             <button
               key={prod.id}
               type="button"
@@ -245,7 +283,7 @@ function BuscadorProducto({
                 onSeleccionarProducto(prod);
                 setAbierto(false);
               }}
-              className="w-full text-left px-3 py-2 hover:bg-zinc-50 flex items-center justify-between border-b border-zinc-100 last:border-none transition-colors"
+              className="w-full text-left px-3 py-2 hover:bg-zinc-50 flex items-center justify-between border-b border-zinc-100 last:border-none transition-colors cursor-pointer"
             >
               <div>
                 <p className="font-medium text-xs text-zinc-800">{prod.nombre}</p>
@@ -266,10 +304,12 @@ function BuscadorLaboratorio({
   label,
   laboratorioSeleccionado,
   onSeleccionarLaboratorio,
+  onError,
 }: {
   label: string;
   laboratorioSeleccionado: api.LaboratorioResumen | null;
   onSeleccionarLaboratorio: (lab: api.LaboratorioResumen | null) => void;
+  onError: (msg: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const [laboratorios, setLaboratorios] = useState<api.LaboratorioResumen[]>([]);
@@ -287,15 +327,16 @@ function BuscadorLaboratorio({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Carga la lista de laboratorios una sola vez al montar el buscador
   useEffect(() => {
     setCargando(true);
     api
       .listarLaboratorios()
       .then(setLaboratorios)
-      .catch((err) => console.error('Error al cargar laboratorios:', err))
+      .catch((err) => {
+        onError('No se pudieron cargar los laboratorios.');
+      })
       .finally(() => setCargando(false));
-  }, []);
+  }, [onError]);
 
   const laboratoriosFiltrados = query.trim()
     ? laboratorios.filter((l) => l.nombreLaboratorio.toLowerCase().includes(query.toLowerCase()))
@@ -341,7 +382,7 @@ function BuscadorLaboratorio({
                 onSeleccionarLaboratorio(lab);
                 setAbierto(false);
               }}
-              className="w-full text-left px-3 py-2 hover:bg-zinc-50 flex items-center justify-between border-b border-zinc-100 last:border-none transition-colors"
+              className="w-full text-left px-3 py-2 hover:bg-zinc-50 flex items-center justify-between border-b border-zinc-100 last:border-none transition-colors cursor-pointer"
             >
               <div>
                 <p className="font-medium text-xs text-zinc-800">{lab.nombreLaboratorio}</p>
@@ -350,6 +391,205 @@ function BuscadorLaboratorio({
               {laboratorioSeleccionado?.idLaboratorio === lab.idLaboratorio && (
                 <Check size={14} className="text-primary" />
               )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BuscadorProveedor({
+  label,
+  proveedorSeleccionado,
+  onSeleccionarProveedor,
+  onError,
+}: {
+  label: string;
+  proveedorSeleccionado: ProveedorItem | null;
+  onSeleccionarProveedor: (prov: ProveedorItem | null) => void;
+  onError: (msg: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [proveedores, setProveedores] = useState<ProveedorItem[]>([]);
+  const [cargando, setCargando] = useState(false);
+  const [abierto, setAbierto] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setAbierto(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    setCargando(true);
+    api
+      .listarProveedores()
+      .then((data) => setProveedores(data.map((p) => ({ nombre: p.nombreProveedor }))))
+      .catch((err) => {
+        onError('No se pudieron cargar los proveedores.');
+      })
+      .finally(() => setCargando(false));
+  }, [onError]);
+
+  const proveedoresFiltrados = query.trim()
+    ? proveedores.filter((p) => p.nombre.toLowerCase().includes(query.toLowerCase()))
+    : proveedores;
+
+  return (
+    <div className="flex flex-col gap-1 text-xs text-zinc-500 w-full relative" ref={dropdownRef}>
+      <span>{label}</span>
+      <div className="relative">
+        <input
+          type="text"
+          placeholder="Buscar proveedor por nombre..."
+          value={proveedorSeleccionado ? proveedorSeleccionado.nombre : query}
+          onFocus={() => {
+            setAbierto(true);
+            if (proveedorSeleccionado) {
+              setQuery('');
+              onSeleccionarProveedor(null);
+            }
+          }}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            if (proveedorSeleccionado) onSeleccionarProveedor(null);
+            setAbierto(true);
+          }}
+          className="w-full pl-8 pr-8 py-2 rounded-lg border border-zinc-300 bg-white text-sm text-zinc-800 focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+        />
+        <Search size={15} className="absolute left-2.5 top-2.5 text-zinc-400" />
+        {cargando ? (
+          <Loader2 size={15} className="absolute right-2.5 top-2.5 animate-spin text-zinc-400" />
+        ) : (
+          <ChevronDown size={15} className="absolute right-2.5 top-2.5 text-zinc-400 pointer-events-none" />
+        )}
+      </div>
+
+      {abierto && proveedoresFiltrados.length > 0 && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-zinc-200 rounded-xl shadow-lg max-h-60 overflow-y-auto z-50">
+          {proveedoresFiltrados.map((prov, index) => (
+            <button
+              key={index}
+              type="button"
+              onClick={() => {
+                onSeleccionarProveedor(prov);
+                setAbierto(false);
+              }}
+              className="w-full text-left px-3 py-2 hover:bg-zinc-50 flex items-center justify-between border-b border-zinc-100 last:border-none transition-colors cursor-pointer"
+            >
+              <div>
+                <p className="font-medium text-xs text-zinc-800">{prov.nombre}</p>
+              </div>
+              {proveedorSeleccionado?.nombre === prov.nombre && <Check size={14} className="text-primary" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BuscadorPrincipioActivo({
+  label,
+  principioSeleccionado,
+  onSeleccionarPrincipio,
+  onError,
+}: {
+  label: string;
+  principioSeleccionado: string | null;
+  onSeleccionarPrincipio: (principio: string | null) => void;
+  onError: (msg: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [principios, setPrincipios] = useState<string[]>([]);
+  const [cargando, setCargando] = useState(false);
+  const [abierto, setAbierto] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setAbierto(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    setCargando(true);
+    api
+      .obtenerCatalogoTerapeutico()
+      .then((data) => {
+        const unicos = Array.from(
+          new Set(
+            data
+              .map((item) => item.principioActivo)
+              .filter((p): p is string => Boolean(p && p.trim() !== ''))
+          )
+        ).sort();
+        setPrincipios(unicos);
+      })
+      .catch((err) => {
+        onError('No se pudieron cargar los principios activos.');
+      })
+      .finally(() => setCargando(false));
+  }, [onError]);
+
+  const principiosFiltrados = query.trim()
+    ? principios.filter((p) => p.toLowerCase().includes(query.toLowerCase()))
+    : principios;
+
+  return (
+    <div className="flex flex-col gap-1 text-xs text-zinc-500 w-full relative" ref={dropdownRef}>
+      <span>{label}</span>
+      <div className="relative">
+        <input
+          type="text"
+          placeholder="Buscar principio activo..."
+          value={principioSeleccionado ?? query}
+          onFocus={() => {
+            setAbierto(true);
+            if (principioSeleccionado) {
+              setQuery('');
+              onSeleccionarPrincipio(null);
+            }
+          }}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            if (principioSeleccionado) onSeleccionarPrincipio(null);
+            setAbierto(true);
+          }}
+          className="w-full pl-8 pr-8 py-2 rounded-lg border border-zinc-300 bg-white text-sm text-zinc-800 focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+        />
+        <Search size={15} className="absolute left-2.5 top-2.5 text-zinc-400" />
+        {cargando ? (
+          <Loader2 size={15} className="absolute right-2.5 top-2.5 animate-spin text-zinc-400" />
+        ) : (
+          <ChevronDown size={15} className="absolute right-2.5 top-2.5 text-zinc-400 pointer-events-none" />
+        )}
+      </div>
+
+      {abierto && principiosFiltrados.length > 0 && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-zinc-200 rounded-xl shadow-lg max-h-60 overflow-y-auto z-50">
+          {principiosFiltrados.map((p, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => {
+                onSeleccionarPrincipio(p);
+                setAbierto(false);
+              }}
+              className="w-full text-left px-3 py-2 hover:bg-zinc-50 flex items-center justify-between border-b border-zinc-100 last:border-none transition-colors cursor-pointer"
+            >
+              <p className="font-medium text-xs text-zinc-800">{p}</p>
+              {principioSeleccionado === p && <Check size={14} className="text-primary" />}
             </button>
           ))}
         </div>
@@ -368,16 +608,41 @@ export default function ReportesPage() {
   const [idArqueo, setIdArqueo] = useState('');
   const [productoSeleccionado, setProductoSeleccionado] = useState<Producto | null>(null);
   const [laboratorioSeleccionado, setLaboratorioSeleccionado] = useState<api.LaboratorioResumen | null>(null);
+  const [proveedorSeleccionado, setProveedorSeleccionado] = useState<ProveedorItem | null>(null);
+  const [principioSeleccionado, setPrincipioSeleccionado] = useState<string | null>(null);
+
   const [limiteTop, setLimiteTop] = useState('20');
   const [diasVencer, setDiasVencer] = useState('30');
 
-  // Logo de la empresa, cargado una sola vez para usarse en TODOS los reportes
   const [logoEmpresa, setLogoEmpresa] = useState<string | undefined>(undefined);
+
+  // Estado para controlar el ModalAviso
+  const [avisoState, setAvisoState] = useState<{
+    isOpen: boolean;
+    mensaje: string;
+    titulo?: string;
+    tipo?: TipoAviso;
+  }>({
+    isOpen: false,
+    mensaje: '',
+    titulo: 'Aviso',
+    tipo: 'warning',
+  });
+
+  const mostrarAviso = (mensaje: string, titulo = 'Aviso', tipo: TipoAviso = 'warning') => {
+    setAvisoState({ isOpen: true, mensaje, titulo, tipo });
+  };
+
+  const cerrarAviso = () => {
+    setAvisoState((prev) => ({ ...prev, isOpen: false }));
+  };
 
   useEffect(() => {
     obtenerEmpresa()
       .then((empresa) => setLogoEmpresa(empresa.logo || undefined))
-      .catch((err) => console.error('No se pudo cargar el logo de la empresa:', err));
+      .catch(() => {
+        mostrarAviso('No se pudo cargar la información de la empresa.', 'Error de carga', 'error');
+      });
   }, []);
 
   async function ejecutar(key: string, accion: () => Promise<void>) {
@@ -385,8 +650,8 @@ export default function ReportesPage() {
     try {
       await accion();
     } catch (err) {
-      console.error(err);
-      alert(err instanceof Error ? err.message : 'Ocurrió un error al generar el reporte.');
+      const msg = err instanceof Error ? err.message : 'Ocurrió un error al generar el reporte.';
+      mostrarAviso(msg, 'Error al generar reporte', 'error');
     } finally {
       setCargando(null);
     }
@@ -394,9 +659,17 @@ export default function ReportesPage() {
 
   return (
     <div className="space-y-6">
+      <ModalAviso
+        isOpen={avisoState.isOpen}
+        titulo={avisoState.titulo}
+        mensaje={avisoState.mensaje}
+        tipo={avisoState.tipo}
+        onClose={cerrarAviso}
+      />
+
       <div>
         <h1 className="text-2xl font-bold text-primary tracking-tight">Reportes</h1>
-        <p className="text-sm text-zinc-500 mt-1">Genera y descarga los reportes del sistema en formato ticket o A4.</p>
+        <p className="text-sm text-zinc-500 mt-1">Genera y descarga los reportes del sistema en ticket, A4 o Excel.</p>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -444,6 +717,15 @@ export default function ReportesPage() {
                 );
               })
             }
+            onExcel={() =>
+              ejecutar('ventas-periodo', async () => {
+                const data = await api.obtenerReporteVentasPeriodo(fechaInicio, fechaFin);
+                descargarExcel(
+                  await generarReporteVentasPeriodoExcel(data, logoEmpresa),
+                  `ventas-periodo-${fechaInicio}_${fechaFin}`
+                );
+              })
+            }
           />
 
           <ReporteCard
@@ -461,6 +743,15 @@ export default function ReportesPage() {
                 const data = await api.obtenerVentasPorEmpleado(fechaInicio, fechaFin);
                 descargarPdf(
                   await generarVentasPorEmpleadoA4(fechaInicio, fechaFin, data, logoEmpresa),
+                  `ventas-por-empleado-${fechaInicio}_${fechaFin}`
+                );
+              })
+            }
+            onExcel={() =>
+              ejecutar('ventas-empleado', async () => {
+                const data = await api.obtenerVentasPorEmpleado(fechaInicio, fechaFin);
+                descargarExcel(
+                  await generarVentasPorEmpleadoExcel(fechaInicio, fechaFin, data, logoEmpresa),
                   `ventas-por-empleado-${fechaInicio}_${fechaFin}`
                 );
               })
@@ -486,6 +777,15 @@ export default function ReportesPage() {
                 );
               })
             }
+            onExcel={() =>
+              ejecutar('top-productos', async () => {
+                const data = await api.obtenerTopProductos(fechaInicio, fechaFin, Number(limiteTop) || 20);
+                descargarExcel(
+                  await generarTopProductosExcel(fechaInicio, fechaFin, data, logoEmpresa),
+                  `top-productos-${fechaInicio}_${fechaFin}`
+                );
+              })
+            }
           >
             <InputNumero label="Límite (top N)" value={limiteTop} onChange={setLimiteTop} placeholder="20" />
           </ReporteCard>
@@ -496,17 +796,33 @@ export default function ReportesPage() {
             cargando={cargando === 'ventas-producto'}
             onPos80={() =>
               ejecutar('ventas-producto', async () => {
-                if (!productoSeleccionado) return alert('Por favor, selecciona un producto.');
+                if (!productoSeleccionado) {
+                  return mostrarAviso('Por favor, selecciona un producto.');
+                }
                 const data = await api.obtenerVentasPorProducto(productoSeleccionado.id, fechaInicio, fechaFin);
                 abrirPdfEnNuevaPestana(await generarVentasPorProductoPos80(data, logoEmpresa));
               })
             }
             onA4={() =>
               ejecutar('ventas-producto', async () => {
-                if (!productoSeleccionado) return alert('Por favor, selecciona un producto.');
+                if (!productoSeleccionado) {
+                  return mostrarAviso('Por favor, selecciona un producto.');
+                }
                 const data = await api.obtenerVentasPorProducto(productoSeleccionado.id, fechaInicio, fechaFin);
                 descargarPdf(
                   await generarVentasPorProductoA4(data, logoEmpresa),
+                  `ventas-producto-${productoSeleccionado.id}-${fechaInicio}_${fechaFin}`
+                );
+              })
+            }
+            onExcel={() =>
+              ejecutar('ventas-producto', async () => {
+                if (!productoSeleccionado) {
+                  return mostrarAviso('Por favor, selecciona un producto.');
+                }
+                const data = await api.obtenerVentasPorProducto(productoSeleccionado.id, fechaInicio, fechaFin);
+                descargarExcel(
+                  await generarVentasPorProductoExcel(data, logoEmpresa),
                   `ventas-producto-${productoSeleccionado.id}-${fechaInicio}_${fechaFin}`
                 );
               })
@@ -516,6 +832,7 @@ export default function ReportesPage() {
               label="Seleccionar Producto"
               productoSeleccionado={productoSeleccionado}
               onSeleccionarProducto={setProductoSeleccionado}
+              onError={(msg) => mostrarAviso(msg, 'Error de Carga', 'error')}
             />
           </ReporteCard>
         </div>
@@ -530,16 +847,29 @@ export default function ReportesPage() {
             cargando={cargando === 'arqueo'}
             onPos80={() =>
               ejecutar('arqueo', async () => {
-                if (!idArqueo) return alert('Ingresa el N° de arqueo/caja.');
+                if (!idArqueo) {
+                  return mostrarAviso('Ingresa el N° de arqueo/caja.');
+                }
                 const data = await api.obtenerReporteArqueo(Number(idArqueo));
-                abrirPdfEnNuevaPestana(await generarArqueoCajaPos80(data));
+                abrirPdfEnNuevaPestana(await generarArqueoCajaPos80(data, logoEmpresa));
               })
             }
             onA4={() =>
               ejecutar('arqueo', async () => {
-                if (!idArqueo) return alert('Ingresa el N° de arqueo/caja.');
+                if (!idArqueo) {
+                  return mostrarAviso('Ingresa el N° de arqueo/caja.');
+                }
                 const data = await api.obtenerReporteArqueo(Number(idArqueo));
-                descargarPdf(await generarArqueoCajaA4(data), `arqueo-caja-${idArqueo}`);
+                descargarPdf(await generarArqueoCajaA4(data, logoEmpresa), `arqueo-caja-${idArqueo}`);
+              })
+            }
+            onExcel={() =>
+              ejecutar('arqueo', async () => {
+                if (!idArqueo) {
+                  return mostrarAviso('Ingresa el N° de arqueo/caja.');
+                }
+                const data = await api.obtenerReporteArqueo(Number(idArqueo));
+                descargarExcel(await generarArqueoCajaExcel(data, logoEmpresa), `arqueo-caja-${idArqueo}`);
               })
             }
           >
@@ -562,6 +892,15 @@ export default function ReportesPage() {
                 descargarPdf(await generarFlujoCajaA4(data, logoEmpresa), `flujo-caja-${fechaInicio}_${fechaFin}`);
               })
             }
+            onExcel={() =>
+              ejecutar('flujo-caja', async () => {
+                const data = await api.obtenerFlujoCaja(fechaInicio, fechaFin);
+                descargarExcel(
+                  await generarFlujoCajaExcel(data, logoEmpresa),
+                  `flujo-caja-${fechaInicio}_${fechaFin}`
+                );
+              })
+            }
           />
         </div>
       )}
@@ -575,7 +914,12 @@ export default function ReportesPage() {
             cargando={cargando === 'compras-proveedor'}
             onPos80={() =>
               ejecutar('compras-proveedor', async () => {
-                const data = await api.obtenerComprasPorProveedor(fechaInicio, fechaFin);
+                let data = await api.obtenerComprasPorProveedor(fechaInicio, fechaFin);
+                if (proveedorSeleccionado) {
+                  data = data.filter((p) =>
+                    p.nombreProveedor.toLowerCase().includes(proveedorSeleccionado.nombre.toLowerCase())
+                  );
+                }
                 abrirPdfEnNuevaPestana(
                   await generarComprasPorProveedorPos80(fechaInicio, fechaFin, data, logoEmpresa)
                 );
@@ -583,14 +927,40 @@ export default function ReportesPage() {
             }
             onA4={() =>
               ejecutar('compras-proveedor', async () => {
-                const data = await api.obtenerComprasPorProveedor(fechaInicio, fechaFin);
+                let data = await api.obtenerComprasPorProveedor(fechaInicio, fechaFin);
+                if (proveedorSeleccionado) {
+                  data = data.filter((p) =>
+                    p.nombreProveedor.toLowerCase().includes(proveedorSeleccionado.nombre.toLowerCase())
+                  );
+                }
                 descargarPdf(
                   await generarComprasPorProveedorA4(fechaInicio, fechaFin, data, logoEmpresa),
                   `compras-por-proveedor-${fechaInicio}_${fechaFin}`
                 );
               })
             }
-          />
+            onExcel={() =>
+              ejecutar('compras-proveedor', async () => {
+                let data = await api.obtenerComprasPorProveedor(fechaInicio, fechaFin);
+                if (proveedorSeleccionado) {
+                  data = data.filter((p) =>
+                    p.nombreProveedor.toLowerCase().includes(proveedorSeleccionado.nombre.toLowerCase())
+                  );
+                }
+                descargarExcel(
+                  await generarComprasPorProveedorExcel(fechaInicio, fechaFin, data, logoEmpresa),
+                  `compras-por-proveedor-${fechaInicio}_${fechaFin}`
+                );
+              })
+            }
+          >
+            <BuscadorProveedor
+              label="Seleccionar Proveedor"
+              proveedorSeleccionado={proveedorSeleccionado}
+              onSeleccionarProveedor={setProveedorSeleccionado}
+              onError={(msg) => mostrarAviso(msg, 'Error de Carga', 'error')}
+            />
+          </ReporteCard>
 
           <ReporteCard
             titulo="Análisis de Costos"
@@ -598,17 +968,33 @@ export default function ReportesPage() {
             cargando={cargando === 'analisis-costos'}
             onPos80={() =>
               ejecutar('analisis-costos', async () => {
-                if (!productoSeleccionado) return alert('Selecciona un producto.');
+                if (!productoSeleccionado) {
+                  return mostrarAviso('Selecciona un producto.');
+                }
                 const data = await api.obtenerAnalisisCostos(productoSeleccionado.id);
                 abrirPdfEnNuevaPestana(await generarAnalisisCostosPos80(data, logoEmpresa));
               })
             }
             onA4={() =>
               ejecutar('analisis-costos', async () => {
-                if (!productoSeleccionado) return alert('Selecciona un producto.');
+                if (!productoSeleccionado) {
+                  return mostrarAviso('Selecciona un producto.');
+                }
                 const data = await api.obtenerAnalisisCostos(productoSeleccionado.id);
                 descargarPdf(
                   await generarAnalisisCostosA4(data, logoEmpresa),
+                  `analisis-costos-producto-${productoSeleccionado.id}`
+                );
+              })
+            }
+            onExcel={() =>
+              ejecutar('analisis-costos', async () => {
+                if (!productoSeleccionado) {
+                  return mostrarAviso('Selecciona un producto.');
+                }
+                const data = await api.obtenerAnalisisCostos(productoSeleccionado.id);
+                descargarExcel(
+                  await generarAnalisisCostosExcel(data, logoEmpresa),
                   `analisis-costos-producto-${productoSeleccionado.id}`
                 );
               })
@@ -618,6 +1004,7 @@ export default function ReportesPage() {
               label="Seleccionar Producto"
               productoSeleccionado={productoSeleccionado}
               onSeleccionarProducto={setProductoSeleccionado}
+              onError={(msg) => mostrarAviso(msg, 'Error de Carga', 'error')}
             />
           </ReporteCard>
 
@@ -636,6 +1023,15 @@ export default function ReportesPage() {
                 const data = await api.obtenerCuentasPorPagar(fechaInicio, fechaFin);
                 descargarPdf(
                   await generarCuentasPorPagarA4(data, logoEmpresa),
+                  `cuentas-por-pagar-${fechaInicio}_${fechaFin}`
+                );
+              })
+            }
+            onExcel={() =>
+              ejecutar('cuentas-por-pagar', async () => {
+                const data = await api.obtenerCuentasPorPagar(fechaInicio, fechaFin);
+                descargarExcel(
+                  await generarCuentasPorPagarExcel(data, logoEmpresa),
                   `cuentas-por-pagar-${fechaInicio}_${fechaFin}`
                 );
               })
@@ -663,6 +1059,12 @@ export default function ReportesPage() {
                 descargarPdf(await generarInventarioValoradoA4(data, logoEmpresa), 'inventario-valorado');
               })
             }
+            onExcel={() =>
+              ejecutar('inventario-valorado', async () => {
+                const data = await api.obtenerInventarioValorado();
+                descargarExcel(await generarInventarioValoradoExcel(data, logoEmpresa), 'inventario-valorado');
+              })
+            }
           />
 
           <ReporteCard
@@ -681,6 +1083,12 @@ export default function ReportesPage() {
                 descargarPdf(await generarAlertaStockA4(data, logoEmpresa), 'alerta-stock-minimo');
               })
             }
+            onExcel={() =>
+              ejecutar('alerta-stock', async () => {
+                const data = await api.obtenerAlertaStockMinimo();
+                descargarExcel(await generarAlertaStockExcel(data, logoEmpresa), 'alerta-stock-minimo');
+              })
+            }
           />
 
           <ReporteCard
@@ -689,20 +1097,51 @@ export default function ReportesPage() {
             cargando={cargando === 'catalogo-terapeutico'}
             onPos80={() =>
               ejecutar('catalogo-terapeutico', async () => {
-                const data = await api.obtenerCatalogoTerapeutico();
-                abrirPdfEnNuevaPestana(await generarCatalogoTerapeuticoPos80(data, undefined, logoEmpresa));
+                let data = await api.obtenerCatalogoTerapeutico();
+                if (principioSeleccionado) {
+                  data = data.filter((item) => item.principioActivo === principioSeleccionado);
+                }
+                const tituloRpt = principioSeleccionado
+                  ? `CATÁLOGO: ${principioSeleccionado.toUpperCase()}`
+                  : 'CATÁLOGO TERAPÉUTICO';
+                abrirPdfEnNuevaPestana(await generarCatalogoTerapeuticoPos80(data, tituloRpt, logoEmpresa));
               })
             }
             onA4={() =>
               ejecutar('catalogo-terapeutico', async () => {
-                const data = await api.obtenerCatalogoTerapeutico();
-                descargarPdf(
-                  await generarCatalogoTerapeuticoA4(data, undefined, logoEmpresa),
+                let data = await api.obtenerCatalogoTerapeutico();
+                if (principioSeleccionado) {
+                  data = data.filter((item) => item.principioActivo === principioSeleccionado);
+                }
+                const tituloRpt = principioSeleccionado
+                  ? `Catálogo de Productos - ${principioSeleccionado}`
+                  : 'Catálogo por Principio Activo y Acción Terapéutica';
+                descargarPdf(await generarCatalogoTerapeuticoA4(data, tituloRpt, logoEmpresa), 'catalogo-terapeutico');
+              })
+            }
+            onExcel={() =>
+              ejecutar('catalogo-terapeutico', async () => {
+                let data = await api.obtenerCatalogoTerapeutico();
+                if (principioSeleccionado) {
+                  data = data.filter((item) => item.principioActivo === principioSeleccionado);
+                }
+                const tituloRpt = principioSeleccionado
+                  ? `Catálogo de Productos - ${principioSeleccionado}`
+                  : 'Catálogo por Principio Activo y Acción Terapéutica';
+                descargarExcel(
+                  await generarCatalogoTerapeuticoExcel(data, tituloRpt, logoEmpresa),
                   'catalogo-terapeutico'
                 );
               })
             }
-          />
+          >
+            <BuscadorPrincipioActivo
+              label="Seleccionar Principio Activo"
+              principioSeleccionado={principioSeleccionado}
+              onSeleccionarPrincipio={setPrincipioSeleccionado}
+              onError={(msg) => mostrarAviso(msg, 'Error de Carga', 'error')}
+            />
+          </ReporteCard>
 
           <ReporteCard
             titulo="Productos por Laboratorio"
@@ -710,17 +1149,33 @@ export default function ReportesPage() {
             cargando={cargando === 'productos-laboratorio'}
             onPos80={() =>
               ejecutar('productos-laboratorio', async () => {
-                if (!laboratorioSeleccionado) return alert('Selecciona un laboratorio.');
+                if (!laboratorioSeleccionado) {
+                  return mostrarAviso('Selecciona un laboratorio.');
+                }
                 const data = await api.obtenerProductosPorLaboratorio(laboratorioSeleccionado.idLaboratorio);
                 abrirPdfEnNuevaPestana(await generarProductosPorLaboratorioPos80(data, logoEmpresa));
               })
             }
             onA4={() =>
               ejecutar('productos-laboratorio', async () => {
-                if (!laboratorioSeleccionado) return alert('Selecciona un laboratorio.');
+                if (!laboratorioSeleccionado) {
+                  return mostrarAviso('Selecciona un laboratorio.');
+                }
                 const data = await api.obtenerProductosPorLaboratorio(laboratorioSeleccionado.idLaboratorio);
                 descargarPdf(
                   await generarProductosPorLaboratorioA4(data, logoEmpresa),
+                  `productos-laboratorio-${laboratorioSeleccionado.idLaboratorio}`
+                );
+              })
+            }
+            onExcel={() =>
+              ejecutar('productos-laboratorio', async () => {
+                if (!laboratorioSeleccionado) {
+                  return mostrarAviso('Selecciona un laboratorio.');
+                }
+                const data = await api.obtenerProductosPorLaboratorio(laboratorioSeleccionado.idLaboratorio);
+                descargarExcel(
+                  await generarProductosPorLaboratorioExcel(data, logoEmpresa),
                   `productos-laboratorio-${laboratorioSeleccionado.idLaboratorio}`
                 );
               })
@@ -730,6 +1185,7 @@ export default function ReportesPage() {
               label="Seleccionar Laboratorio"
               laboratorioSeleccionado={laboratorioSeleccionado}
               onSeleccionarLaboratorio={setLaboratorioSeleccionado}
+              onError={(msg) => mostrarAviso(msg, 'Error de Carga', 'error')}
             />
           </ReporteCard>
 
@@ -750,6 +1206,15 @@ export default function ReportesPage() {
                 const data = await api.obtenerProductosPorVencer(Number(diasVencer) || 30);
                 descargarPdf(
                   await generarProductosPorVencerA4(data, Number(diasVencer) || 30, logoEmpresa),
+                  `productos-por-vencer-${diasVencer}-dias`
+                );
+              })
+            }
+            onExcel={() =>
+              ejecutar('productos-por-vencer', async () => {
+                const data = await api.obtenerProductosPorVencer(Number(diasVencer) || 30);
+                descargarExcel(
+                  await generarProductosPorVencerExcel(data, Number(diasVencer) || 30, logoEmpresa),
                   `productos-por-vencer-${diasVencer}-dias`
                 );
               })
@@ -782,6 +1247,15 @@ export default function ReportesPage() {
                 );
               })
             }
+            onExcel={() =>
+              ejecutar('consolidado', async () => {
+                const data = await api.obtenerConsolidadoGeneral(fechaInicio, fechaFin);
+                descargarExcel(
+                  await generarConsolidadoGeneralExcel(data, logoEmpresa),
+                  `consolidado-general-${fechaInicio}_${fechaFin}`
+                );
+              })
+            }
           />
 
           <ReporteCard
@@ -791,9 +1265,7 @@ export default function ReportesPage() {
             onPos80={() =>
               ejecutar('asistencia', async () => {
                 const data = await api.obtenerReporteAsistencia(fechaInicio, fechaFin);
-                abrirPdfEnNuevaPestana(
-                  await generarReporteAsistenciaPos80(fechaInicio, fechaFin, data, logoEmpresa)
-                );
+                abrirPdfEnNuevaPestana(await generarReporteAsistenciaPos80(fechaInicio, fechaFin, data, logoEmpresa));
               })
             }
             onA4={() =>
@@ -801,6 +1273,15 @@ export default function ReportesPage() {
                 const data = await api.obtenerReporteAsistencia(fechaInicio, fechaFin);
                 descargarPdf(
                   await generarReporteAsistenciaA4(fechaInicio, fechaFin, data, logoEmpresa),
+                  `reporte-asistencia-${fechaInicio}_${fechaFin}`
+                );
+              })
+            }
+            onExcel={() =>
+              ejecutar('asistencia', async () => {
+                const data = await api.obtenerReporteAsistencia(fechaInicio, fechaFin);
+                descargarExcel(
+                  await generarReporteAsistenciaExcel(fechaInicio, fechaFin, data, logoEmpresa),
                   `reporte-asistencia-${fechaInicio}_${fechaFin}`
                 );
               })

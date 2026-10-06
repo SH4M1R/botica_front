@@ -11,6 +11,7 @@ import {
 const columnas: ColumnaReporte<ProductoPorLaboratorio>[] = [
   { header: 'Producto', align: 'left', widthA4: 65, render: (f) => f.nombreProducto },
   { header: 'Stock', align: 'right', widthA4: 25, render: (f) => String(f.stock) },
+  { header: 'Stock Fisico', align: 'right', widthA4: 25, render: () => '' },
   { header: 'P. Venta', align: 'right', widthA4: 30, render: (f) => formatMoneda(f.precioVenta) },
   {
     header: 'Vencimiento',
@@ -26,7 +27,7 @@ export async function generarProductosPorLaboratorioPos80(
 ): Promise<Blob> {
   const altura = 65 + data.productos.length * 22 + 20;
   const b = crearPos80Builder(altura);
-  b.encabezadoEmpresa(logo);
+  await b.encabezadoEmpresa(logo);
 
   b.texto('PRODUCTOS POR LABORATORIO', { align: 'center', size: 9, bold: true });
   b.texto(data.nombreLaboratorio, { align: 'center', size: 8, bold: true });
@@ -49,7 +50,7 @@ export async function generarProductosPorLaboratorioA4(
   logo?: string
 ): Promise<Blob> {
   const b = crearA4Builder();
-  b.encabezadoEmpresa(logo);
+  await b.encabezadoEmpresa(logo);
 
   b.titulo(`Productos del Laboratorio: ${data.nombreLaboratorio}`);
   b.subtitulo([`Fecha de emisión: ${formatEmision()}`, `Total de productos: ${data.totalProductos}`]);

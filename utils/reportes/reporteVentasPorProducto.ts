@@ -20,7 +20,7 @@ const columnas: ColumnaReporte<VentaDetalleProducto>[] = [
 export async function generarVentasPorProductoPos80(data: ReporteVentasPorProducto, logo?: string): Promise<Blob> {
   const altura = 65 + data.detalle.length * 20 + 25;
   const b = crearPos80Builder(altura);
-  b.encabezadoEmpresa(logo);
+  await b.encabezadoEmpresa(logo);
 
   b.texto('VENTAS POR PRODUCTO', { align: 'center', size: 9.5, bold: true });
   b.linea();
@@ -42,7 +42,7 @@ export async function generarVentasPorProductoPos80(data: ReporteVentasPorProduc
 
 export async function generarVentasPorProductoA4(data: ReporteVentasPorProducto, logo?: string): Promise<Blob> {
   const b = crearA4Builder();
-  b.encabezadoEmpresa(logo);
+  await b.encabezadoEmpresa(logo);
 
   b.titulo('Ventas por Producto');
   b.subtitulo([

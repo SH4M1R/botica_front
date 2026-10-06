@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import MockInstaller from "@/components/MockInstaller";
 
 export const metadata: Metadata = {
   title: "JPFarma - Panel de Administración",
@@ -55,6 +56,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: INIT_SCRIPT }} />
       </head>
       <body className="antialiased bg-background text-foreground">
+        <MockInstaller />
         {children}
       </body>
     </html>

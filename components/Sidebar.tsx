@@ -2,12 +2,13 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Package, Settings, ShoppingCart, Contact, ChevronDown,
   List, Plus, Users, Tags, Lock, Repeat, ArrowDownToLine, ArrowUpFromLine,
   CreditCard, Receipt, ArrowRightLeft, ShieldCheck, UserCheck,
   BarChart3, CalendarCheck, ShoppingBag, Wallet, ChevronsLeft, ChevronsRight, FileText,
+  ClipboardList,
 } from 'lucide-react';
 import { useSession } from '@/hooks/useSession';
 import { arqueoApi } from '@/api/arqueo';
@@ -28,6 +29,7 @@ const cajaChildren = [
 const productosChildren = [
   { href: '/dashboard/productos', label: 'Listado productos', icon: List },
   { href: '/dashboard/productos/atributos', label: 'Atributos', icon: Tags },
+  { href: '/dashboard/productos/kardex', label: 'Kardex', icon: ClipboardList },
 ];
 
 const trasladosChildren = [
@@ -49,13 +51,31 @@ const RUTA_GENERAR_VENTA = '/dashboard/ventas/generar';
 const RUTA_GENERAR_COTIZACION = '/dashboard/ventas/cotizacion';
 const RUTA_GENERAR_COMPRA = '/dashboard/compras/generar';
 
-type MenuId = 'caja' | 'ventas' | 'compras' | 'productos' | 'empleados' | 'traslados' | null;
+type MenuId = 'caja' | 'ventas' | 'cotizaciones' | 'compras' | 'productos' | 'empleados' | 'traslados' | null;
 
 interface SidebarProps {
   onClose?: () => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
   onCajaCerrada: () => void;
+}
+
+/**
+ * Función helper para generar el enlace dinámico a WhatsApp
+ * con el mensaje predeterminado según la hora local.
+ */
+function obtenerWhatsAppLink() {
+  const hora = new Date().getHours();
+  let saludo = 'Buenos días';
+
+  if (hora >= 12 && hora < 19) {
+    saludo = 'Buenas tardes';
+  } else if (hora >= 19 || hora < 5) {
+    saludo = 'Buenas noches';
+  }
+
+  const mensaje = `${saludo}, tengo una consulta`;
+  return `https://wa.me/51907845855?text=${encodeURIComponent(mensaje)}`;
 }
 
 export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCerrada }: SidebarProps) {
@@ -98,10 +118,15 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
   const ventasLinksVisibles = {
     listado: tienePermiso('/dashboard/ventas'),
     generar: tienePermiso(RUTA_GENERAR_VENTA),
-    cotizacion: tienePermiso(RUTA_GENERAR_COTIZACION),
     clientes: tienePermiso('/dashboard/clientes'),
   };
   const ventasModuloVisible = Object.values(ventasLinksVisibles).some(Boolean);
+
+  const cotizacionesLinksVisibles = {
+    generar: tienePermiso(RUTA_GENERAR_COTIZACION),
+    listado: tienePermiso('/dashboard/ventas/cotizaciones'),
+  };
+  const cotizacionesModuloVisible = Object.values(cotizacionesLinksVisibles).some(Boolean);
 
   const comprasLinksVisibles = {
     listado: tienePermiso('/dashboard/compras'),
@@ -119,13 +144,16 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
 
   const cajaActivo = pathname.startsWith('/dashboard/caja');
   const productosActivo = pathname.startsWith('/dashboard/productos');
-  const ventasActivo = pathname.startsWith('/dashboard/ventas') || pathname.startsWith('/dashboard/clientes');
+  const cotizacionesActivo = pathname === RUTA_GENERAR_COTIZACION || pathname.startsWith('/dashboard/ventas/cotizaciones');
+  const ventasActivo = (pathname.startsWith('/dashboard/ventas') || pathname.startsWith('/dashboard/clientes')) && !cotizacionesActivo;
   const comprasActivo = pathname.startsWith('/dashboard/compras') || pathname.startsWith('/dashboard/proveedores');
   const empleadosActivo = pathname.startsWith('/dashboard/empleados');
   const trasladosActivo = pathname.startsWith('/dashboard/ingresos') || pathname.startsWith('/dashboard/egresos');
 
   const menuActivoInicial: MenuId = cajaActivo
     ? 'caja'
+    : cotizacionesActivo
+    ? 'cotizaciones'
     : ventasActivo
     ? 'ventas'
     : comprasActivo
@@ -155,7 +183,6 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
 
   const [cajaAbierta, setCajaAbierta] = useState<unknown | null | undefined>(undefined);
 
-  // Función reútilizable para verificar el estado de la caja
   const revisarCaja = useCallback(() => {
     if (!empleado?.id) return;
     arqueoApi.cajaActual(empleado.id)
@@ -166,15 +193,12 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
   useEffect(() => {
     if (cargandoSesion || !empleado?.id) return;
 
-    // Consulta inicial inmediata
     revisarCaja();
 
-    // Eventos para detectar cambios en tiempo real sin recargar
     window.addEventListener('focus', revisarCaja);
     window.addEventListener(EVENTO_CAJA_ACTUALIZADA, revisarCaja);
     window.addEventListener('storage', revisarCaja);
 
-    // Polling de seguridad
     const intervalo = setInterval(revisarCaja, 5000);
 
     return () => {
@@ -187,8 +211,6 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
 
   const puedeVender = !!cajaAbierta;
 
-  // Abre "Generar venta" en una ventana emergente, apuntando SIEMPRE a esa
-  // ruta (sin importar en qué página del dashboard estés parado).
   const abrirVentanaFlotanteVenta = useCallback(() => {
     const width = 1280;
     const height = 800;
@@ -203,10 +225,6 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
     );
   }, []);
 
-  // Atajo global F4: abre la ventana flotante de "Generar venta" desde
-  // cualquier ruta del dashboard. Respeta permisos (no hace nada si el
-  // empleado no tiene acceso a esa ruta) y el estado de caja (si está
-  // cerrada, muestra el mismo modal que ya usa el link del menú).
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'F4') return;
@@ -232,8 +250,6 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [ventasLinksVisibles.generar, puedeVender, onCajaCerrada, abrirVentanaFlotanteVenta]);
 
-  // Abre "Ingresar Compra" en una ventana emergente, apuntando SIEMPRE a
-  // esa ruta (sin importar en qué página del dashboard estés parado).
   const abrirVentanaFlotanteCompra = useCallback(() => {
     const width = 1280;
     const height = 800;
@@ -248,10 +264,6 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
     );
   }, []);
 
-  // Atajo global F6: abre la ventana flotante de "Ingresar Compra" desde
-  // cualquier ruta del dashboard. Respeta permisos (no hace nada si el
-  // empleado no tiene acceso a esa ruta). A diferencia de ventas, compras
-  // no depende del estado de caja.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'F6') return;
@@ -281,7 +293,7 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
   const handleClickGenerarVenta = (e: React.MouseEvent) => {
     if (!puedeVender) {
       e.preventDefault();
-      onCajaCerrada(); // el modal ahora vive en el layout, no aquí
+      onCajaCerrada();
     } else if (onClose) {
       onClose();
     }
@@ -293,17 +305,41 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
 
   return (
     <div className="flex flex-col h-full bg-primary text-white shadow-2xl">
-      {/* Botón de colapsar/expandir — solo escritorio, solo por clic */}
+      {/* Top Header con WhatsApp, Separador y Botón de Colapsar */}
       <div
-        className={`hidden md:flex items-center border-b border-white/50 ${
-          collapsed ? 'justify-center py-3' : 'justify-end px-3 py-3'
+        className={`hidden md:flex items-center border-b border-white px-3 py-3 ${
+          collapsed ? 'flex-col gap-2 justify-center' : 'justify-between'
         }`}
       >
+        <a
+          href={obtenerWhatsAppLink()}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={collapsed ? 'Comunícate con JPSYSTEMS' : 'Comunícate con JPSYSTEMS'}
+          className={`flex items-center gap-2 rounded-lg text-sm font-semibold transition-all text-white hover:bg-white/20 p-0.5 ${
+            collapsed ? 'justify-center' : 'flex-1 min-w-0 mr-1'
+          }`}
+        >
+          <img
+            src="/JPFARMA.png"
+            alt="JPFARMA"
+            className="w-10 h-10 rounded-full object-cover shrink-0 border border-white/30"
+          />
+          {!collapsed && <span className="truncate text-xs">Contáctanos</span>}
+        </a>
+
+        {/* Línea de separación (Vertical en expandido, Horizontal en colapsado) */}
+        <div
+          className={`bg-white shrink-0 ${
+            collapsed ? 'w-full h-[1px]' : 'h-8 w-[1px] mx-1'
+          }`}
+        />
+
         <button
           type="button"
           onClick={onToggleCollapse}
           title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
-          className="p-2 rounded-lg text-white hover:bg-white/20 transition-colors cursor-pointer"
+          className="p-2 rounded-lg text-white hover:bg-white/20 transition-colors cursor-pointer shrink-0"
         >
           {collapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
         </button>
@@ -400,22 +436,55 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
                   </Link>
                 )}
 
-                {ventasLinksVisibles.cotizacion && (
+                {ventasLinksVisibles.clientes && (
+                  <Link href="/dashboard/clientes" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/clientes')}>
+                    <Contact size={16} />
+                    <span className="text-sm">Clientes</span>
+                  </Link>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Cotizaciones */}
+        {cotizacionesModuloVisible && (
+          <>
+            <button
+              type="button"
+              onClick={() => handleToggleMenu('cotizaciones')}
+              title={collapsed ? 'Cotizaciones' : undefined}
+              className={linkClass(cotizacionesActivo && menuAbierto !== 'cotizaciones')}
+            >
+              <FileText size={18} />
+              {!collapsed && <span className="flex-1 text-left">Cotizaciones</span>}
+              {!collapsed && (
+                <ChevronDown size={16} className={`transition-transform ${menuAbierto === 'cotizaciones' ? 'rotate-180' : ''}`} />
+              )}
+            </button>
+
+            {!collapsed && menuAbierto === 'cotizaciones' && (
+              <div className="flex flex-col gap-1 pl-4">
+                {cotizacionesLinksVisibles.listado && (
+                  <Link
+                    href="/dashboard/ventas/cotizaciones"
+                    onClick={handleLinkClick}
+                    className={linkClass(pathname === '/dashboard/ventas/cotizaciones')}
+                  >
+                    <List size={16} />
+                    <span className="text-sm">Listado cotizaciones</span>
+                  </Link>
+                )}
+
+                {cotizacionesLinksVisibles.generar && (
                   <Link
                     href={RUTA_GENERAR_COTIZACION}
                     onClick={handleLinkClick}
                     title="Generar cotización (no requiere caja abierta)"
                     className={linkClass(pathname === RUTA_GENERAR_COTIZACION)}
                   >
-                    <FileText size={16} />
+                    <Plus size={16} />
                     <span className="text-sm flex-1">Generar cotización</span>
-                  </Link>
-                )}
-
-                {ventasLinksVisibles.clientes && (
-                  <Link href="/dashboard/clientes" onClick={handleLinkClick} className={linkClass(pathname === '/dashboard/clientes')}>
-                    <Contact size={16} />
-                    <span className="text-sm">Clientes</span>
                   </Link>
                 )}
               </div>

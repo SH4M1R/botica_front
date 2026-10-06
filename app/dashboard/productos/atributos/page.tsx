@@ -30,7 +30,7 @@ const TABS = [
   { key: 'accion', label: 'ACCIÓN TERAPEÚTICA', api: accionesTerapeuticasApi, Modal: AccionTerapeuticaModal as FC<AtributoModalProps> },
 ] as const;
 
-const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
 const COL_WIDTHS = {
   id: '10%',
@@ -39,7 +39,7 @@ const COL_WIDTHS = {
 };
 
 export default function AtributoProductoPage() {
-  const [tabActiva, setTabActiva] = useState<string>('categoria');
+  const [tabActiva, setTabActiva] = useState<typeof TABS[number]['key']>('categoria');
   const [items, setItems] = useState<ItemBase[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);

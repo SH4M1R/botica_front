@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Trash2, FileText, ShoppingCart, UserPlus, Plus, X as XIcon, AlertTriangle, ExternalLink, Barcode, MousePointerClick } from 'lucide-react';
+import Link from 'next/link';
+import { Search, Trash2, FileText, ShoppingCart, UserPlus, Plus, X as XIcon, AlertTriangle, ExternalLink, Barcode, MousePointerClick, List } from 'lucide-react';
 import { productosApi } from '@/api/productos';
 import type { Producto } from '@/api/productos';
 import { clientesApi, getNombreCompleto } from '@/api/ventas';
@@ -10,10 +11,11 @@ import type { Cliente } from '@/api/ventas';
 import { permisosApi } from '@/api/permisos';
 import { empresaApi } from '@/api/empresa';
 import type { EmpresaForm } from '@/api/empresa';
+import { lotesApi, mergearStockEnProductos } from '@/api/lotes';
+import { cotizacionesApi } from '@/api/cotizaciones';
 import { PERMISO_EDITAR_PRECIO_VENTA } from '@/constants/permisos';
 import { useSession } from '@/hooks/useSession';
 import ClienteModal from '@/app/dashboard/clientes/components/ClienteModal';
-import VentaNoMouse from '../generar/VentaNoMouse';
 import { generarCotizacionPdf } from '@/utils/generarCotizacionPdf';
 import {
   type TipoVenta,
@@ -21,15 +23,17 @@ import {
   type ProductoConCodigo,
   tiposDisponibles,
   precioPorTipo,
-  unidadesBasePorTipo,
   PrecioInput,
 } from '@/components/ventaShared';
+
+// Producto con stock y fecha_vencimiento ya mergeados desde /lotes/resumen-stock.
+type ProductoConStock = Producto & { stock: number; fecha_vencimiento: string | null };
 
 export default function GenerarCotizacionPage() {
   const router = useRouter();
   const { empleado, cargando } = useSession();
 
-  const [productos, setProductos] = useState<Producto[]>([]);
+  const [productos, setProductos] = useState<ProductoConStock[]>([]);
   const [busqueda, setBusqueda] = useState('');
   const [carrito, setCarrito] = useState<CarritoItem[]>([]);
 
@@ -69,8 +73,14 @@ export default function GenerarCotizacionPage() {
     };
   }, []);
 
+  // El stock ya NO viene en /productos: se pide aparte a /lotes/resumen-stock
+  // y se mergea antes de guardar, igual que en Generar Venta.
   const cargarProductos = () => {
-    productosApi.listarActivos().then(setProductos).catch(() => setProductos([]));
+    Promise.all([productosApi.listarActivos(), lotesApi.resumenStock()])
+      .then(([productosData, resumen]) => {
+        setProductos(mergearStockEnProductos(productosData, resumen));
+      })
+      .catch(() => setProductos([]));
   };
 
   const cargarClientes = () => {
@@ -130,20 +140,24 @@ export default function GenerarCotizacionPage() {
   const productosVisibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
 
-    const conStock = productos.filter((p) => p.stock > 0);
+    // Los productos sin stock ya NO se ocultan: se muestran igual (al final
+    // de la lista) pero deshabilitados para agregar, ya que una cotización
+    // puede servir para avisar al cliente que el producto está agotado.
+    const filtrados = !q
+      ? productos
+      : productos.filter((p) => {
+          const producto = p as ProductoConStock & ProductoConCodigo;
+          const nombreMatch = producto.nombre.toLowerCase().includes(q);
+          const principioMatch = producto.principioActivo?.nombre?.toLowerCase().includes(q);
+          const codigoBarrasMatch = producto.codigo_barras?.toLowerCase().includes(q);
 
-    if (!q) return conStock.slice(0, 30);
+          return nombreMatch || principioMatch || codigoBarrasMatch;
+        });
 
-    const base = conStock.filter((p) => {
-      const producto = p as ProductoConCodigo;
-      const nombreMatch = producto.nombre.toLowerCase().includes(q);
-      const principioMatch = producto.principioActivo?.nombre?.toLowerCase().includes(q);
-      const codigoBarrasMatch = producto.codigo_barras?.toLowerCase().includes(q);
+    const conStock = filtrados.filter((p) => p.stock > 0);
+    const sinStock = filtrados.filter((p) => p.stock <= 0);
 
-      return nombreMatch || principioMatch || codigoBarrasMatch;
-    });
-
-    return base.slice(0, 30);
+    return [...conStock, ...sinStock].slice(0, 30);
   }, [busqueda, productos]);
 
   useEffect(() => {
@@ -185,7 +199,15 @@ export default function GenerarCotizacionPage() {
     [carrito]
   );
 
-  const agregarProducto = (producto: Producto) => {
+  // Etiqueta legible para mensajes de stock según el tipo de venta (igual
+  // que en "Generar venta", para mantener el mismo tono de mensajes).
+  const etiquetaTipo = (tipoVenta: TipoVenta) => (tipoVenta === 'unidad' ? 'unidad(es)' : `${tipoVenta}(s)`);
+
+  const agregarProducto = (producto: ProductoConStock) => {
+    if (producto.stock <= 0) {
+      setError(`"${producto.nombre}" no tiene stock disponible.`);
+      return;
+    }
     const existente = carrito.find((c) => c.idProducto === producto.id && c.tipoVenta === 'unidad');
     if (existente) {
       cambiarCantidad(producto.id, 'unidad', existente.cantidad + 1);
@@ -195,6 +217,7 @@ export default function GenerarCotizacionPage() {
       ...prev,
       { idProducto: producto.id, cantidad: 1, tipoVenta: 'unidad', precioUnitario: producto.precio_venta, producto },
     ]);
+    setError('');
   };
 
   const agregarProductoConDetalle = (
@@ -203,11 +226,16 @@ export default function GenerarCotizacionPage() {
     cantidad: number,
     precioUnitarioManual?: number
   ) => {
+    const prod = producto as ProductoConStock;
+    if (prod.stock <= 0) {
+      setError(`"${prod.nombre}" no tiene stock disponible.`);
+      return;
+    }
     setCarrito((prev) => {
-      const existente = prev.find((c) => c.idProducto === producto.id && c.tipoVenta === tipoVenta);
+      const existente = prev.find((c) => c.idProducto === prod.id && c.tipoVenta === tipoVenta);
       if (existente) {
         return prev.map((item) =>
-          item.idProducto === producto.id && item.tipoVenta === tipoVenta
+          item.idProducto === prod.id && item.tipoVenta === tipoVenta
             ? {
                 ...item,
                 cantidad: item.cantidad + cantidad,
@@ -219,14 +247,15 @@ export default function GenerarCotizacionPage() {
       return [
         ...prev,
         {
-          idProducto: producto.id,
+          idProducto: prod.id,
           cantidad,
           tipoVenta,
-          precioUnitario: precioUnitarioManual ?? precioPorTipo(producto, tipoVenta),
-          producto,
+          precioUnitario: precioUnitarioManual ?? precioPorTipo(prod, tipoVenta),
+          producto: prod,
         },
       ];
     });
+    setError('');
   };
 
   const cambiarCantidad = (idProducto: number, tipoVenta: TipoVenta, cantidad: number) => {
@@ -316,18 +345,36 @@ export default function GenerarCotizacionPage() {
     seleccionarCliente(nuevo);
   };
 
-  // Genera la cotización directamente desde el carrito en memoria: NO se
-  // persiste nada ni se descuenta stock. Trae los datos de la empresa
-  // (logo, RUC, dirección, etc.) para la cabecera del PDF.
+  // Guarda la cotización en la BD y luego genera el PDF con su folio real.
+  // NO descuenta stock: solo queda registrada para poder consultarla más
+  // adelante en el listado, o cargarla en "Generar venta" si el cliente
+  // decide comprar.
   const handleGenerarCotizacion = async () => {
     setError('');
     if (carrito.length === 0) {
       setError('Agrega al menos un producto.');
       return;
     }
+    if (!empleado) {
+      setError('Sesión expirada. Vuelve a iniciar sesión.');
+      return;
+    }
 
     setGenerandoCotizacion(true);
     try {
+      const guardada = await cotizacionesApi.crear({
+        idEmpleado: empleado.id,
+        idCliente: idClienteSeleccionado,
+        clienteNombre: nombreCliente.trim() || 'Clientes Varios',
+        clienteDni: dniCliente.trim() || undefined,
+        items: carrito.map(({ idProducto, tipoVenta, cantidad, precioUnitario }) => ({
+          idProducto,
+          tipoVenta,
+          cantidad,
+          precioUnitario,
+        })),
+      });
+
       let empresa: EmpresaForm | undefined;
       try {
         empresa = await empresaApi.obtener();
@@ -346,17 +393,23 @@ export default function GenerarCotizacionPage() {
           })),
           clienteNombre: nombreCliente.trim() || 'Clientes Varios',
           clienteDni: dniCliente.trim() || undefined,
-          empleadoNombre: empleado?.nombre ?? '',
           total,
+          folio: `N° ${String(guardada.id).padStart(6, '0')}`,
         },
         empresa
       );
 
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
+
+      setCarrito([]);
+      limpiarClienteSeleccionado();
+      setBusqueda('');
+      setError('');
+      searchInputRef.current?.focus();
     } catch (err) {
       console.error(err);
-      setError('Ocurrió un error al generar la cotización.');
+      setError(err instanceof Error && err.message ? err.message : 'Ocurrió un error al guardar o generar la cotización.');
     } finally {
       setGenerandoCotizacion(false);
     }
@@ -365,7 +418,7 @@ export default function GenerarCotizacionPage() {
   const intentarAgregarPorCodigoBarras = (valor: string): boolean => {
     const q = valor.trim().toLowerCase();
     if (!q) return false;
-    const match = (productos as ProductoConCodigo[]).find(
+    const match = (productos as (ProductoConStock & ProductoConCodigo)[]).find(
       (p) => p.codigo_barras && p.codigo_barras.toLowerCase() === q
     );
     if (match && match.stock > 0) {
@@ -442,32 +495,6 @@ export default function GenerarCotizacionPage() {
   if (modoSinMouse) {
     return (
       <>
-        <VentaNoMouse
-          empleadoNombre={empleado?.nombre ?? ''}
-          fechaHoy={fechaHoy}
-          productos={productos}
-          carrito={carrito}
-          total={total}
-          error={error}
-          setError={setError}
-          nombreCliente={nombreCliente}
-          dniCliente={dniCliente}
-          idClienteSeleccionado={idClienteSeleccionado}
-          clientes={clientes}
-          onCambiarNombreCliente={(v) => {
-            setNombreCliente(v);
-            setIdClienteSeleccionado(null);
-          }}
-          onCambiarDniCliente={setDniCliente}
-          onSeleccionarCliente={seleccionarCliente}
-          onLimpiarCliente={limpiarClienteSeleccionado}
-          onAbrirNuevoCliente={() => setClienteModalAbierto(true)}
-          agregarProductoConDetalle={agregarProductoConDetalle}
-          quitarProducto={quitarProducto}
-          onVaciarCarrito={solicitarVaciarDetalle}
-          onAbrirPago={handleGenerarCotizacion}
-          onVolverModoNormal={() => setModoSinMouse(false)}
-        />
 
         <ClienteModal
           open={clienteModalAbierto}
@@ -525,25 +552,14 @@ export default function GenerarCotizacionPage() {
                 Generar Cotización
               </h1>
 
-              <button
-                type="button"
-                onClick={abrirVentanaFlotante}
+              <Link
+                href="/dashboard/ventas/cotizaciones"
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-primary text-primary hover:bg-primary/10 text-xs font-semibold transition-colors cursor-pointer"
-                title="Abrir en ventana emergente"
+                title="Ver cotizaciones guardadas"
               >
-                <ExternalLink size={13} />
-                <span className="hidden sm:inline">Ventana flotante</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setModoSinMouse(true)}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary text-white hover:bg-primary/90 text-xs font-semibold transition-colors cursor-pointer"
-                title="Cambiar a pantalla de cotización operable solo con teclado"
-              >
-                <MousePointerClick size={13} />
-                <span>Modo Sin Mouse</span>
-              </button>
+                <List size={13} />
+                <span className="hidden sm:inline">Ver cotizaciones</span>
+              </Link>
             </div>
           </div>
         </div>
@@ -552,6 +568,7 @@ export default function GenerarCotizacionPage() {
         <div className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-50 border border-zinc-200 shrink-0">
           <FileText size={15} className="text-primary shrink-0" />
           <span className="text-xs font-semibold text-zinc-700">Cotización de Venta</span>
+          <span className="text-[10px] text-zinc-400">(no descuenta stock)</span>
         </div>
 
         <div className="w-full md:w-auto md:min-w-[250px] md:max-w-[350px] md:flex-1 xl:flex-none space-y-1">
@@ -685,47 +702,58 @@ export default function GenerarCotizacionPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {productosVisibles.map((p, idx) => (
-                  <tr
-                    key={p.id}
-                    ref={(el) => { rowRefs.current[idx] = el; }}
-                    onClick={() => setSelectedIndex(idx)}
-                    className={`transition-colors cursor-pointer ${
-                      idx === selectedIndex ? 'bg-primary/10' : 'hover:bg-zinc-50/60'
-                    }`}
-                  >
-                    <td className="px-4 py-2 text-zinc-700">
-                      <div className="font-medium text-zinc-800">{p.nombre}</div>
+                {productosVisibles.map((p, idx) => {
+                  const sinStock = p.stock <= 0;
+                  return (
+                    <tr
+                      key={p.id}
+                      ref={(el) => { rowRefs.current[idx] = el; }}
+                      onClick={() => setSelectedIndex(idx)}
+                      className={`transition-colors ${sinStock ? 'opacity-50' : 'cursor-pointer'} ${
+                        idx === selectedIndex ? 'bg-primary/10' : sinStock ? '' : 'hover:bg-zinc-50/60'
+                      }`}
+                    >
+                      <td className="px-4 py-2 text-zinc-700">
+                        <div className="font-medium text-zinc-800">{p.nombre}</div>
 
-                      {(p.principioActivo?.nombre || p.laboratorio?.nombre) && (
-                        <div className="text-xs text-zinc-400 font-normal italic flex items-center gap-1.5 flex-wrap">
-                          {p.principioActivo?.nombre && <span>{p.principioActivo.nombre}</span>}
-                          {p.principioActivo?.nombre && p.laboratorio?.nombre && <span>•</span>}
-                          {p.laboratorio?.nombre && <span className="text-zinc-500 font-medium">{p.laboratorio.nombre}</span>}
-                        </div>
-                      )}
+                        {(p.principioActivo?.nombre || p.laboratorio?.nombre) && (
+                          <div className="text-xs text-zinc-400 font-normal italic flex items-center gap-1.5 flex-wrap">
+                            {p.principioActivo?.nombre && <span>{p.principioActivo.nombre}</span>}
+                            {p.principioActivo?.nombre && p.laboratorio?.nombre && <span>•</span>}
+                            {p.laboratorio?.nombre && <span className="text-zinc-500 font-medium">{p.laboratorio.nombre}</span>}
+                          </div>
+                        )}
 
-                      {p.vende_por_presentaciones && (p.blister_habilitado || p.caja_habilitado) && (
-                        <div className="flex gap-1 mt-0.5">
-                          {p.blister_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">Blister</span>}
-                          {p.caja_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">Caja</span>}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-right text-zinc-700 font-semibold whitespace-nowrap">S/ {p.precio_venta.toFixed(2)}</td>
-                    <td className="px-4 py-2 text-right text-zinc-900 font-mono whitespace-nowrap">{p.stock}</td>
-                    <td className="px-4 py-2 text-right whitespace-nowrap">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); agregarProducto(p); }}
-                        className="px-3 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors cursor-pointer"
-                      >
-                        Agregar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                        {p.vende_por_presentaciones && (p.blister_habilitado || p.caja_habilitado) && (
+                          <div className="flex gap-1 mt-0.5">
+                            {p.blister_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">Blister</span>}
+                            {p.caja_habilitado && <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-primary/10 text-primary">Caja</span>}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-right text-zinc-700 font-semibold whitespace-nowrap">S/ {p.precio_venta.toFixed(2)}</td>
+                      <td className={`px-4 py-2 text-right font-mono whitespace-nowrap ${sinStock ? 'text-red-400 font-semibold' : 'text-zinc-900'}`}>
+                        {sinStock ? 'Sin stock' : p.stock}
+                      </td>
+                      <td className="px-4 py-2 text-right whitespace-nowrap">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); agregarProducto(p); }}
+                          disabled={sinStock}
+                          title={sinStock ? 'Sin stock disponible' : undefined}
+                          className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${
+                            sinStock
+                              ? 'text-zinc-300 bg-zinc-100 cursor-not-allowed'
+                              : 'text-primary bg-primary/10 hover:bg-primary/20 cursor-pointer'
+                          }`}
+                        >
+                          {sinStock ? 'Sin stock' : 'Agregar'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {productosVisibles.length === 0 && (
-                  <tr><td colSpan={4} className="px-4 py-10 text-center text-zinc-400">No se encontraron productos disponibles.</td></tr>
+                  <tr><td colSpan={4} className="px-4 py-10 text-center text-zinc-400">No se encontraron productos.</td></tr>
                 )}
               </tbody>
             </table>

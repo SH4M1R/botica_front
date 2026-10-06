@@ -11,7 +11,7 @@ interface PaginacionProps {
   onPageSizeChange: (size: number) => void;
 }
 
-const DEFAULT_PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+const DEFAULT_PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
 export default function Paginacion({
   currentPage,

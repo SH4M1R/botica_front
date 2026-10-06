@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import { Plus, ShoppingCart, Barcode, Trash2, PackagePlus, ExternalLink } from "lucide-react";
 import { productosApi } from "@/api/productos";
 import type { ProductoPayload } from "@/api/productos";
-import { productosCompraApi, type Producto } from '@/api/compra';
-
 
 // Modales
 import CompraProductoModal from "../components/CompraProductoModal";
@@ -15,12 +13,14 @@ import ProveedorModal from "../../proveedores/components/ProveedorModal";
 
 import { useSession } from "@/hooks/useSession";
 import {
+  apiFetch,
   comprasApi,
   proveedorApi,
   CompraRequestDTO,
   DetalleCompraItem,
   ItemCompraRequestDTO,
   IGV_RATE,
+  Producto,
   Proveedor,
 } from "@/api/compra";
 
@@ -58,8 +58,6 @@ export default function GenerarCompraPage() {
   const [precioIncluyeIgv, setPrecioIncluyeIgv] = useState(true);
   const [codigoBarra, setCodigoBarra] = useState("");
   const [descripcion, setDescripcion] = useState("");
-  const [productos, setProductos] = useState<Producto[]>([]);
-
 
   const [detalles, setDetalles] = useState<DetalleCompraItem[]>([]);
 
@@ -165,32 +163,31 @@ export default function GenerarCompraPage() {
     setDetalles((prev) => prev.filter((d) => d.key !== key));
   }
 
-  const handleBuscarPorCodigoBarra = (e: React.KeyboardEvent<HTMLInputElement>) => {
-  if (e.key !== "Enter" || !codigoBarra.trim()) return;
-
-  setError(null);
-  const prod = productos.find((p) => p.codigoBarra === codigoBarra.trim());
-
-  if (prod) {
-    setDetalles((prev) => [
-      ...prev,
-      {
-        key: crypto.randomUUID(),
-        idProducto: prod.id,
-        nombreProducto: prod.nombre,
-        tipoPrecio: "MAYORISTA",
-        afectacionIgv: prod.gravada ? "GRAVADO_ONEROSO" : "INAFECTO",
-        unidadMedida: prod.unidadMedida,
-        cantidad: 1,
-        precioUnitario: prod.costoUnitario ?? prod.precioMayorista,
-        importe: prod.costoUnitario ?? prod.precioMayorista,
-      },
-    ]);
-    setCodigoBarra("");
-  } else {
-    setError("No se encontró producto con ese código de barras.");
+  async function handleBuscarPorCodigoBarra(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== "Enter" || !codigoBarra.trim()) return;
+    try {
+      const producto = await apiFetch<Producto>(
+        `/productos/codigo-barra/${encodeURIComponent(codigoBarra)}`
+      );
+      setDetalles((prev) => [
+        ...prev,
+        {
+          key: crypto.randomUUID(),
+          idProducto: producto.id,
+          nombreProducto: producto.nombre,
+          tipoPrecio: "MAYORISTA",
+          afectacionIgv: producto.gravada ? "GRAVADO_ONEROSO" : "INAFECTO",
+          unidadMedida: producto.unidadMedida,
+          cantidad: 1,
+          precioUnitario: producto.precioMayorista,
+          importe: producto.precioMayorista,
+        },
+      ]);
+      setCodigoBarra("");
+    } catch {
+      setError("No se encontró producto con ese código de barras");
+    }
   }
-};
 
   async function handleGuardar() {
     setError(null);
@@ -268,16 +265,16 @@ export default function GenerarCompraPage() {
       </div>
 
       {/* Contenedor Principal flexible */}
-      <div className="flex-1 flex flex-col justify-between rounded-2xl border border-zinc-200 bg-white p-4 shadow-xs overflow-hidden">
-        <div className="space-y-3 overflow-y-auto pr-1">
+      <div className="flex-1 flex flex-col justify-between rounded-2xl border border-zinc-200 bg-white p-4 shadow-xs overflow-hidden min-h-0">
+        <div className="flex-1 flex flex-col min-h-0 gap-3">
           {error && (
-            <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600 font-medium">
+            <p className="shrink-0 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600 font-medium">
               {error}
             </p>
           )}
 
           {/* Fila 1 - Comprobante / Datos Básicos / Método de Pago */}
-          <div className="grid grid-cols-12 items-end gap-3">
+          <div className="shrink-0 grid grid-cols-12 items-end gap-3">
             <div className="col-span-12 sm:col-span-2">
               <label className="mb-1 block text-xs font-semibold text-zinc-600">Comprobante*</label>
               <select
@@ -349,7 +346,7 @@ export default function GenerarCompraPage() {
           </div>
 
           {/* Fila 2 - Proveedor & Acciones de Producto */}
-          <div className="grid grid-cols-12 items-end gap-4">
+          <div className="shrink-0 grid grid-cols-12 items-end gap-4">
             <div className="relative col-span-12 lg:col-span-4">
               <label className="mb-1 block text-xs font-semibold text-zinc-600">Proveedor*</label>
               <div className="flex gap-1.5">
@@ -432,8 +429,8 @@ export default function GenerarCompraPage() {
           </div>
 
           {/* TABLA CON TAMAÑO FIJO Y SCROLL INTERNO */}
-          <div className="rounded-xl border border-zinc-200 overflow-hidden">
-            <div className="h-56 overflow-y-auto">
+      <div className="flex-1 min-h-[180px] flex flex-col rounded-xl border border-zinc-200 overflow-hidden">
+            <div className="flex-1 overflow-y-auto">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-zinc-100 shadow-xs">
                   <tr className="border-b border-zinc-200 text-left text-[11px] font-bold uppercase tracking-wider text-zinc-500">
@@ -450,7 +447,7 @@ export default function GenerarCompraPage() {
                 <tbody className="divide-y divide-zinc-100 bg-white">
                   {detalles.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-3 py-16 text-center text-zinc-400 text-xs">
+                      <td colSpan={8} className="px-3 py-16 text-center text-zinc-400 text-sm">
                         Aún no has agregado productos a la compra
                       </td>
                     </tr>
@@ -482,8 +479,9 @@ export default function GenerarCompraPage() {
           </div>
         </div>
 
-        {/* FOOTER: Totales y Botón Guardar */}
+        {/* FOOTER: Totales y Botón Guardar (Siempre visible al final) */}
         <div className="pt-3 border-t border-zinc-100 shrink-0 space-y-3">
+          {/* Totales */}
           <div className="flex items-center justify-between bg-zinc-50 p-2.5 rounded-xl border border-zinc-200/80">
             <div className="flex items-center gap-8">
               <div>
@@ -505,6 +503,7 @@ export default function GenerarCompraPage() {
             </div>
           </div>
 
+          {/* Botón Guardar */}
           <div className="flex items-center justify-end">
             <button
               type="button"
@@ -518,26 +517,29 @@ export default function GenerarCompraPage() {
         </div>
       </div>
 
-      {/* Modales */}
+      {/* Modal para AGREGAR un ítem al detalle de compra */}
       <CompraProductoModal
         open={modalCompraProductoAbierto}
         onClose={() => setModalCompraProductoAbierto(false)}
         onAgregar={(item) => setDetalles((prev) => [...prev, item])}
       />
 
+      {/* Modal para CREAR un producto totalmente nuevo en el catálogo */}
+      {/* Modal para CREAR un producto totalmente nuevo en el catálogo */}
       <CrearProductoModal
         open={modalCrearProductoAbierto}
         producto={null} 
         onClose={() => setModalCrearProductoAbierto(false)}
         onSave={async (data: ProductoPayload) => {
-          await productosApi.crear(data);
+          const nuevoProducto = await productosApi.crear(data);
           setModalCrearProductoAbierto(false);
+          return nuevoProducto;
         }}
       />
 
+      {/* Modal para CREAR Proveedor */}
       <ProveedorModal
         open={modalProveedorAbierto}
-        proveedor={null}
         onClose={() => setModalProveedorAbierto(false)}
         onSave={async () => {
           await cargarProveedores();

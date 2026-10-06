@@ -1,4 +1,3 @@
-// reporteCuentasPorPagar.ts
 import type { CuentasPorPagar, CompraDetalle } from '@/api/reportes';
 import { crearPos80Builder, crearA4Builder, formatFecha, formatEmision, formatMoneda, ColumnaReporte } from './pdfBase';
 

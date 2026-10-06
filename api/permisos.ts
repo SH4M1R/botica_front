@@ -1,12 +1,20 @@
-import { delay } from './_mockUtils';
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
-let permisosPorEmpleado: Record<number, string[]> = {
-  2: ['/dashboard/ventas', '/dashboard/ventas/generar', '/dashboard/clientes'],
-  3: ['/dashboard/productos', '/dashboard/ingresos', '/dashboard/egresos'],
-  4: ['/dashboard/asistencia'],
-};
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  if (!res.ok) {
+    const msg = await res.text().catch(() => '');
+    throw new Error(msg || `Error ${res.status} en ${path}`);
+  }
+  const text = await res.text();
+  return text ? JSON.parse(text) : (undefined as T);
+}
 
 export const permisosApi = {
-  obtener: async (idEmpleado: number) => { await delay(); return permisosPorEmpleado[idEmpleado] ?? []; },
-  guardar: async (idEmpleado: number, rutas: string[]) => { await delay(); permisosPorEmpleado[idEmpleado] = rutas; return rutas; },
+  obtener: (idEmpleado: number) => request<string[]>(`/empleados/${idEmpleado}/permisos`),
+  guardar: (idEmpleado: number, rutas: string[]) =>
+    request<string[]>(`/empleados/${idEmpleado}/permisos`, { method: 'PUT', body: JSON.stringify({ rutas }) }),
 };

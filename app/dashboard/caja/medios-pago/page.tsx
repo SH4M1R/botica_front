@@ -21,6 +21,7 @@ export default function MedioDePagoPage() {
   const [cargando, setCargando] = useState(true);
   const [formato, setFormato] = useState<FormatoImpresion>('pos80');
   const [error, setError] = useState('');
+  const [generando, setGenerando] = useState(false); // feedback visual mientras se arma el PDF
 
   useEffect(() => {
     const cargar = async () => {
@@ -58,12 +59,10 @@ export default function MedioDePagoPage() {
 
   const { filas, totales } = useMemo(() => {
     const acumulado = new Map<string, FilaMetodoPago>();
-    
-    // Inicializar los métodos base definidos en METODOS_PAGO
+
     METODOS_PAGO.forEach((m) => acumulado.set(m, { metodo: m, cantidadVentas: 0, totalVendido: 0 }));
 
     ventas.forEach((v) => {
-      // Identificar a qué categoría pertenece el método de pago
       const metodoBase = METODOS_PAGO.find((m) =>
         v.metodoPago?.toLowerCase().startsWith(m.toLowerCase())
       ) ?? 'Otro';
@@ -89,15 +88,22 @@ export default function MedioDePagoPage() {
     return { filas: filasFinal, totales: totalesFinal };
   }, [ventas]);
 
-  const handleImprimir = () => {
+  const handleImprimir = async () => {
     if (!cajaAbierta) return;
-    const blob =
-      formato === 'pos80'
-        ? generarReporteMetodoPagoPos80(cajaAbierta, filas, totales)
-        : generarReporteMetodoPagoA4(cajaAbierta, filas, totales);
+    setGenerando(true);
+    try {
+      const blob =
+        formato === 'pos80'
+          ? await generarReporteMetodoPagoPos80(cajaAbierta, filas, totales)
+          : await generarReporteMetodoPagoA4(cajaAbierta, filas, totales);
 
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo generar el reporte.');
+    } finally {
+      setGenerando(false);
+    }
   };
 
   return (
@@ -125,11 +131,11 @@ export default function MedioDePagoPage() {
 
           <button
             onClick={handleImprimir}
-            disabled={!cajaAbierta}
+            disabled={!cajaAbierta || generando}
             className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-primary hover:bg-primary-dark rounded-lg shadow-xs hover:shadow-md transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Printer size={16} />
-            Imprimir reporte
+            {generando ? 'Generando...' : 'Imprimir reporte'}
           </button>
         </div>
       </div>

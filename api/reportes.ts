@@ -1,133 +1,189 @@
-import { delay } from './_mockUtils';
-import { ventasApi } from './ventas';
-import { comprasApi } from './compra';
-import { productos as productosSeed, laboratorios as laboratoriosSeed } from './productos';
-import { asistenciaApi } from './asistencia';
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
-const IGV = 0.18;
-
-/* ============ VENTAS ============ */
-export interface VentaDiaria { fecha: string; cantidadVentas: number; subtotal: number; igv: number; total: number; }
-export interface ReporteVentasPeriodo { fechaInicio: string; fechaFin: string; totalVentas: number; subtotalGeneral: number; igvGeneral: number; totalGeneral: number; detallePorDia: VentaDiaria[]; }
-export interface VentaPorEmpleado { idEmpleado: number; nombreEmpleado: string; cantidadVentas: number; totalVendido: number; }
-export interface ProductoMasVendido { idProducto: number; nombreProducto: string; unidadesVendidas: number; montoVendido: number; }
-
-export async function obtenerReporteVentasPeriodo(fechaInicio: string, fechaFin: string): Promise<ReporteVentasPeriodo> {
-  await delay();
-  const ventas = (await ventasApi.listar()).filter((v) => v.estado && v.fecha.slice(0, 10) >= fechaInicio && v.fecha.slice(0, 10) <= fechaFin);
-  const porDia = new Map<string, VentaDiaria>();
-  ventas.forEach((v) => {
-    const fecha = v.fecha.slice(0, 10);
-    const actual = porDia.get(fecha) ?? { fecha, cantidadVentas: 0, subtotal: 0, igv: 0, total: 0 };
-    actual.cantidadVentas += 1; actual.total += v.total;
-    actual.subtotal += v.total / (1 + IGV); actual.igv += v.total - v.total / (1 + IGV);
-    porDia.set(fecha, actual);
-  });
-  const detallePorDia = Array.from(porDia.values()).map((d) => ({ ...d, subtotal: Number(d.subtotal.toFixed(2)), igv: Number(d.igv.toFixed(2)), total: Number(d.total.toFixed(2)) }));
-  return {
-    fechaInicio, fechaFin, totalVentas: ventas.length,
-    subtotalGeneral: Number(detallePorDia.reduce((s, d) => s + d.subtotal, 0).toFixed(2)),
-    igvGeneral: Number(detallePorDia.reduce((s, d) => s + d.igv, 0).toFixed(2)),
-    totalGeneral: Number(detallePorDia.reduce((s, d) => s + d.total, 0).toFixed(2)),
-    detallePorDia,
-  };
+async function getJson<T>(path: string): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`);
+  if (!res.ok) {
+    throw new Error(`Error al obtener el reporte (${res.status}): ${path}`);
+  }
+  return res.json() as Promise<T>;
 }
 
-export async function obtenerVentasPorEmpleado(fechaInicio: string, fechaFin: string): Promise<VentaPorEmpleado[]> {
-  await delay();
-  const ventas = (await ventasApi.listar()).filter((v) => v.estado && v.fecha.slice(0, 10) >= fechaInicio && v.fecha.slice(0, 10) <= fechaFin);
-  const acumulado = new Map<number, VentaPorEmpleado>();
-  ventas.forEach((v) => {
-    const actual = acumulado.get(v.empleado.id) ?? { idEmpleado: v.empleado.id, nombreEmpleado: v.empleado.nombre, cantidadVentas: 0, totalVendido: 0 };
-    actual.cantidadVentas += 1; actual.totalVendido += v.total;
-    acumulado.set(v.empleado.id, actual);
-  });
-  return Array.from(acumulado.values()).map((a) => ({ ...a, totalVendido: Number(a.totalVendido.toFixed(2)) }));
+/* ============================================================
+   VENTAS
+   ============================================================ */
+
+export interface VentaDiaria {
+  fecha: string;
+  cantidadVentas: number;
+  subtotal: number;
+  igv: number;
+  total: number;
 }
 
-export async function obtenerTopProductos(fechaInicio: string, fechaFin: string, limite = 20): Promise<ProductoMasVendido[]> {
-  await delay();
-  const ventas = (await ventasApi.listar()).filter((v) => v.estado && v.fecha.slice(0, 10) >= fechaInicio && v.fecha.slice(0, 10) <= fechaFin);
-  const acumulado = new Map<number, ProductoMasVendido>();
-  ventas.forEach((v) => v.detalles.forEach((d) => {
-    const actual = acumulado.get(d.producto.id) ?? { idProducto: d.producto.id, nombreProducto: d.producto.nombre, unidadesVendidas: 0, montoVendido: 0 };
-    actual.unidadesVendidas += d.cantidad; actual.montoVendido += d.subtotal;
-    acumulado.set(d.producto.id, actual);
-  }));
-  return Array.from(acumulado.values()).map((a) => ({ ...a, montoVendido: Number(a.montoVendido.toFixed(2)) })).sort((a, b) => b.montoVendido - a.montoVendido).slice(0, limite);
+export interface ReporteVentasPeriodo {
+  fechaInicio: string;
+  fechaFin: string;
+  totalVentas: number;
+  subtotalGeneral: number;
+  igvGeneral: number;
+  totalGeneral: number;
+  detallePorDia: VentaDiaria[];
+}
+
+export interface VentaPorEmpleado {
+  idEmpleado: number;
+  nombreEmpleado: string;
+  cantidadVentas: number;
+  totalVendido: number;
+}
+
+export interface ProductoMasVendido {
+  idProducto: number;
+  nombreProducto: string;
+  unidadesVendidas: number;
+  montoVendido: number;
+}
+
+export function obtenerReporteVentasPeriodo(fechaInicio: string, fechaFin: string) {
+  return getJson<ReporteVentasPeriodo>(`/reportes/ventas/periodo?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`);
+}
+
+export function obtenerVentasPorEmpleado(fechaInicio: string, fechaFin: string) {
+  return getJson<VentaPorEmpleado[]>(`/reportes/ventas/por-empleado?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`);
+}
+
+export function obtenerTopProductos(fechaInicio: string, fechaFin: string, limite = 20) {
+  return getJson<ProductoMasVendido[]>(
+    `/reportes/ventas/top-productos?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}&limite=${limite}`
+  );
 }
 
 export async function obtenerReporteAsistencia(fechaInicio: string, fechaFin: string) {
+  const { asistenciaApi } = await import('@/api/asistencia');
   return asistenciaApi.reporte(fechaInicio, fechaFin);
 }
 
-/* ============ CAJA ============ */
-export interface ArqueoCierre { idArqueo: number; nombreEmpleado: string; fechaInicio: string; fechaFin: string | null; montoInicial: number; montoFinal: number | null; totalVentasEfectivo: number; totalIngresosCaja: number; totalEgresosCaja: number; saldoEsperado: number; diferencia: number | null; estadoArqueo: 'ABIERTO' | 'CERRADO'; }
-export interface MovimientoCaja { fecha: string; tipo: 'INGRESO' | 'EGRESO'; categoria: string; numero: string; descripcion: string; monto: number; medioPago: string; empleado: string; }
-export interface FlujoCaja { fechaInicio: string; fechaFin: string; totalIngresos: number; totalEgresos: number; saldoNeto: number; movimientos: MovimientoCaja[]; }
+/* ============================================================
+   CAJA
+   ============================================================ */
 
-export async function obtenerReporteArqueo(idArqueo: number): Promise<ArqueoCierre> {
-  await delay();
-  return { idArqueo, nombreEmpleado: 'Administrador', fechaInicio: new Date(new Date().setHours(8, 0, 0, 0)).toISOString(), fechaFin: null, montoInicial: 100, montoFinal: null, totalVentasEfectivo: 245.5, totalIngresosCaja: 200, totalEgresosCaja: 85.5, saldoEsperado: 460, diferencia: null, estadoArqueo: 'ABIERTO' };
+export interface ArqueoCierre {
+  idArqueo: number;
+  nombreEmpleado: string;
+  fechaInicio: string;
+  fechaFin: string | null;
+  montoInicial: number;
+  montoFinal: number | null;
+  totalVentasEfectivo: number;
+  totalIngresosCaja: number;
+  totalEgresosCaja: number;
+  saldoEsperado: number;
+  diferencia: number | null;
+  estadoArqueo: 'ABIERTO' | 'CERRADO';
 }
 
-export async function obtenerFlujoCaja(fechaInicio: string, fechaFin: string): Promise<FlujoCaja> {
-  await delay();
-  const movimientos: MovimientoCaja[] = [
-    { fecha: fechaInicio, tipo: 'INGRESO', categoria: 'APORTE_CAPITAL', numero: 'MOV-0002', descripcion: 'Aporte de capital para caja chica', monto: 200, medioPago: 'EFECTIVO', empleado: 'Ana Torres' },
-    { fecha: fechaFin, tipo: 'EGRESO', categoria: 'PAGO_SERVICIOS', numero: 'MOV-0001', descripcion: 'Pago de recibo de luz', monto: 85.5, medioPago: 'EFECTIVO', empleado: 'Administrador' },
-  ];
-  const totalIngresos = movimientos.filter((m) => m.tipo === 'INGRESO').reduce((s, m) => s + m.monto, 0);
-  const totalEgresos = movimientos.filter((m) => m.tipo === 'EGRESO').reduce((s, m) => s + m.monto, 0);
-  return { fechaInicio, fechaFin, totalIngresos, totalEgresos, saldoNeto: totalIngresos - totalEgresos, movimientos };
+export interface MovimientoCaja {
+  fecha: string;
+  tipo: 'INGRESO' | 'EGRESO';
+  categoria: string;
+  numero: string;
+  descripcion: string;
+  monto: number;
+  medioPago: string;
+  empleado: string;
 }
 
-/* ============ COMPRAS ============ */
-export interface CompraPorProveedor { idProveedor: number; nombreProveedor: string; cantidadCompras: number; totalComprado: number; }
-export interface PrecioEntrada { fecha: string; proveedor: string; cantidad: number; precioUnitario: number; }
-export interface AnalisisCostos { idProducto: number; nombreProducto: string; precioMinimo: number | null; precioMaximo: number | null; precioPromedio: number | null; precioVentaActual: number | null; historico: PrecioEntrada[]; }
-export interface CompraDetalle { id: number; comprobante: string; serie: string; numero: string; fechaEmision: string; proveedor: string; total: number; pagar: number; tipoPago: string; medioPago: string; estadoPago: boolean; }
-export interface CuentasPorPagar { fechaInicio: string; fechaFin: string; totalComprado: number; totalPendiente: number; totalPagado: number; compras: CompraDetalle[]; }
-
-export async function obtenerComprasPorProveedor(fechaInicio: string, fechaFin: string): Promise<CompraPorProveedor[]> {
-  await delay();
-  const compras = (await comprasApi.listar()).filter((c) => c.estado && c.fechaEmision >= fechaInicio && c.fechaEmision <= fechaFin);
-  const acumulado = new Map<number, CompraPorProveedor>();
-  compras.forEach((c) => {
-    const actual = acumulado.get(c.proveedor.id) ?? { idProveedor: c.proveedor.id, nombreProveedor: c.proveedor.nombres, cantidadCompras: 0, totalComprado: 0 };
-    actual.cantidadCompras += 1; actual.totalComprado += c.total;
-    acumulado.set(c.proveedor.id, actual);
-  });
-  return Array.from(acumulado.values());
+export interface FlujoCaja {
+  fechaInicio: string;
+  fechaFin: string;
+  totalIngresos: number;
+  totalEgresos: number;
+  saldoNeto: number;
+  movimientos: MovimientoCaja[];
 }
 
-export async function obtenerAnalisisCostos(idProducto: number): Promise<AnalisisCostos> {
-  await delay();
-  const producto = productosSeed.find((p) => p.id === idProducto);
-  return {
-    idProducto, nombreProducto: producto?.nombre ?? `Producto #${idProducto}`,
-    precioMinimo: producto ? Number((producto.precio_costo * 0.9).toFixed(2)) : null,
-    precioMaximo: producto ? Number((producto.precio_costo * 1.15).toFixed(2)) : null,
-    precioPromedio: producto ? producto.precio_costo : null,
-    precioVentaActual: producto?.precio_venta ?? null,
-    historico: producto ? [
-      { fecha: '2026-05-01', proveedor: 'Distribuidora Farmacéutica del Perú S.A.C.', cantidad: 100, precioUnitario: Number((producto.precio_costo * 0.95).toFixed(2)) },
-      { fecha: '2026-06-15', proveedor: 'Química Suiza Perú S.A.', cantidad: 50, precioUnitario: producto.precio_costo },
-      { fecha: '2026-07-10', proveedor: 'Distribuidora Farmacéutica del Perú S.A.C.', cantidad: 80, precioUnitario: Number((producto.precio_costo * 1.05).toFixed(2)) },
-    ] : [],
-  };
+export function obtenerReporteArqueo(idArqueo: number) {
+  return getJson<ArqueoCierre>(`/reportes/caja/arqueo/${idArqueo}`);
 }
 
-export async function obtenerCuentasPorPagar(fechaInicio: string, fechaFin: string): Promise<CuentasPorPagar> {
-  await delay();
-  const compras = (await comprasApi.listar()).filter((c) => c.estado && c.fechaEmision >= fechaInicio && c.fechaEmision <= fechaFin);
-  const detalle: CompraDetalle[] = compras.map((c) => ({ id: c.id, comprobante: c.comprobante, serie: c.serie, numero: c.numero, fechaEmision: c.fechaEmision, proveedor: c.proveedor.nombres, total: c.total, pagar: c.pagar, tipoPago: c.tipoPago, medioPago: c.medioPago, estadoPago: c.estadoPago }));
-  return {
-    fechaInicio, fechaFin, totalComprado: detalle.reduce((s, d) => s + d.total, 0),
-    totalPendiente: detalle.filter((d) => !d.estadoPago).reduce((s, d) => s + d.pagar, 0),
-    totalPagado: detalle.filter((d) => d.estadoPago).reduce((s, d) => s + d.pagar, 0),
-    compras: detalle,
-  };
+export function obtenerFlujoCaja(fechaInicio: string, fechaFin: string) {
+  return getJson<FlujoCaja>(`/reportes/caja/flujo?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`);
+}
+
+/* ============================================================
+   COMPRAS
+   ============================================================ */
+
+export interface ProveedorResumen {
+  idProveedor: number;
+  nombreProveedor: string;
+  ruc?: string;
+}
+
+export interface CompraPorProveedor {
+  idProveedor: number;
+  nombreProveedor: string;
+  cantidadCompras: number;
+  totalComprado: number;
+}
+
+export interface PrecioEntrada {
+  fecha: string;
+  proveedor: string;
+  cantidad: number;
+  precioUnitario: number;
+}
+
+export interface AnalisisCostos {
+  idProducto: number;
+  nombreProducto: string;
+  precioMinimo: number | null;
+  precioMaximo: number | null;
+  precioPromedio: number | null;
+  precioVentaActual: number | null;
+  historico: PrecioEntrada[];
+}
+
+export interface CompraDetalle {
+  id: number;
+  comprobante: string;
+  serie: string;
+  numero: string;
+  fechaEmision: string;
+  proveedor: string;
+  total: number;
+  pagar: number;
+  tipoPago: string;
+  medioPago: string;
+  estadoPago: boolean;
+}
+
+export interface CuentasPorPagar {
+  fechaInicio: string;
+  fechaFin: string;
+  totalComprado: number;
+  totalPendiente: number;
+  totalPagado: number;
+  compras: CompraDetalle[];
+}
+
+export function listarProveedores() {
+  return getJson<ProveedorResumen[]>(`/reportes/compras/proveedores`);
+}
+
+export function obtenerComprasPorProveedor(fechaInicio: string, fechaFin: string, idProveedor?: number) {
+  const queryProv = idProveedor ? `&idProveedor=${idProveedor}` : '';
+  return getJson<CompraPorProveedor[]>(
+    `/reportes/compras/por-proveedor?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}${queryProv}`
+  );
+}
+
+export function obtenerAnalisisCostos(idProducto: number) {
+  return getJson<AnalisisCostos>(`/reportes/compras/analisis-costos/${idProducto}`);
+}
+
+export function obtenerCuentasPorPagar(fechaInicio: string, fechaFin: string) {
+  return getJson<CuentasPorPagar>(`/reportes/compras/cuentas-por-pagar?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`);
 }
 
 /* ============================================================
@@ -138,7 +194,7 @@ export interface InventarioValoradoItem {
   idProducto: number;
   nombreProducto: string;
   categoria: string;
-  laboratorio: string;
+  laboratorio?: string;
   stock: number;
   precioCosto: number;
   precioVenta: number;
@@ -169,58 +225,49 @@ export interface CatalogoTerapeutico {
   accionTerapeutica: string | null;
   stock: number;
   precioVenta: number;
+  laboratorio?: string;
 }
 
-export async function obtenerInventarioValorado(): Promise<ReporteInventarioValorado> {
-  await delay();
-  const productos: InventarioValoradoItem[] = productosSeed.map((p) => ({
-    idProducto: p.id, nombreProducto: p.nombre, categoria: p.categoria.nombre, laboratorio: p.laboratorio.nombre,
-    stock: p.stock, precioCosto: p.precio_costo, precioVenta: p.precio_venta,
-    valorCosto: Number((p.stock * p.precio_costo).toFixed(2)), valorVenta: Number((p.stock * p.precio_venta).toFixed(2)),
-  }));
-  return { totalProductos: productos.length, valorTotalCosto: Number(productos.reduce((s, p) => s + p.valorCosto, 0).toFixed(2)), valorTotalVenta: Number(productos.reduce((s, p) => s + p.valorVenta, 0).toFixed(2)), productos };
+export function obtenerInventarioValorado() {
+  return getJson<ReporteInventarioValorado>(`/reportes/inventario/valorado`);
 }
 
-export async function obtenerAlertaStockMinimo(): Promise<AlertaStock[]> {
-  await delay();
-  return productosSeed.filter((p) => p.stock_minimo != null && p.stock <= p.stock_minimo)
-    .map((p) => ({
-      idProducto: p.id,
-      nombreProducto: p.nombre,
-      laboratorio: { idLaboratorio: p.laboratorio.id, nombre: p.laboratorio.nombre },
-      stock: p.stock,
-      stockMinimo: p.stock_minimo ?? 0,
-      diferencia: p.stock - (p.stock_minimo ?? 0),
-    }));
+export function obtenerAlertaStockMinimo() {
+  return getJson<AlertaStock[]>(`/reportes/inventario/alerta-stock-minimo`);
 }
 
-export async function obtenerCatalogoTerapeutico(): Promise<CatalogoTerapeutico[]> {
-  await delay();
-  return productosSeed.map((p) => ({ idProducto: p.id, nombreProducto: p.nombre, principioActivo: p.principioActivo?.nombre ?? null, accionTerapeutica: p.accionTerapeutica?.nombre ?? null, stock: p.stock, precioVenta: p.precio_venta }));
+export function obtenerCatalogoTerapeutico(principioActivo?: string) {
+  const queryPA = principioActivo ? `?principioActivo=${encodeURIComponent(principioActivo)}` : '';
+  return getJson<CatalogoTerapeutico[]>(`/reportes/inventario/catalogo-terapeutico${queryPA}`);
 }
 
-export async function obtenerSustitutos(idPrincipioActivo: number, idProductoExcluir: number): Promise<CatalogoTerapeutico[]> {
-  await delay();
-  return productosSeed.filter((p) => p.principioActivo?.id === idPrincipioActivo && p.id !== idProductoExcluir)
-    .map((p) => ({ idProducto: p.id, nombreProducto: p.nombre, principioActivo: p.principioActivo?.nombre ?? null, accionTerapeutica: p.accionTerapeutica?.nombre ?? null, stock: p.stock, precioVenta: p.precio_venta }));
-}
-
-/* ============ GESTION ============ */
-export interface ConsolidadoGeneral { fechaInicio: string; fechaFin: string; totalVentas: number; totalCompras: number; totalIngresosCaja: number; totalEgresosCaja: number; utilidadBruta: number; utilidadNeta: number; }
-
-export async function obtenerConsolidadoGeneral(fechaInicio: string, fechaFin: string): Promise<ConsolidadoGeneral> {
-  await delay();
-  const ventas = (await ventasApi.listar()).filter((v) => v.estado && v.fecha.slice(0, 10) >= fechaInicio && v.fecha.slice(0, 10) <= fechaFin);
-  const compras = (await comprasApi.listar()).filter((c) => c.estado && c.fechaEmision >= fechaInicio && c.fechaEmision <= fechaFin);
-  const totalVentas = ventas.reduce((s, v) => s + v.total, 0);
-  const totalCompras = compras.reduce((s, c) => s + c.total, 0);
-  const totalIngresosCaja = 200, totalEgresosCaja = 85.5;
-  const utilidadBruta = totalVentas - totalCompras;
-  return { fechaInicio, fechaFin, totalVentas: Number(totalVentas.toFixed(2)), totalCompras: Number(totalCompras.toFixed(2)), totalIngresosCaja, totalEgresosCaja, utilidadBruta: Number(utilidadBruta.toFixed(2)), utilidadNeta: Number((utilidadBruta + totalIngresosCaja - totalEgresosCaja).toFixed(2)) };
+export function obtenerSustitutos(idPrincipioActivo: number, idProductoExcluir: number) {
+  return getJson<CatalogoTerapeutico[]>(
+    `/reportes/inventario/sustitutos?idPrincipioActivo=${idPrincipioActivo}&idProductoExcluir=${idProductoExcluir}`
+  );
 }
 
 /* ============================================================
-   VENTAS POR PRODUCTO  (antes usaba getJson -> backend)
+   GESTION
+   ============================================================ */
+
+export interface ConsolidadoGeneral {
+  fechaInicio: string;
+  fechaFin: string;
+  totalVentas: number;
+  totalCompras: number;
+  totalIngresosCaja: number;
+  totalEgresosCaja: number;
+  utilidadBruta: number;
+  utilidadNeta: number;
+}
+
+export function obtenerConsolidadoGeneral(fechaInicio: string, fechaFin: string) {
+  return getJson<ConsolidadoGeneral>(`/reportes/gestion/consolidado?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`);
+}
+
+/* ============================================================
+   VENTAS POR PRODUCTO
    ============================================================ */
 
 export interface VentaDetalleProducto {
@@ -243,41 +290,14 @@ export interface ReporteVentasPorProducto {
   detalle: VentaDetalleProducto[];
 }
 
-export async function obtenerVentasPorProducto(idProducto: number, fechaInicio: string, fechaFin: string): Promise<ReporteVentasPorProducto> {
-  await delay();
-  const producto = productosSeed.find((p) => p.id === idProducto);
-  const ventas = (await ventasApi.listar()).filter(
-    (v) => v.estado && v.fecha.slice(0, 10) >= fechaInicio && v.fecha.slice(0, 10) <= fechaFin,
+export function obtenerVentasPorProducto(idProducto: number, fechaInicio: string, fechaFin: string) {
+  return getJson<ReporteVentasPorProducto>(
+    `/reportes/ventas/por-producto/${idProducto}?fechaInicio=${fechaInicio}&fechaFin=${fechaFin}`
   );
-
-  const detalle: VentaDetalleProducto[] = [];
-  ventas.forEach((v) => {
-    v.detalles.filter((d) => d.producto.id === idProducto).forEach((d) => {
-      detalle.push({
-        fecha: v.fecha,
-        cliente: v.cliente ? v.cliente.nombres ?? 'Cliente' : 'Sin cliente',
-        empleado: v.empleado.nombre,
-        cantidad: d.cantidad,
-        precioUnitario: d.precioUnitario,
-        subtotal: d.subtotal,
-        tipoVenta: d.tipoVenta,
-      });
-    });
-  });
-
-  return {
-    idProducto,
-    nombreProducto: producto?.nombre ?? `Producto #${idProducto}`,
-    fechaInicio,
-    fechaFin,
-    totalUnidades: detalle.reduce((s, d) => s + d.cantidad, 0),
-    totalVendido: Number(detalle.reduce((s, d) => s + d.subtotal, 0).toFixed(2)),
-    detalle,
-  };
 }
 
 /* ============================================================
-   PRODUCTOS POR VENCER  (antes usaba getJson -> backend)
+   PRODUCTOS POR VENCER
    ============================================================ */
 
 export interface ProductoPorVencer {
@@ -287,31 +307,15 @@ export interface ProductoPorVencer {
   fechaVencimiento: string;
   stock: number;
   diasRestantes: number;
+  laboratorio?: string;
 }
 
-export async function obtenerProductosPorVencer(dias = 90): Promise<ProductoPorVencer[]> {
-  await delay();
-  const hoy = new Date();
-  return productosSeed
-    .filter((p) => p.fecha_vencimiento)
-    .map((p) => {
-      const vencimiento = new Date(p.fecha_vencimiento as string);
-      const diasRestantes = Math.round((vencimiento.getTime() - hoy.getTime()) / 86400000);
-      return {
-        idProducto: p.id,
-        nombreProducto: p.nombre,
-        lote: p.lote ?? null,
-        fechaVencimiento: p.fecha_vencimiento as string,
-        stock: p.stock,
-        diasRestantes,
-      };
-    })
-    .filter((p) => p.diasRestantes <= dias)
-    .sort((a, b) => a.diasRestantes - b.diasRestantes);
+export function obtenerProductosPorVencer(dias = 90) {
+  return getJson<ProductoPorVencer[]>(`/reportes/inventario/por-vencer?dias=${dias}`);
 }
 
 /* ============================================================
-   PRODUCTOS POR LABORATORIO  (antes usaba getJson -> backend)
+   PRODUCTOS POR LABORATORIO
    ============================================================ */
 
 export interface LaboratorioResumen {
@@ -335,29 +339,10 @@ export interface ReporteProductosPorLaboratorio {
   productos: ProductoPorLaboratorio[];
 }
 
-export async function listarLaboratorios(): Promise<LaboratorioResumen[]> {
-  await delay();
-  return laboratoriosSeed.map((lab) => ({
-    idLaboratorio: lab.id,
-    nombreLaboratorio: lab.nombre,
-    cantidadProductos: productosSeed.filter((p) => p.laboratorio.id === lab.id).length,
-  }));
+export function listarLaboratorios() {
+  return getJson<LaboratorioResumen[]>(`/reportes/inventario/laboratorios`);
 }
 
-export async function obtenerProductosPorLaboratorio(idLaboratorio: number): Promise<ReporteProductosPorLaboratorio> {
-  await delay();
-  const laboratorio = laboratoriosSeed.find((l) => l.id === idLaboratorio);
-  const productosDelLab = productosSeed.filter((p) => p.laboratorio.id === idLaboratorio);
-  return {
-    idLaboratorio,
-    nombreLaboratorio: laboratorio?.nombre ?? `Laboratorio #${idLaboratorio}`,
-    totalProductos: productosDelLab.length,
-    productos: productosDelLab.map((p) => ({
-      idProducto: p.id,
-      nombreProducto: p.nombre,
-      stock: p.stock,
-      precioVenta: p.precio_venta,
-      fechaVencimiento: p.fecha_vencimiento ?? null,
-    })),
-  };
+export function obtenerProductosPorLaboratorio(idLaboratorio: number) {
+  return getJson<ReporteProductosPorLaboratorio>(`/reportes/inventario/por-laboratorio/${idLaboratorio}`);
 }

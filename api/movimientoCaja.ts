@@ -1,7 +1,16 @@
-import { delay, nextId } from './_mockUtils';
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export type TipoMovimiento = 'INGRESO' | 'EGRESO';
-export type CategoriaMovimiento = 'RETIRO_EFECTIVO' | 'PAGO_PROVEEDOR' | 'PAGO_SERVICIOS' | 'GASTO_VARIO' | 'APORTE_CAPITAL' | 'DEVOLUCION' | 'OTRO';
+
+export type CategoriaMovimiento =
+  | 'RETIRO_EFECTIVO'
+  | 'PAGO_PROVEEDOR'
+  | 'PAGO_SERVICIOS'
+  | 'GASTO_VARIO'
+  | 'APORTE_CAPITAL'
+  | 'DEVOLUCION'
+  | 'OTRO';
+
 export type MedioPago = 'EFECTIVO' | 'TARJETA' | 'TRANSFERENCIA' | 'YAPE_PLIN';
 
 export interface MovimientoCaja {
@@ -30,31 +39,31 @@ export interface RegistrarMovimientoPayload {
   medioPago: MedioPago;
 }
 
-let movimientos: MovimientoCaja[] = [
-  { id: 1, empleadoNombre: 'Administrador', tipo: 'EGRESO', categoria: 'PAGO_SERVICIOS', numero: 'MOV-0001', fechaEmision: new Date().toISOString().slice(0, 10), descripcion: 'Pago de recibo de luz', monto: 85.5, medioPago: 'EFECTIVO', fechaRegistro: new Date().toISOString(), anulado: false },
-  { id: 2, empleadoNombre: 'Ana Torres', tipo: 'INGRESO', categoria: 'APORTE_CAPITAL', numero: 'MOV-0002', fechaEmision: new Date().toISOString().slice(0, 10), descripcion: 'Aporte de capital para caja chica', monto: 200, medioPago: 'EFECTIVO', fechaRegistro: new Date().toISOString(), anulado: false },
-];
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Error ${res.status} en ${path}`);
+  }
+  const text = await res.text();
+  return text ? JSON.parse(text) : (undefined as T);
+}
 
 export const movimientoCajaApi = {
-  listar: async (desde?: string, hasta?: string) => {
-    await delay();
-    let resultado = [...movimientos];
-    if (desde) resultado = resultado.filter((m) => m.fechaEmision >= desde);
-    if (hasta) resultado = resultado.filter((m) => m.fechaEmision <= hasta);
-    return resultado;
+  listar: (desde?: string, hasta?: string) => {
+    const params = new URLSearchParams();
+    if (desde) params.set('desde', desde);
+    if (hasta) params.set('hasta', hasta);
+    const qs = params.toString();
+    return request<MovimientoCaja[]>(`/movimientos${qs ? `?${qs}` : ''}`);
   },
-  listarPorArqueo: async (_arqueoId: number) => { await delay(); return [...movimientos]; },
-  registrar: async (data: RegistrarMovimientoPayload) => {
-    await delay();
-    const nuevo: MovimientoCaja = { id: nextId(movimientos), empleadoNombre: 'Empleado Demo', tipo: data.tipo, categoria: data.categoria, numero: data.numero, fechaEmision: data.fechaEmision, descripcion: data.descripcion, monto: data.monto, medioPago: data.medioPago, fechaRegistro: new Date().toISOString(), anulado: false };
-    movimientos.push(nuevo);
-    return nuevo;
-  },
-  anular: async (id: number) => {
-    await delay();
-    const mov = movimientos.find((m) => m.id === id);
-    if (!mov) throw new Error('Movimiento no encontrado');
-    mov.anulado = true;
-    return mov;
-  },
+  listarPorArqueo: (arqueoId: number) =>
+    request<MovimientoCaja[]>(`/movimientos/arqueo/${arqueoId}`),
+  registrar: (data: RegistrarMovimientoPayload) =>
+    request<MovimientoCaja>('/movimientos', { method: 'POST', body: JSON.stringify(data) }),
+  anular: (id: number) =>
+    request<MovimientoCaja>(`/movimientos/${id}/anular`, { method: 'PUT' }),
 };

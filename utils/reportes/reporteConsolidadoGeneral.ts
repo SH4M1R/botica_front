@@ -1,9 +1,8 @@
-// reporteConsolidadoGeneral.ts
 import type { ConsolidadoGeneral } from '@/api/reportes';
 import { crearPos80Builder, crearA4Builder, formatFecha, formatEmision, formatMoneda } from './pdfBase';
 
 export async function generarConsolidadoGeneralPos80(data: ConsolidadoGeneral, logo?: string): Promise<Blob> {
-  const b = crearPos80Builder(120);
+  const b = crearPos80Builder(140);
   await b.encabezadoEmpresa(logo);
 
   b.texto('CONSOLIDADO GENERAL', { align: 'center', size: 9.5, bold: true });
