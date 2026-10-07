@@ -1,3 +1,5 @@
+import { fetchPagina } from "./paginacion";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export type TipoVenta = 'unidad' | 'blister' | 'caja';
@@ -21,7 +23,23 @@ export interface Cliente {
   apellidoMaterno?: string;
   dni?: string;
   telefono?: string;
+  direccion?: string;
   saldo?: number;
+  puntos?: number;
+}
+
+export interface RucResponse {
+  success?: boolean;
+  ruc: string;
+  razonSocial: string;
+  nombreComercial?: string;
+  direccion?: string;
+  departamento?: string;
+  provincia?: string;
+  distrito?: string;
+  estado?: string;
+  condicion?: string;
+  telefonos?: string[];
 }
 
 export interface ReniecResponse {
@@ -65,6 +83,7 @@ interface ClientePayload {
   apellidoMaterno?: string;
   dni?: string;
   telefono?: string;
+  direccion?: string;
 }
 
 export interface Empleado {
@@ -99,6 +118,10 @@ export interface Venta {
   empleado: Empleado;
   cliente: Cliente | null;
   detalles: DetalleVenta[];
+  recetaPath?: string | null;
+  requiereReceta?: boolean;
+  descuento?: number;
+  cuponCodigo?: string | null;
 }
 
 export interface ItemVentaRequest {
@@ -116,13 +139,8 @@ export interface VentaRequest {
   tipoVenta: TipoComprobanteVenta;
   montoPagado?: number;
   codigoIzipay?: string;
+  idCupon?: number | null;
   items: ItemVentaRequest[];
-}
-
-export interface VentaResponse {
-  venta: Venta;
-  comprobanteEstado?: 'GENERADO' | 'ERROR_GENERACION';
-  comprobanteMensaje?: string;
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -140,13 +158,20 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const ventasApi = {
   listar: () => request<Venta[]>('/ventas'),
+  listarPaginado: (page = 0, size = 25) => fetchPagina<Venta>('/ventas', page, size),
+  listarPorDia: (fecha: string, page = 0, size = 10, idEmpleado?: number) =>
+    fetchPagina<Venta>('/ventas/dia', page, size, { fecha, idEmpleado }),
+  dias: (idEmpleado?: number) =>
+    request<string[]>(`/ventas/dias${idEmpleado ? `?idEmpleado=${idEmpleado}` : ''}`),
   obtener: (id: number) => request<Venta>(`/ventas/${id}`),
-  crear: (data: VentaRequest) => request<VentaResponse>('/ventas', { method: 'POST', body: JSON.stringify(data) }),
+  crear: (data: VentaRequest) => request<Venta>('/ventas', { method: 'POST', body: JSON.stringify(data) }),
   anular: (id: number) => request<void>(`/ventas/${id}/anular`, { method: 'PUT' }),
 };
 
 export const clientesApi = {
   listar: () => request<Cliente[]>('/clientes'),
+  listarPaginado: (page = 0, size = 10, q = '') =>
+    fetchPagina<Cliente>('/clientes', page, size, { q }),
   crear: (data: ClientePayload) =>
     request<Cliente>('/clientes', { method: 'POST', body: JSON.stringify(data) }),
   actualizar: (id: number, data: ClientePayload) =>
@@ -154,6 +179,7 @@ export const clientesApi = {
   registrarPago: (id: number, monto: number) =>
     request<Cliente>(`/clientes/${id}/pago`, { method: 'PUT', body: JSON.stringify({ monto }) }),
   consultarDni: (dni: string) => request<ReniecResponse>(`/clientes/reniec/${dni}`),
+  consultarRuc: (ruc: string) => request<RucResponse>(`/clientes/ruc/${ruc}`),
   actualizarSaldo: (id: number, saldo: number) =>
     request<Cliente>(`/clientes/${id}/saldo`, { method: 'PUT', body: JSON.stringify({ saldo }) }),
 };
@@ -165,3 +191,16 @@ export const empleadosApi = {
 };
 
 export const METODOS_PAGO = ['Efectivo', 'Izipay', 'Transferencia', 'Yape/Plin'];
+
+export const recetasApi = {
+  subir: async (idVenta: number, archivo: File): Promise<void> => {
+    const formData = new FormData();
+    formData.append('archivo', archivo);
+    const res = await fetch(`${API_URL}/ventas/${idVenta}/receta`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) throw new Error('No se pudo subir la receta.');
+  },
+  urlVer: (idVenta: number) => `${API_URL}/ventas/${idVenta}/receta`,
+};

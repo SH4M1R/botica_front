@@ -2,10 +2,11 @@ import type { ProductoPorVencer } from '@/api/reportes';
 import { crearPos80Builder, crearA4Builder, formatFecha, formatEmision, ColumnaReporte } from './pdfBase';
 
 const columnas: ColumnaReporte<ProductoPorVencer>[] = [
-  { header: 'Producto', align: 'left', widthA4: 55, render: (f) => f.nombreProducto },
-  { header: 'Lote', align: 'left', widthA4: 25, render: (f) => f.lote ?? '—' },
+  { header: 'Producto', align: 'left', widthA4: 40, render: (f) => f.nombreProducto },
+  { header: 'Laboratorio', align: 'left', widthA4: 25, render: (f) => f.laboratorio || '—' },
+  { header: 'Lote', align: 'left', widthA4: 20, render: (f) => f.lote ?? '—' },
   { header: 'Vencimiento', align: 'left', widthA4: 30, render: (f) => formatFecha(f.fechaVencimiento) },
-  { header: 'Stock', align: 'right', widthA4: 20, render: (f) => String(f.stock) },
+  { header: 'Stock', align: 'right', widthA4: 15, render: (f) => String(f.stock) },
   {
     header: 'Días',
     align: 'right',
@@ -19,7 +20,7 @@ export async function generarProductosPorVencerPos80(
   dias = 90,
   logo?: string
 ): Promise<Blob> {
-  const altura = 60 + filas.length * 22 + 20;
+  const altura = 60 + filas.length * 26 + 20;
   const b = crearPos80Builder(altura);
   await b.encabezadoEmpresa(logo);
 
@@ -34,6 +35,7 @@ export async function generarProductosPorVencerPos80(
   } else {
     filas.forEach((p) => {
       b.texto(p.nombreProducto, { bold: true, size: 7.5 });
+      b.texto(`  Lab: ${p.laboratorio || '—'}`, { size: 7 });
       b.texto(`  Lote: ${p.lote ?? '—'}  |  Vence: ${formatFecha(p.fechaVencimiento)}`, { size: 7 });
       b.texto(
         `  Stock: ${p.stock}  |  ${

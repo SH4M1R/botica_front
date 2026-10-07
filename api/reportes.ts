@@ -194,7 +194,7 @@ export interface InventarioValoradoItem {
   idProducto: number;
   nombreProducto: string;
   categoria: string;
-  laboratorio: string;
+  laboratorio?: string;
   stock: number;
   precioCosto: number;
   precioVenta: number;
@@ -225,6 +225,7 @@ export interface CatalogoTerapeutico {
   accionTerapeutica: string | null;
   stock: number;
   precioVenta: number;
+  laboratorio?: string;
 }
 
 export function obtenerInventarioValorado() {
@@ -306,6 +307,7 @@ export interface ProductoPorVencer {
   fechaVencimiento: string;
   stock: number;
   diasRestantes: number;
+  laboratorio?: string;
 }
 
 export function obtenerProductosPorVencer(dias = 90) {

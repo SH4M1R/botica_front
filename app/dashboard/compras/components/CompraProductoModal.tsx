@@ -13,6 +13,7 @@ import {
   Producto as ProductoAPI,
   ProductoPayload,
 } from "@/api/productos";
+import { lotesApi } from "@/api/lotes";
 
 interface ProductoModalProps {
   open: boolean;
@@ -45,9 +46,16 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
 
   useEffect(() => {
     if (open) {
-      productosApi
-        .listar()
-        .then((data) => setListaProductos(data.filter((p: any) => p.estado)))
+      // NUEVO: el stock ya no viene en /productos — se pide aparte y se
+      // mergea, solo para mostrar "Stock: N" en la lista de resultados.
+      Promise.all([productosApi.listar(), lotesApi.resumenStock()])
+        .then(([data, resumen]) => {
+          const stockPorProducto = new Map(resumen.map((r) => [r.idProducto, r.stockTotal]));
+          const conStock = data
+            .filter((p: any) => p.estado)
+            .map((p: any) => ({ ...p, stock: stockPorProducto.get(p.id) ?? 0 }));
+          setListaProductos(conStock);
+        })
         .catch(() => setListaProductos([]));
     }
   }, [open]);
@@ -196,18 +204,18 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
     const afectacionIgv: AfectacionIgv = producto.gravada ? "GRAVADO_ONEROSO" : "INAFECTO";
 
     const original = producto._original;
+    // NUEVO: ya NO se envían stock/lote/fecha_vencimiento — Producto ya no
+    // tiene esos campos. El lote real lo crea CompraServiceImpl al registrar
+    // la compra (usa codigoLote/fechaVencimiento capturados más abajo).
     const payload: ProductoPayload = {
       nombre: original.nombre,
       codigo_digemid: original.codigo_digemid,
       precio_costo: precioCompraUnitario,
       precio_venta: precioVenta,
-      stock: original.stock,
       stock_minimo: original.stock_minimo,
       barras: original.barras,
       estado: original.estado,
       requiere_receta: original.requiere_receta,
-      fecha_vencimiento: original.fecha_vencimiento,
-      lote: original.lote,
       vende_por_presentaciones: original.vende_por_presentaciones,
       blister_habilitado: original.blister_habilitado,
       unidades_blister: original.unidades_blister,
@@ -217,7 +225,7 @@ export default function ProductoModal({ open, onClose, onAgregar }: ProductoModa
       precio_caja: original.precio_caja,
       factor: original.factor,
       registro_sanitario: original.registro_sanitario,
-      laboratorio: { id: original.laboratorio.id },
+      laboratorio: original.laboratorio ? { id: original.laboratorio.id } : null,
       categoria: { id: original.categoria.id },
       principioActivo: original.principioActivo ? { id: original.principioActivo.id } : null,
       accionTerapeutica: original.accionTerapeutica ? { id: original.accionTerapeutica.id } : null,

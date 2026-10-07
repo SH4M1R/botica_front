@@ -2,11 +2,12 @@ import type { CatalogoTerapeutico } from '@/api/reportes';
 import { crearPos80Builder, crearA4Builder, formatEmision, formatMoneda, ColumnaReporte } from './pdfBase';
 
 const columnas: ColumnaReporte<CatalogoTerapeutico>[] = [
-  { header: 'Producto', align: 'left', widthA4: 50, render: (f) => f.nombreProducto },
-  { header: 'Principio Activo', align: 'left', widthA4: 40, render: (f) => f.principioActivo ?? '—' },
-  { header: 'Acción Terapéutica', align: 'left', widthA4: 40, render: (f) => f.accionTerapeutica ?? '—' },
-  { header: 'Stock', align: 'right', widthA4: 20, render: (f) => String(f.stock) },
-  { header: 'P. Venta', align: 'right', widthA4: 20, render: (f) => formatMoneda(f.precioVenta) },
+  { header: 'Producto', align: 'left', widthA4: 35, render: (f) => f.nombreProducto },
+  { header: 'Laboratorio', align: 'left', widthA4: 25, render: (f) => f.laboratorio || '—' },
+  { header: 'Principio Activo', align: 'left', widthA4: 35, render: (f) => f.principioActivo ?? '—' },
+  { header: 'Acción Terapéutica', align: 'left', widthA4: 35, render: (f) => f.accionTerapeutica ?? '—' },
+  { header: 'Stock', align: 'right', widthA4: 15, render: (f) => String(f.stock) },
+  { header: 'P. Venta', align: 'right', widthA4: 25, render: (f) => formatMoneda(f.precioVenta) },
 ];
 
 export async function generarCatalogoTerapeuticoPos80(
@@ -14,7 +15,7 @@ export async function generarCatalogoTerapeuticoPos80(
   titulo = 'CATÁLOGO TERAPÉUTICO',
   logo?: string
 ): Promise<Blob> {
-  const altura = 65 + filas.length * 22 + 20;
+  const altura = 65 + filas.length * 26 + 20;
   const b = crearPos80Builder(altura);
   await b.encabezadoEmpresa(logo);
 
@@ -29,6 +30,7 @@ export async function generarCatalogoTerapeuticoPos80(
   } else {
     filas.forEach((p) => {
       b.texto(p.nombreProducto, { bold: true, size: 7.5 });
+      b.texto(`  Lab: ${p.laboratorio || '—'}`, { size: 7 });
       b.texto(`  P. Activo: ${p.principioActivo ?? '—'}`, { size: 7 });
       b.texto(`  Acción: ${p.accionTerapeutica ?? '—'}`, { size: 7 });
       b.texto(`  Stock: ${p.stock}  |  P. Venta: ${formatMoneda(p.precioVenta)}`, { size: 7 });

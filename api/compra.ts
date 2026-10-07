@@ -1,3 +1,5 @@
+import { fetchPagina } from "./paginacion";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -163,7 +165,9 @@ export interface Compra {
 export const IGV_RATE = 0.18;
 
 export const comprasApi = {
-  listar: () => apiFetch<Compra[]>("/compras"),
+  listar: () => apiFetch<Compra[]>('/compras'),
+  listarPaginado: (page = 0, size = 10, f: { desde?: string; hasta?: string; idEmpleado?: number } = {}) =>
+    fetchPagina<Compra>('/compras', page, size, f),
   obtener: (id: number) => apiFetch<Compra>(`/compras/${id}`),
   crear: (payload: CompraRequestDTO) =>
     apiFetch<Compra>("/compras", {

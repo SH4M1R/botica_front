@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Package, Settings, ShoppingCart, Contact, ChevronDown,
@@ -306,16 +305,41 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
 
   return (
     <div className="flex flex-col h-full bg-primary text-white shadow-2xl">
+      {/* Top Header con WhatsApp, Separador y Botón de Colapsar */}
       <div
-        className={`hidden md:flex items-center border-b border-white/50 ${
-          collapsed ? 'justify-center py-3' : 'justify-end px-3 py-3'
+        className={`hidden md:flex items-center border-b border-white px-3 py-3 ${
+          collapsed ? 'flex-col gap-2 justify-center' : 'justify-between'
         }`}
       >
+        <a
+          href={obtenerWhatsAppLink()}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={collapsed ? 'Comunícate con JPSYSTEMS' : 'Comunícate con JPSYSTEMS'}
+          className={`flex items-center gap-2 rounded-lg text-sm font-semibold transition-all text-white hover:bg-white/20 p-0.5 ${
+            collapsed ? 'justify-center' : 'flex-1 min-w-0 mr-1'
+          }`}
+        >
+          <img
+            src="/JPSYSTEMS.png"
+            alt="JPSYSTEMS"
+            className="w-10 h-10 rounded-full object-cover shrink-0 border border-white/30"
+          />
+          {!collapsed && <span className="truncate text-xs">Contáctanos</span>}
+        </a>
+
+        {/* Línea de separación (Vertical en expandido, Horizontal en colapsado) */}
+        <div
+          className={`bg-white shrink-0 ${
+            collapsed ? 'w-full h-[1px]' : 'h-8 w-[1px] mx-1'
+          }`}
+        />
+
         <button
           type="button"
           onClick={onToggleCollapse}
           title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
-          className="p-2 rounded-lg text-white hover:bg-white/20 transition-colors cursor-pointer"
+          className="p-2 rounded-lg text-white hover:bg-white/20 transition-colors cursor-pointer shrink-0"
         >
           {collapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
         </button>
@@ -619,26 +643,6 @@ export default function Sidebar({ onClose, collapsed, onToggleCollapse, onCajaCe
           </Link>
         ))}
       </nav>
-
-      {/* Botón de WhatsApp al final del Sidebar */}
-      <div className="p-3 border-t border-white/20">
-        <a
-          href={obtenerWhatsAppLink()}
-          target="_blank"
-          rel="noopener noreferrer"
-          title={collapsed ? 'Comunícate Con Nosotros' : undefined}
-          className={`flex items-center gap-3 rounded-lg text-md font-semibold transition-all text-white hover:bg-white/20 ${
-            collapsed ? 'justify-center px-0 py-2.5' : 'px-4 py-2.5'
-          }`}
-        >
-          <img
-            src="/JPSYSTEMS.png"
-            alt="JPSYSTEMS"
-            className="w-6 h-6 rounded-full object-cover shrink-0 border border-white/30"
-          />
-          {!collapsed && <span className="truncate">Soporte o Consultas</span>}
-        </a>
-      </div>
     </div>
   );
 }

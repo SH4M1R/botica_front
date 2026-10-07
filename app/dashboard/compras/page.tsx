@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
+import { usePaginaServidor } from "@/hooks/usePaginaServidor";
+import { paginaVacia } from "@/api/paginacion";
 import Link from "next/link";
 import { Plus, Eye, Ban } from "lucide-react";
 import { comprasApi } from "@/api/compra";
@@ -29,32 +31,24 @@ function formatFecha(fechaStr: string) {
 
 export default function ComprasPage() {
   const { empleado, cargando: cargandoSesion } = useSession();
-  const [compras, setCompras] = useState<Compra[]>([]);
-  const [loading, setLoading] = useState(true);
   const [compraDetalle, setCompraDetalle] = useState<Compra | null>(null);
   const [compraAAnular, setCompraAAnular] = useState<Compra | null>(null);
 
-  // Paginación estándar de la tabla
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
+  const esAdministrador = empleado?.rol === "Administrador";
+  const sesionLista = !cargandoSesion && !!empleado;
+  const idEmpleadoFiltro = sesionLista && !esAdministrador ? empleado!.id : undefined;
 
-  const cargarCompras = async () => {
-    setLoading(true);
-    try {
-      const data = await comprasApi.listar();
-      setCompras(
-        data.sort(
-          (a, b) => new Date(b.fechaRegistro).getTime() - new Date(a.fechaRegistro).getTime()
-        )
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    cargarCompras();
-  }, []);
+  const {
+    items: compras, total: totalItems, totalPages: totalPaginas, page: paginaSegura, size: pageSize,
+    loading, setPage: setCurrentPage, cambiarTamano, recargar,
+  } = usePaginaServidor<Compra>(
+    (p, sz) =>
+      sesionLista
+        ? comprasApi.listarPaginado(p, sz, { idEmpleado: idEmpleadoFiltro })
+        : Promise.resolve(paginaVacia<Compra>(p, sz)),
+    [sesionLista, idEmpleadoFiltro],
+    PAGE_SIZE_OPTIONS[0]
+  );
 
   const handleAnular = (compra: Compra) => {
     setCompraAAnular(compra);
@@ -63,28 +57,8 @@ export default function ComprasPage() {
   const confirmarAnulacion = async () => {
     if (!compraAAnular) return;
     await comprasApi.anular(compraAAnular.id);
-    await cargarCompras();
+    recargar();
   };
-
-  const esAdministrador = empleado?.rol === "Administrador";
-
-  const comprasVisibles = useMemo(() => {
-    if (cargandoSesion || !empleado) return [];
-    if (esAdministrador) return compras;
-    return compras.filter((c) => c.empleado?.id === empleado.id);
-  }, [compras, empleado, cargandoSesion, esAdministrador]);
-
-  // Cálculos de paginación
-  const totalItems = comprasVisibles.length;
-  const totalPaginas = Math.ceil(totalItems / pageSize) || 1;
-  const paginaSegura = Math.min(Math.max(currentPage, 1), totalPaginas);
-
-  const itemsPaginados = useMemo(() => {
-    return comprasVisibles.slice(
-      (paginaSegura - 1) * pageSize,
-      paginaSegura * pageSize
-    );
-  }, [comprasVisibles, paginaSegura, pageSize]);
 
   return (
     <div className="space-y-6">
@@ -105,11 +79,11 @@ export default function ComprasPage() {
         </Link>
       </div>
 
-      {loading || cargandoSesion ? (
+      {(loading && compras.length === 0) || cargandoSesion ? (
         <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs py-16 text-center text-sm text-zinc-400">
           Cargando compras...
         </div>
-      ) : comprasVisibles.length === 0 ? (
+      ) : compras.length === 0 ? (
         <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs py-16 text-center text-sm text-zinc-400">
           {esAdministrador ? "Aún no hay compras registradas." : "Aún no has registrado compras."}
         </div>
@@ -141,7 +115,7 @@ export default function ComprasPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 text-xs">
-              {itemsPaginados.map((c) => (
+              {compras.map((c) => (
                 <tr key={c.id} className="hover:bg-zinc-50/60 transition-colors">
                   <td className="px-5 py-3 font-mono text-zinc-600">
                     #{String(c.id).padStart(6, "0")}
@@ -195,7 +169,7 @@ export default function ComprasPage() {
             </tbody>
           </table>
 
-          {comprasVisibles.length > 0 && (
+          {compras.length > 0 && (
             <Paginacion
               currentPage={paginaSegura}
               totalPages={totalPaginas}
@@ -204,10 +178,7 @@ export default function ComprasPage() {
               itemLabel="compras"
               pageSizeOptions={PAGE_SIZE_OPTIONS}
               onPageChange={setCurrentPage}
-              onPageSizeChange={(size) => {
-                setPageSize(size);
-                setCurrentPage(1);
-              }}
+              onPageSizeChange={cambiarTamano}
             />
           )}
         </div>

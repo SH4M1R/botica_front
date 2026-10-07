@@ -13,6 +13,7 @@ export interface Empleado {
   horaEntrada?: string | null;
   horaSalida?: string | null;
   diaDescanso?: string | null;
+  metaVenta?: number | null;
 }
 
 export interface EmpleadoPayload {
@@ -24,6 +25,16 @@ export interface EmpleadoPayload {
   horaEntrada?: string | null;
   horaSalida?: string | null;
   diaDescanso?: string | null;
+  metaVenta?: number | null;
+}
+
+export interface EmpleadoMeta {
+  idEmpleado: number;
+  nombre: string;
+  metaVenta: number | null;
+  vendidoMes: number;
+  porcentaje: number;
+  cumple: boolean;
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -42,6 +53,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const empleadosCrudApi = {
   listar: () => request<Empleado[]>('/empleados'),
   listarActivos: () => request<Empleado[]>('/empleados/activos'),
+  metas: (mes?: string) => request<EmpleadoMeta[]>(`/empleados/metas${mes ? `?mes=${encodeURIComponent(mes)}` : ''}`),
   obtener: (id: number) => request<Empleado>(`/empleados/${id}`),
   crear: (data: EmpleadoPayload) => request<Empleado>('/empleados', { method: 'POST', body: JSON.stringify(data) }),
   actualizar: (id: number, data: EmpleadoPayload) => request<Empleado>(`/empleados/${id}`, { method: 'PUT', body: JSON.stringify(data) }),

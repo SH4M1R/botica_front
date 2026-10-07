@@ -2,15 +2,16 @@ import type { ReporteInventarioValorado, InventarioValoradoItem } from '@/api/re
 import { crearPos80Builder, crearA4Builder, formatEmision, formatMoneda, ColumnaReporte } from './pdfBase';
 
 const columnas: ColumnaReporte<InventarioValoradoItem>[] = [
-  { header: 'Producto', align: 'left', widthA4: 55, render: (f) => f.nombreProducto },
-  { header: 'Stock', align: 'right', widthA4: 25, render: (f) => String(f.stock) },
-  { header: 'Costo', align: 'right', widthA4: 30, render: (f) => formatMoneda(f.precioCosto) },
-  { header: 'Valor Costo', align: 'right', widthA4: 30, render: (f) => formatMoneda(f.valorCosto) },
-  { header: 'Valor Venta', align: 'right', widthA4: 30, render: (f) => formatMoneda(f.valorVenta) },
+  { header: 'Producto', align: 'left', widthA4: 40, render: (f) => f.nombreProducto },
+  { header: 'Laboratorio', align: 'left', widthA4: 25, render: (f) => f.laboratorio || '—' },
+  { header: 'Stock', align: 'right', widthA4: 20, render: (f) => String(f.stock) },
+  { header: 'Costo', align: 'right', widthA4: 28, render: (f) => formatMoneda(f.precioCosto) },
+  { header: 'Valor Costo', align: 'right', widthA4: 28, render: (f) => formatMoneda(f.valorCosto) },
+  { header: 'Valor Venta', align: 'right', widthA4: 29, render: (f) => formatMoneda(f.valorVenta) },
 ];
 
 export async function generarInventarioValoradoPos80(data: ReporteInventarioValorado, logo?: string): Promise<Blob> {
-  const altura = 65 + data.productos.length * 24 + 25;
+  const altura = 65 + data.productos.length * 28 + 25;
   const b = crearPos80Builder(altura);
   await b.encabezadoEmpresa(logo);
 
@@ -22,6 +23,7 @@ export async function generarInventarioValoradoPos80(data: ReporteInventarioValo
 
   data.productos.forEach((p) => {
     b.texto(p.nombreProducto, { bold: true, size: 7.5 });
+    b.texto(`  Lab: ${p.laboratorio || '—'}`, { size: 7 });
     b.texto(`  Stock: ${p.stock}  |  Costo: ${formatMoneda(p.precioCosto)}`, { size: 7 });
     b.texto(`  Valor costo: ${formatMoneda(p.valorCosto)}  |  Valor venta: ${formatMoneda(p.valorVenta)}`, {
       size: 7,

@@ -11,11 +11,11 @@ import type { Cliente } from '@/api/ventas';
 import { permisosApi } from '@/api/permisos';
 import { empresaApi } from '@/api/empresa';
 import type { EmpresaForm } from '@/api/empresa';
+import { lotesApi, mergearStockEnProductos } from '@/api/lotes';
 import { cotizacionesApi } from '@/api/cotizaciones';
 import { PERMISO_EDITAR_PRECIO_VENTA } from '@/constants/permisos';
 import { useSession } from '@/hooks/useSession';
 import ClienteModal from '@/app/dashboard/clientes/components/ClienteModal';
-import VentaNoMouse from '../generar/VentaNoMouse';
 import { generarCotizacionPdf } from '@/utils/generarCotizacionPdf';
 import {
   type TipoVenta,
@@ -26,11 +26,14 @@ import {
   PrecioInput,
 } from '@/components/ventaShared';
 
+// Producto con stock y fecha_vencimiento ya mergeados desde /lotes/resumen-stock.
+type ProductoConStock = Producto & { stock: number; fecha_vencimiento: string | null };
+
 export default function GenerarCotizacionPage() {
   const router = useRouter();
   const { empleado, cargando } = useSession();
 
-  const [productos, setProductos] = useState<Producto[]>([]);
+  const [productos, setProductos] = useState<ProductoConStock[]>([]);
   const [busqueda, setBusqueda] = useState('');
   const [carrito, setCarrito] = useState<CarritoItem[]>([]);
 
@@ -70,8 +73,14 @@ export default function GenerarCotizacionPage() {
     };
   }, []);
 
+  // El stock ya NO viene en /productos: se pide aparte a /lotes/resumen-stock
+  // y se mergea antes de guardar, igual que en Generar Venta.
   const cargarProductos = () => {
-    productosApi.listarActivos().then(setProductos).catch(() => setProductos([]));
+    Promise.all([productosApi.listarActivos(), lotesApi.resumenStock()])
+      .then(([productosData, resumen]) => {
+        setProductos(mergearStockEnProductos(productosData, resumen));
+      })
+      .catch(() => setProductos([]));
   };
 
   const cargarClientes = () => {
@@ -131,14 +140,13 @@ export default function GenerarCotizacionPage() {
   const productosVisibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
 
-    // Al igual que en "Generar venta", los productos sin stock ya NO se
-    // ocultan: se muestran igual (al final de la lista) pero deshabilitados
-    // para agregar, ya que una cotización puede servir para avisar al
-    // cliente que el producto está agotado por el momento.
+    // Los productos sin stock ya NO se ocultan: se muestran igual (al final
+    // de la lista) pero deshabilitados para agregar, ya que una cotización
+    // puede servir para avisar al cliente que el producto está agotado.
     const filtrados = !q
       ? productos
       : productos.filter((p) => {
-          const producto = p as ProductoConCodigo;
+          const producto = p as ProductoConStock & ProductoConCodigo;
           const nombreMatch = producto.nombre.toLowerCase().includes(q);
           const principioMatch = producto.principioActivo?.nombre?.toLowerCase().includes(q);
           const codigoBarrasMatch = producto.codigo_barras?.toLowerCase().includes(q);
@@ -195,7 +203,7 @@ export default function GenerarCotizacionPage() {
   // que en "Generar venta", para mantener el mismo tono de mensajes).
   const etiquetaTipo = (tipoVenta: TipoVenta) => (tipoVenta === 'unidad' ? 'unidad(es)' : `${tipoVenta}(s)`);
 
-  const agregarProducto = (producto: Producto) => {
+  const agregarProducto = (producto: ProductoConStock) => {
     if (producto.stock <= 0) {
       setError(`"${producto.nombre}" no tiene stock disponible.`);
       return;
@@ -218,15 +226,16 @@ export default function GenerarCotizacionPage() {
     cantidad: number,
     precioUnitarioManual?: number
   ) => {
-    if (producto.stock <= 0) {
-      setError(`"${producto.nombre}" no tiene stock disponible.`);
+    const prod = producto as ProductoConStock;
+    if (prod.stock <= 0) {
+      setError(`"${prod.nombre}" no tiene stock disponible.`);
       return;
     }
     setCarrito((prev) => {
-      const existente = prev.find((c) => c.idProducto === producto.id && c.tipoVenta === tipoVenta);
+      const existente = prev.find((c) => c.idProducto === prod.id && c.tipoVenta === tipoVenta);
       if (existente) {
         return prev.map((item) =>
-          item.idProducto === producto.id && item.tipoVenta === tipoVenta
+          item.idProducto === prod.id && item.tipoVenta === tipoVenta
             ? {
                 ...item,
                 cantidad: item.cantidad + cantidad,
@@ -238,11 +247,11 @@ export default function GenerarCotizacionPage() {
       return [
         ...prev,
         {
-          idProducto: producto.id,
+          idProducto: prod.id,
           cantidad,
           tipoVenta,
-          precioUnitario: precioUnitarioManual ?? precioPorTipo(producto, tipoVenta),
-          producto,
+          precioUnitario: precioUnitarioManual ?? precioPorTipo(prod, tipoVenta),
+          producto: prod,
         },
       ];
     });
@@ -409,7 +418,7 @@ export default function GenerarCotizacionPage() {
   const intentarAgregarPorCodigoBarras = (valor: string): boolean => {
     const q = valor.trim().toLowerCase();
     if (!q) return false;
-    const match = (productos as ProductoConCodigo[]).find(
+    const match = (productos as (ProductoConStock & ProductoConCodigo)[]).find(
       (p) => p.codigo_barras && p.codigo_barras.toLowerCase() === q
     );
     if (match && match.stock > 0) {
@@ -486,32 +495,6 @@ export default function GenerarCotizacionPage() {
   if (modoSinMouse) {
     return (
       <>
-        <VentaNoMouse
-          empleadoNombre={empleado?.nombre ?? ''}
-          fechaHoy={fechaHoy}
-          productos={productos}
-          carrito={carrito}
-          total={total}
-          error={error}
-          setError={setError}
-          nombreCliente={nombreCliente}
-          dniCliente={dniCliente}
-          idClienteSeleccionado={idClienteSeleccionado}
-          clientes={clientes}
-          onCambiarNombreCliente={(v) => {
-            setNombreCliente(v);
-            setIdClienteSeleccionado(null);
-          }}
-          onCambiarDniCliente={setDniCliente}
-          onSeleccionarCliente={seleccionarCliente}
-          onLimpiarCliente={limpiarClienteSeleccionado}
-          onAbrirNuevoCliente={() => setClienteModalAbierto(true)}
-          agregarProductoConDetalle={agregarProductoConDetalle}
-          quitarProducto={quitarProducto}
-          onVaciarCarrito={solicitarVaciarDetalle}
-          onAbrirPago={handleGenerarCotizacion}
-          onVolverModoNormal={() => setModoSinMouse(false)}
-        />
 
         <ClienteModal
           open={clienteModalAbierto}

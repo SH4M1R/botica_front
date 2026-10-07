@@ -3,16 +3,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus, Search, Pencil, Trash2, Power } from 'lucide-react';
 import { empleadosCrudApi } from '@/api/empleados';
-import type { Empleado, EmpleadoPayload } from '@/api/empleados';
+import type { Empleado, EmpleadoMeta, EmpleadoPayload } from '@/api/empleados';
 import EmpleadoModal from './components/EmpleadoModal';
 import Paginacion from '@/components/Paginacion';
 import ModalEliminar from "@/components/ModalEliminar";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
+const mesActual = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const soles = (n: number) =>
+  `S/ ${n.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 export default function EmpleadosPage() {
   const [empleados, setEmpleados] = useState<Empleado[]>([]);
   const [loading, setLoading] = useState(true);
+  const [metas, setMetas] = useState<Record<number, EmpleadoMeta>>({});
+  const [mes, setMes] = useState<string>(mesActual());
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [empleadoActivo, setEmpleadoActivo] = useState<Empleado | null>(null);
@@ -24,13 +34,19 @@ export default function EmpleadosPage() {
   const cargarEmpleados = async () => {
     setLoading(true);
     try {
-      setEmpleados(await empleadosCrudApi.listar());
+      const [lista, listaMetas] = await Promise.all([
+        empleadosCrudApi.listar(),
+        empleadosCrudApi.metas(mes || undefined).catch(() => [] as EmpleadoMeta[]),
+      ]);
+      setEmpleados(lista);
+      setMetas(Object.fromEntries(listaMetas.map((m) => [m.idEmpleado, m])));
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { cargarEmpleados(); }, []);
+  useEffect(() => { cargarEmpleados(); // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mes]);
 
   const empleadosFiltrados = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -115,14 +131,25 @@ const cerrarModal = () =>
         </button>
       </div>
 
-      <div className="relative max-w-sm">
-        <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400"><Search size={16} /></span>
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar por nombre o usuario..."
-          className="w-full pl-9 pr-4 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-        />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative w-full max-w-sm">
+          <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-zinc-400"><Search size={16} /></span>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por nombre o usuario..."
+            className="w-full pl-9 pr-4 py-2 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+          />
+        </div>
+        <label className="flex items-center gap-2 text-xs font-semibold text-zinc-600">
+          Mes de metas
+          <input
+            type="month"
+            value={mes}
+            onChange={(e) => setMes(e.target.value || mesActual())}
+            className="px-3 py-2 rounded-lg border border-zinc-300 bg-white text-sm font-normal focus:outline-hidden focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+          />
+        </label>
       </div>
 
       <div className="bg-white rounded-2xl border border-zinc-200 shadow-xs overflow-hidden">
@@ -134,11 +161,12 @@ const cerrarModal = () =>
           <>
             <table className="w-full text-sm">
               <colgroup>
-                <col style={{ width: '30%' }} />
-                <col style={{ width: '15%' }} />
                 <col style={{ width: '20%' }} />
-                <col style={{ width: '15%' }} />
-                <col style={{ width: '20%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '26%' }} />
+                <col style={{ width: '18%' }} />
               </colgroup>
               <thead>
                 <tr className="bg-primary/10 border-b border-zinc-200 text-left text-xs font-bold text-primary uppercase tracking-wider">
@@ -146,6 +174,7 @@ const cerrarModal = () =>
                   <th className="px-5 py-3">USUARIO</th>
                   <th className="px-5 py-3">ROL</th>
                   <th className="px-5 py-3">ESTADO</th>
+                  <th className="px-5 py-3">META DEL MES</th>
                   <th className="px-5 py-3 text-right">ACCIONES</th>
                 </tr>
               </thead>
@@ -163,6 +192,39 @@ const cerrarModal = () =>
                       <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${emp.estado ? 'bg-primary/10 text-primary' : 'bg-zinc-100 text-zinc-400'}`}>
                         {emp.estado ? 'Activo' : 'Inactivo'}
                       </span>
+                    </td>
+                    <td className="px-5 py-3">
+                      {(() => {
+                        const m = metas[emp.id];
+                        const meta = m?.metaVenta ?? emp.metaVenta ?? 0;
+                        const vendido = m?.vendidoMes ?? 0;
+                        if (!meta || meta <= 0) {
+                          return (
+                            <div className="space-y-1">
+                              <p className="text-xs text-zinc-500">{soles(vendido)}</p>
+                              <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-zinc-100 text-zinc-500">Sin meta</span>
+                            </div>
+                          );
+                        }
+                        const cumple = m ? m.cumple : false;
+                        const pct = Math.min(100, (vendido / meta) * 100);
+                        return (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-xs text-zinc-600">{soles(vendido)} / {soles(meta)}</p>
+                              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${cumple ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
+                                {cumple ? 'Cumple' : 'No cumple'}
+                              </span>
+                            </div>
+                            <div className="h-1.5 w-full rounded-full bg-zinc-100 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${cumple ? 'bg-green-500' : 'bg-red-400'}`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex justify-end gap-1">

@@ -1,5 +1,6 @@
 import { apiFetch } from './compra';
 import type { TipoVenta } from '@/components/ventaShared';
+import { fetchPagina } from './paginacion';
 
 export interface ItemCotizacionRequestDTO {
   idProducto: number;
@@ -54,6 +55,11 @@ export interface Cotizacion {
 
 export const cotizacionesApi = {
   listar: () => apiFetch<Cotizacion[]>('/cotizaciones'),
+  listarPaginado: (page = 0, size = 25) => fetchPagina<Cotizacion>('/cotizaciones', page, size),
+  listarPorDia: (fecha: string, page = 0, size = 10, idEmpleado?: number) =>
+    fetchPagina<Cotizacion>('/cotizaciones/dia', page, size, { fecha, idEmpleado }),
+  dias: (idEmpleado?: number) =>
+    apiFetch<string[]>(`/cotizaciones/dias${idEmpleado ? `?idEmpleado=${idEmpleado}` : ''}`),
   obtener: (id: number) => apiFetch<Cotizacion>(`/cotizaciones/${id}`),
   crear: (payload: CotizacionRequestDTO) =>
     apiFetch<Cotizacion>('/cotizaciones', {
@@ -68,3 +74,5 @@ export const cotizacionesApi = {
   marcarConvertida: (id: number) =>
     apiFetch<void>(`/cotizaciones/${id}/convertir`, { method: 'PUT' }),
 };
+
+export const CLIENTE_VARIOS_LABEL = 'Clientes Varios';

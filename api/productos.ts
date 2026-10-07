@@ -26,14 +26,13 @@ export interface Producto {
   codigo_digemid?: string;
   precio_costo: number;
   precio_venta: number;
-  stock: number;
+  stock?: number;
+  fecha_vencimiento?: string | null;
   stock_minimo?: number;
   barras?: string;
   estado: boolean;
   requiere_receta: boolean;
-  fecha_vencimiento?: string;
-  lote?: string;
-  laboratorio: Laboratorio;
+  laboratorio: Laboratorio | null;
   categoria: Categoria;
   principioActivo?: PrincipioActivo | null;
   accionTerapeutica?: AccionTerapeutica | null;
@@ -48,8 +47,8 @@ export interface Producto {
   registro_sanitario?: string | null;
 }
 
-export type ProductoPayload = Omit<Producto, 'id' | 'laboratorio' | 'categoria' | 'principioActivo' | 'accionTerapeutica'> & {
-  laboratorio: { id: number };
+export type ProductoPayload = Omit<Producto, 'id' | 'laboratorio' | 'categoria' | 'principioActivo' | 'accionTerapeutica' | 'stock' | 'fecha_vencimiento'> & {
+  laboratorio: { id: number } | null;
   categoria: { id: number };
   principioActivo?: { id: number } | null;
   accionTerapeutica?: { id: number } | null;
@@ -60,7 +59,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     ...options,
   });
-  if (!res.ok) throw new Error(`Error ${res.status} en ${path}`);
+  if (!res.ok) {
+    const cuerpo = await res.text().catch(() => '');
+    throw new Error(cuerpo || `Error ${res.status} en ${path}`);
+  }
   const text = await res.text();
   return text ? JSON.parse(text) : (undefined as T);
 }
@@ -68,6 +70,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const productosApi = {
   listar: () => request<Producto[]>('/productos'),
   listarActivos: () => request<Producto[]>('/productos/activos'),
+  buscar: (q: string, size = 15) =>
+    request<Producto[]>(`/productos/buscar?q=${encodeURIComponent(q)}&size=${size}`),
   crear: (data: ProductoPayload) => request<Producto>('/productos', { method: 'POST', body: JSON.stringify(data) }),
   actualizar: (id: number, data: ProductoPayload) => request<Producto>(`/productos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   eliminar: (id: number) => request<void>(`/productos/${id}`, { method: 'DELETE' }),

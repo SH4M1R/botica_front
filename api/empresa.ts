@@ -18,6 +18,7 @@ export interface EmpresaForm {
   backupAutomaticoActivo?: boolean;
   frecuenciaBackup?: string;
   ultimoBackupEnviado?: string;
+  rutaRecetas: string;
 }
 
 export async function obtenerEmpresa(): Promise<EmpresaForm> {
@@ -37,6 +38,7 @@ export async function obtenerEmpresa(): Promise<EmpresaForm> {
     toleranciaMinutos: 10,
     backupAutomaticoActivo: true,
     frecuenciaBackup: 'DIARIO',
+    rutaRecetas: '',
   };
 
   try {
