@@ -11,6 +11,7 @@ export function useSfs() {
   const [activo, setActivo] = useState(false);
   const [url, setUrl] = useState<string | undefined>(undefined);
   const [encendiendo, setEncendiendo] = useState(false);
+  const [apagando, setApagando] = useState(false);
   const [error, setError] = useState('');
   const montado = useRef(true);
 
@@ -52,5 +53,20 @@ export function useSfs() {
     }
   }, [verificar]);
 
-  return { activo, url, encendiendo, error, limpiarError: () => setError(''), verificar, encender };
+  const apagar = useCallback(async (): Promise<boolean> => {
+    setError('');
+    setApagando(true);
+    try {
+      await sfsApi.detener();
+      const activo = await verificar();
+      return !activo;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo apagar el SFS.');
+      return false;
+    } finally {
+      if (montado.current) setApagando(false);
+    }
+  }, [verificar]);
+
+  return { activo, url, encendiendo, apagando, apagar, error, limpiarError: () => setError(''), verificar, encender };
 }

@@ -41,6 +41,15 @@ export const sfsApi = {
     return (await res.json()) as SfsEstado;
   },
 
+  detener: async (): Promise<SfsEstado> => {
+    const res = await fetch(`${API_URL}/sfs/detener`, { method: 'POST' });
+    if (!res.ok) {
+      const msg = await res.text().catch(() => '');
+      throw new Error(msg || 'No se pudo apagar el SFS.');
+    }
+    return (await res.json()) as SfsEstado;
+  },
+
   // El SFS tarda cerca de 1 minuto en levantar: se consulta cada 3 s hasta que responda.
   esperarActivo: async (timeoutMs = 150_000): Promise<boolean> => {
     const limite = Date.now() + timeoutMs;

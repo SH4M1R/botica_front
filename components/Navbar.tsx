@@ -9,6 +9,7 @@ import { useSession } from '@/hooks/useSession';
 import { useSfs } from '@/hooks/useSfs';
 import { sfsApi } from '@/api/sfs';
 import ModalAviso from '@/components/ModalAviso';
+import SfsApagarModal from '@/components/SfsApagarModal';
 
 interface NavbarProps {
   onToggleSidebar?: () => void;
@@ -22,6 +23,7 @@ export default function Navbar({ onToggleSidebar }: NavbarProps) {
   const [modalLogoutOpen, setModalLogoutOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const sfs = useSfs();
+  const [confirmarApagarSfs, setConfirmarApagarSfs] = useState(false);
 
   // Reloj del sistema
   const [horaActual, setHoraActual] = useState<Date | null>(null);
@@ -120,6 +122,17 @@ export default function Navbar({ onToggleSidebar }: NavbarProps) {
             />
           </button>
 
+          {sfs.activo && (
+            <button
+              type="button"
+              onClick={() => setConfirmarApagarSfs(true)}
+              title="Apagar el SFS"
+              className="p-1.5 sm:p-2 rounded-lg text-zinc-500 border border-zinc-200 hover:text-red-600 hover:bg-red-50 hover:border-red-200 transition-colors cursor-pointer"
+            >
+              <Power size={16} />
+            </button>
+          )}
+
           <div className="w-px h-6 sm:h-8 bg-zinc-200" />
 
           <div className="flex items-center gap-2 sm:gap-3">
@@ -144,6 +157,16 @@ export default function Navbar({ onToggleSidebar }: NavbarProps) {
           </button>
         </div>
       </header>
+
+      <SfsApagarModal
+        open={confirmarApagarSfs}
+        apagando={sfs.apagando}
+        onCancelar={() => setConfirmarApagarSfs(false)}
+        onConfirmar={async () => {
+          await sfs.apagar();
+          setConfirmarApagarSfs(false);
+        }}
+      />
 
       <ModalAviso
         isOpen={!!sfs.error}
